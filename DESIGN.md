@@ -2,50 +2,14 @@
 
 ## Requirements, Architecture, Detailed Design Guidelines, and Development Roadmap
 
--   **Document ID:** ORC-PLAN-001
--   **Version:** 1.1
--   **Date:** 2026-10-17
--   **Status:** Revised baseline --- v1.0 plus Mendix-benchmark
-    enhancements; proposed design before implementation
 -   **Product:** **Orchivio**
 -   **Category:** **AI-Native Application Engineering Low/No-Code
     Platform**
--   **Tagline (proposed):** **Describe It. Build It. Ship It.**
 
 > This document defines the initial product requirements, architecture,
 > core data model, API direction, security principles, quality criteria,
 > and development phases for Orchivio. Features described here are
 > planned targets, not claims of existing implementation.
-
-## Revision History
-
-| Version | Date | Summary |
-|---|---|---|
-| 1.0 | 2026-10-17 | Initial baseline |
-| 1.1 | 2026-10-17 | Benchmarked against Mendix (public information as of Mendix 11.15, September 2026). Added logic/expression layer, two-plane application security model, UI composition and design system, integration and agent interoperability (MCP), branching/merge and environment delivery, human workflows, AI capabilities inside generated apps, model linter, and governance. MVP extended from 20 to 22 weeks; post-MVP roadmap to Release 1.0 (week 52) added. |
-
-### Key Changes in v1.1
-
-1.  **New Section 2.4 and Appendix A:** Mendix gap analysis and Orchivio's
-    response, including where Orchivio intentionally does *not* follow Mendix.
-2.  **New functional requirement groups 4.3.1 and 4.6--4.13** (FR-028/029,
-    FR-050--FR-135).
-3.  **Architecture:** Expression Engine, Logic/Process Engines, Integration
-    Gateway, Studio MCP Server, Model Linter, Delivery Manager, and Telemetry
-    added (Sections 6.1, 6.4).
-4.  **Model specification:** modules, enumerations, computed fields,
-    row-level access rules, flows, processes, and branch-ready revisions
-    (Sections 8.2--8.9).
-5.  **Roadmap:** MVP Phases 0--7 rebalanced to 22 weeks; Phases 8--12 added
-    for Releases 0.2--1.0 (Section 15). Backlog, risks, documentation plan,
-    and open decisions updated.
-
-> **Benchmark note:** Mendix is a trademark of Siemens. Orchivio is not
-> affiliated with Mendix or Siemens. Comparisons are based on publicly
-> available documentation and release notes and must be re-verified before
-> any external publication. Orchivio uses its own original terminology,
-> designs, and implementation; no Mendix code, assets, documentation text,
-> or proprietary formats are reused.
 
 ------------------------------------------------------------------------
 
