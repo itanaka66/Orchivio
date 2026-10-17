@@ -9,7 +9,8 @@ import socket
 import ssl
 import time
 from collections.abc import Callable
-from dataclasses import dataclass
+from collections.abc import Mapping
+from dataclasses import dataclass, field
 from typing import Protocol
 
 from .ssrf import DestinationError, Policy, Resolver, check_url, resolve_public, system_resolver
@@ -44,6 +45,7 @@ class Response:
     status: int
     body: bytes = b""
     content_type: str = ""
+    headers: Mapping[str, str] = field(default_factory=dict)  # lower-cased names
 
 
 class Transport(Protocol):
@@ -96,7 +98,8 @@ class PinnedTransport:
                 send = {**headers, **({"Content-Length": str(len(body))} if body is not None else {})}
                 conn.request(method, dest.target, body=body, headers=send)
                 resp = conn.getresponse()
-                return Response(resp.status, resp.read(max_bytes), resp.getheader("Content-Type") or "")
+                return Response(resp.status, resp.read(max_bytes), resp.getheader("Content-Type") or "",
+                                {k.lower(): v for k, v in resp.getheaders()})
             except (OSError, http.client.HTTPException) as e:
                 last = e if isinstance(e, OSError) else OSError(str(e))
             finally:

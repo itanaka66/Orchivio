@@ -13,13 +13,13 @@ from fastapi import APIRouter, Depends, Request
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.orm import Session
 
-from orchivio.ai import AIBuilder, BuilderError
+from orchivio.ai import AIBuilder, BuilderError, ToolContext, ToolInfo
 from orchivio.db import ModelInvalid, ProposalRepository, to_model
 from orchivio.db.models import Application, AppRevision
 from orchivio.db.proposals import NoChanges, finish_ai_job, month_cost_usd, start_ai_job
 from orchivio.llm import LLMError, LLMProvider, Usage
 
-from ..deps import Principal, api_error, current_principal, get_db, load_application
+from ..deps import Principal, api_error, audit, current_principal, get_db, load_application
 from .proposals import ProposalDetail, proposal_detail
 
 router = APIRouter(tags=["ai"])
@@ -34,6 +34,7 @@ class RequirementsIn(BaseModel):
 
 class ProposeIn(RequirementsIn):
     title: str | None = Field(default=None, max_length=300)
+    use_tools: bool = Field(default=False, description="let the Builder consult the organization's enabled read-only MCP tools")
 
 
 class ExplainIn(BaseModel):
@@ -105,17 +106,53 @@ def analyze(app_id: uuid.UUID, body: RequirementsIn, request: Request,
 def propose(app_id: uuid.UUID, body: ProposeIn, request: Request,
             principal: Principal = Depends(current_principal), db: Session = Depends(get_db)) -> ProposeOut:
     provider, app, project = _guard(request, db, principal, app_id, "model.propose")
-    return run_proposal(db, provider, principal, app, project, body.requirements, body.title)
+    context: list[ToolContext] = []
+    calls: list[dict[str, Any]] = []
+    plan_usage = Usage()
+    if body.use_tools:
+        try:
+            context, calls, plan_usage = gather_tool_context(request, db, provider, principal, project, body.requirements)
+        except LLMError as e:
+            raise _provider_failed(e) from e
+    return run_proposal(db, provider, principal, app, project, body.requirements, body.title,
+                        context=context, tool_calls=calls, extra_usage=plan_usage)
+
+
+def gather_tool_context(request: Request, db: Session, provider: LLMProvider, principal: Principal, project,
+                        requirements: str) -> tuple[list[ToolContext], list[dict[str, Any]], Usage]:
+    """Let the model *request* calls to the organization's enabled A0 tools, run those that pass the broker's checks, and
+    return their output as untrusted context. One planning round only: tool output never triggers further calls."""
+    broker = request.app.state.mcp_broker
+    catalog = broker.catalog(project.organization_id)
+    if not catalog:
+        return [], [{"note": "no tools are enabled for this organization"}], Usage()
+    limit = request.app.state.settings.mcp_client_max_calls
+    try:
+        plan = AIBuilder(provider).plan_tool_calls(
+            requirements, [ToolInfo(c.server, c.tool, c.description, c.input_schema) for c in catalog], limit)
+    except BuilderError as e:  # an unusable plan is not fatal: propose without background
+        return [], [{"note": "the tool plan was unusable; continued without tools"}], e.usage
+    records = broker.run(project.organization_id, [(c.server, c.tool, c.arguments) for c in plan.calls], limit)
+    meta = []
+    for r in records:
+        audit(db, request, "mcp.client_call", actor_id=principal.user_id, org_id=project.organization_id, target_type="mcp_server",
+              target_id=None, meta={"server": r.server, "tool": r.tool, "args_sha256": r.args_sha256, "ok": r.ok,
+                                    "error": r.error, "chars": len(r.text), "truncated": r.truncated})
+        meta.append({"server": r.server, "tool": r.tool, "ok": r.ok, "error": r.error, "chars": len(r.text), "truncated": r.truncated})
+    return [ToolContext(r.server, r.tool, r.text) for r in records if r.ok and r.text], meta, plan.usage
 
 
 def run_proposal(db: Session, provider: LLMProvider, principal: Principal, app: Application, project,
-                 requirements: str, title: str | None, job_type: str = "propose_model") -> ProposeOut:
+                 requirements: str, title: str | None, job_type: str = "propose_model", *,
+                 context: list[ToolContext] | None = None, tool_calls: list[dict[str, Any]] | None = None,
+                 extra_usage: Usage = Usage()) -> ProposeOut:
     """Ask the provider for a model, store it as a pending proposal and record the job."""
     job = start_ai_job(db, project_id=project.id, application_id=app.id, type=job_type,
-                       created_by=principal.user_id, input_text=requirements, template="propose_model@1")
+                       created_by=principal.user_id, input_text=requirements,
+                       template="propose_model_with_context@1" if context else "propose_model@1")
     body = ProposeIn(requirements=requirements[:MAX_TEXT], title=title)
     try:
-        r = AIBuilder(provider).propose_model(body.requirements, _current_model(db, app))
+        r = AIBuilder(provider).propose_model(body.requirements, _current_model(db, app), context or None)
     except BuilderError as e:
         finish_ai_job(job, ok=False, usage=_usage(e.usage, e.attempts), error=str(e))
         db.commit()
@@ -125,7 +162,9 @@ def run_proposal(db: Session, provider: LLMProvider, principal: Principal, app: 
         finish_ai_job(job, ok=False, error=str(e))
         db.commit()
         raise _provider_failed(e) from e
-    usage = _usage(r.usage, r.attempts)
+    usage = _usage(r.usage + extra_usage, r.attempts)
+    if tool_calls:
+        usage["tool_calls"] = tool_calls
     try:
         proposal = ProposalRepository(db).create(
             app.id, r.model, source="ai_builder", title=body.title or body.requirements.strip()[:120],

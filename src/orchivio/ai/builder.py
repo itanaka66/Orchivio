@@ -9,8 +9,9 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass, field, replace
+from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from orchivio.llm import (
     LLMProvider,
@@ -101,6 +102,44 @@ class ExplanationResult:
     dropped_citations: list[str] = field(default_factory=list)
 
 
+class PlannedCall(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    server: str = Field(min_length=1, max_length=100)
+    tool: str = Field(min_length=1, max_length=100)
+    arguments: dict[str, Any] = Field(default_factory=dict)
+
+
+class ToolPlan(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    calls: list[PlannedCall] = Field(default_factory=list, max_length=10)
+    reason: str | None = Field(default=None, max_length=500)
+
+
+@dataclass(frozen=True)
+class ToolInfo:
+    server: str
+    tool: str
+    description: str
+    input_schema: dict[str, Any]
+
+
+@dataclass(frozen=True)
+class ToolContext:
+    """Output of one external tool call, to be shown to the model as untrusted data."""
+
+    server: str
+    tool: str
+    text: str
+
+
+@dataclass
+class PlanResult:
+    calls: list[PlannedCall]
+    usage: Usage
+    attempts: int
+    template: str
+
+
 def _issue_lines(issues: list[Issue], limit: int = 30) -> str:
     return "\n".join(f"- [{i.code}] {i.path}: {i.message}" for i in issues[:limit])
 
@@ -134,9 +173,27 @@ class AIBuilder:
 
     # -- model proposal ----------------------------------------------------------------------
 
-    def propose_model(self, requirements: str, current: AppModel | None = None) -> BuildResult:
-        tpl = prompts.PROPOSE_MODEL
+    def plan_tool_calls(self, requirements: str, tools: list[ToolInfo], max_calls: int = 3) -> PlanResult:
+        """Ask which of the allowed tools to call for background. The answer is only a *request*: the caller must
+        check every call against the allowlist and the tool's schema before running anything."""
+        tpl = prompts.PLAN_TOOLS
+        catalogue = [{"server": t.server, "tool": t.tool, "description": t.description, "input_schema": t.input_schema} for t in tools]
+        user = (prompts.block("requirements", requirements) + "\n\n"
+                + prompts.block("tools", json.dumps(catalogue, separators=(",", ":"), ensure_ascii=False))
+                + f"\n\nChoose at most {max_calls} calls.")
+        req = self._request(tpl, user)
+        try:
+            v = generate_validated(self.provider, req, ToolPlan, max_attempts=self.max_validation_attempts)
+        except StructuredOutputError as e:
+            raise self._failed(e, tpl) from e
+        return PlanResult(v.value.calls[:max_calls], v.usage, v.attempts, tpl.ref)
+
+    def propose_model(self, requirements: str, current: AppModel | None = None,
+                      context: list[ToolContext] | None = None) -> BuildResult:
+        tpl = prompts.PROPOSE_MODEL_WITH_CONTEXT if context else prompts.PROPOSE_MODEL
         user = prompts.block("requirements", requirements)
+        for c in context or []:
+            user += "\n\n" + prompts.block("external_context", f"source: {c.server}/{c.tool}\n{c.text}")
         if current is not None:
             user += "\n\n" + prompts.model_block(current.model_dump(mode="json", exclude_none=True))
             user += "\n\nReturn the complete updated model."

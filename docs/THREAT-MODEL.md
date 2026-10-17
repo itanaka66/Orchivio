@@ -75,6 +75,10 @@ Status: ✅ implemented and tested · 🟡 partly / not verified end-to-end · �
 | A15 | A malicious OpenAPI document (remote refs, cycles, huge schemas, odd names) | Local `$ref` only, depth/size/operation/property limits, names re-derived, nothing fetched | ✅ tested |
 | A16 | A hostile or broken API answer corrupts data or leaks through errors | Typed conversion with required-field and type checks, 1 MiB cap, no body text in errors, path values percent-encoded | ✅ tested |
 
+| A17 | Indirect prompt injection: a registered MCP server returns instructions that steer the Builder | Output is data in delimited blocks, text only, size-capped, control characters removed; no output ever triggers further calls; only A0 read-only tools can be enabled; every proposal still passes validation, lint, diff and human approval | ✅ structure tested · 🟡 model resistance not measured |
+| A18 | A malicious tool description or schema manipulates the planner or the admin's view | Descriptions are bounded and cleaned, shown to the model only as data, new tools start disabled, schema reduced to simple facts, names validated | ✅ |
+| A19 | The Builder is used to reach internal services or leak data through tool arguments | Registered URLs pass the SSRF checks and are pinned; arguments are validated against the tool's schema and limited to 2 000 bytes; refused calls are not sent; only hashes are audited | ✅ |
+
 ## 4. Assumptions
 
 - PostgreSQL, the host OS and the TLS terminator are operated securely.

@@ -48,6 +48,7 @@ class Settings(BaseSettings):
     package_trusted_public_keys: list[str] = []
     inbound_max_body_bytes: int = 256 * 1024
     inbound_rate_per_minute: int = 60  # per inbound webhook
+    mcp_client_max_calls: int = 3  # tool calls the AI Builder may make per proposal
     csv_max_bytes: int = 2 * 1024 * 1024
     csv_max_rows: int = 5000
     csv_max_export_rows: int = 10_000

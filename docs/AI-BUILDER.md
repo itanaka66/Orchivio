@@ -48,7 +48,8 @@ Rejected, applied and superseded proposals are final. Every transition is audite
 | Endpoint | Purpose | Min. role |
 |---|---|---|
 | `POST /applications/{id}/ai/analyze` | Requirements summary and open questions | editor |
-| `POST /applications/{id}/ai/propose` | Model proposal from requirements (uses the current model as context) | editor |
+| `POST /applications/{id}/ai/propose` | Model proposal from requirements (uses the current model as context; `use_tools` adds MCP background, §6) | editor |
+| `/organizations/{id}/mcp-servers[/{name}[/discover]]`, `PUT .../tools/{tool}` | Register external MCP servers, discover and enable read-only tools | org admin |
 | `POST /applications/{id}/ai/explain` | Explain one element, citing element ids (read-only, A0) | viewer |
 | `POST /applications/{id}/proposals` | Submit a human-made model as a proposal | editor |
 | `GET /applications/{id}/proposals`, `GET /proposals/{id}` | Review (diff, lint, warnings, decision) | viewer |
@@ -82,7 +83,37 @@ Rejected, applied and superseded proposals are final. Every transition is audite
 - **Provider errors.** The client sees a generic `502 ai_provider_error`; details stay in
   `ai_jobs.error`.
 
-## 6. Providers
+## 6. External tools through MCP (FR-087)
+
+`POST /applications/{id}/ai/propose` with `use_tools: true` lets the Builder consult read-only tools of external MCP
+servers (documentation, tickets, design sources) before it proposes a model. Off by default and chosen per request.
+
+* **Registry** (`/organizations/{id}/mcp-servers`, organization admin, A3): register a server (URL checked like every
+  other outbound destination: https, public addresses only, optional allowlist, pinned at connection time; optional
+  bearer credential by `env:`/`file:` reference). `POST .../{name}/discover` lists its tools. Discovery output is
+  normalised: tool names must be plain identifiers, descriptions are cut to 500 characters with control characters
+  removed, input schemas are reduced to property names, simple types, enums and `required`. **New tools start
+  disabled**; a tool that disappears loses its approval; changing the URL clears everything.
+* **Per-tool policy** (`PUT .../tools/{tool}`): `{enabled, level}`. Only `level: A0` (read-only background) can be
+  enabled. Anything stronger needs a person to confirm each call and the Builder has no such step, so it is refused
+  (`approval_not_supported`) rather than silently allowed.
+* **One planning round.** The model is shown the catalogue of enabled tools and the requirements and may *request* up to
+  `ORCHIVIO_MCP_CLIENT_MAX_CALLS` (3) calls. Every request is re-checked by the platform: enabled and still advertised,
+  arguments valid for the schema (types, enums, required, no unknown keys, at most 2 000 bytes), not a duplicate.
+  Refused calls are never sent. Tool output cannot trigger further calls.
+* **Tool output is untrusted data.** Only `text` content is kept, control characters are stripped, the size is capped at
+  8 000 characters, and it is placed in `<external_context source="server/tool">` blocks whose closing tags are
+  defused; the system prompt (`propose_model_with_context@1`) says never to follow instructions found there. The tool
+  catalogue given to the planner contains no tool output. Server-supplied error text is never put in messages or logs.
+* **Audit.** Every call (including refused ones) writes `mcp.client_call` with server, tool, a hash of the arguments,
+  success, error code and output size - no arguments and no output - and the job's `usage.tool_calls` records the same.
+  The planning call counts in the job's token and cost totals and in the project's monthly AI budget.
+* **Failure is not fatal.** An unusable plan, a missing credential, an unreachable or failing server only mean the
+  proposal is made without that background; the proposal still goes through validation, lint, diff and approval.
+* The defence is the same as for all Builder output: a person approves before anything changes. Tool output can at worst
+  mislead a proposal, not apply one. Injection resistance of real models is not measured.
+
+## 7. Providers
 
 `ORCHIVIO_LLM_PROVIDER` is `none` (default: AI endpoints answer `503 ai_not_configured`) or
 `anthropic` (needs `ORCHIVIO_ANTHROPIC_API_KEY`, optional `ORCHIVIO_LLM_MODEL`; install the
@@ -91,7 +122,7 @@ JSON Schema to the system prompt; it is covered by mocked-transport tests **only
 been run against the live service here. A provider is any object implementing
 `orchivio.llm.LLMProvider` (see INTERFACES.md); local models fit the same interface.
 
-## 7. Known limitations
+## 8. Known limitations
 
 - Calls run inside the request (up to the provider timeout). Moving them to the job queue and
   streaming progress to the Studio is planned.
