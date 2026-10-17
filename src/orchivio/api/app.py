@@ -71,7 +71,8 @@ def create_app(
         started = time.perf_counter()
         try:
             declared = request.headers.get("content-length")
-            if declared and declared.isdigit() and int(declared) > settings.max_body_bytes:
+            limit = settings.max_import_bytes if request.url.path.endswith("/import") else settings.max_body_bytes
+            if declared and declared.isdigit() and int(declared) > limit:
                 response = JSONResponse(error_body("payload_too_large", "request body too large"), status_code=413)
             else:
                 response = await call_next(request)

@@ -18,6 +18,7 @@ class Settings(BaseSettings):
     preview_database_url: str = "sqlite:///./preview.db"
     artifact_dir: str = "./artifacts"
     max_body_bytes: int = 1_048_576
+    max_import_bytes: int = 8_388_608  # model archives (zip); see model/canonical.py for the inner limits
     # "none" disables the AI endpoints. "anthropic" needs ORCHIVIO_ANTHROPIC_API_KEY and
     # sends prompts to a hosted API; projects must opt in (settings.ai_allow_external).
     llm_provider: Literal["none", "anthropic"] = "none"

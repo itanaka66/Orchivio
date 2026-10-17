@@ -116,7 +116,37 @@ quick equality checks.
 roles that can read its entity. It never modifies its input. Unknown versions raise
 `UnsupportedSchemaVersion`.
 
-## 9. Planned
+## 9. Canonical files and archives
+
+The model can be written as one small YAML file per element (`orchivio export`, `GET /revisions/{id}/export`),
+so Git diffs and pull requests show exactly which element changed:
+
+```
+application.yaml                          format, schema version, application info, module order
+modules/<module>/module.yaml              module id and the order of its elements
+modules/<module>/{enumerations,entities,pages,flows}/<Name>.yaml
+security/security.yaml                    roles, page access, anonymous flag, rule order
+security/access/<entity>__<role>.yaml     one file per access rule
+```
+
+Properties (checked by property tests over generated models, including arbitrary unicode):
+
+- **Lossless.** `from_files(to_files(m)) == m`, element order and ids included; writing is idempotent.
+- **Minimal and stable.** Keys follow the schema's declaration order; defaults are omitted and restored on
+  load; the same model always produces the same bytes; editing one element changes one file.
+- **Strict reading.** Unknown, unreferenced or missing files, bad YAML (only `safe_load` is used) and schema
+  violations are errors with the offending path. Names that differ only by letter case are refused on write
+  because they cannot live on case-insensitive file systems.
+- **Archives.** `build_archive` writes a zip with sorted entries, fixed timestamps and no compression
+  (compression output differs between zlib builds), plus `MANIFEST.json` with a SHA-256 per file and the model
+  hash. `read_archive` verifies all of them and defends against hostile input: file count and size limits, a
+  compression-ratio guard, regular files only, canonical paths only.
+- **Governance.** Exporting needs the admin-level `project.export` permission and is audited
+  (`revision.exported`). Importing (`POST /applications/{id}/import`, raw `application/zip` body) creates a
+  *proposal*; an import never changes the model directly, so it is diffed, risk-classified and approved like any
+  other change.
+
+## 10. Planned
 
 Flows, processes, scheduled jobs, integrations, AI steps, themes, translations, field-level
 security, per-element canonical YAML files (DESIGN.md §8.9).

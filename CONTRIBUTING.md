@@ -33,6 +33,16 @@ ruff check .
 7. ADRs, migrations and licence records updated.
 8. Known limitations written down.
 
+## Models as files
+
+```bash
+orchivio validate model-dir/     # a canonical directory, a zip or a single YAML file
+orchivio export model.yaml model-dir/ --assign-ids
+orchivio diff before/ after/     # exit code 1 when they differ; prints risk and approval level
+```
+
+Commit the exported directory to Git to review model changes as ordinary pull requests.
+
 ## Web Studio
 
 ```bash

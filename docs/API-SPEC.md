@@ -80,6 +80,8 @@ one owner (`409 last_owner`). Any member may leave an organization.
 | GET | `/revisions/{id}/diff/{base_id}` | both must belong to the same application |
 | POST | `/applications/{id}/rollback` | restores an earlier model as a *new* revision |
 | GET/POST/DELETE | `/tokens`, `/tokens/{id}` | own tokens; the secret is returned once at creation |
+| GET | `/revisions/{id}/export` | reproducible zip of canonical files (admin; audited) |
+| POST | `/applications/{id}/import` | raw `application/zip` body (max `ORCHIVIO_MAX_IMPORT_BYTES`, 8 MiB); verified, then stored as a proposal (`?title=`) |
 | GET | `/revisions/{id}/lint`, `/revisions/{id}/elements/{element_id}/usages` | stored lint findings (`include_suppressed`) / find usages |
 | GET/POST | `/applications/{id}/proposals`, `/proposals/{id}`, `/proposals/{id}/approval` | change proposals and their decision (docs/AI-BUILDER.md) |
 | POST | `/applications/{id}/ai/analyze`, `/ai/propose`, `/ai/explain` | AI Builder (needs a configured provider) |
@@ -109,7 +111,7 @@ workflow for AI and MCP changes (`/proposals`) are planned.
 Further error codes: `approval_required` (409, also for proposals), `stale_proposal`, `not_pending`,
 `no_changes`, `ai_not_configured` (503), `external_ai_disabled` (403), `ai_budget_exceeded` (429),
 `ai_output_invalid` (422), `ai_provider_error` (502), `preview_not_built` / `preview_stale` (409),
-`unknown_role`, `invalid_record` (422), `conflict` (409), `stale_run`, `nothing_to_repair`, `unknown_flow`, `not_runnable`, `flow_error`, `hook_failed` (409).
+`unknown_role`, `invalid_record` (422), `conflict` (409), `stale_run`, `nothing_to_repair`, `invalid_archive` (422), `unknown_flow`, `not_runnable`, `flow_error`, `hook_failed` (409).
 
 ## 5. Still planned
 

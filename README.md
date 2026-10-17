@@ -32,6 +32,8 @@ structures, APIs, business logic and tests. AI proposes changes; humans approve 
   consent and budget guards. See [docs/AI-BUILDER.md](docs/AI-BUILDER.md).
 - **Preview runtime**: tables and a CRUD service generated from the model, enforcing roles, row-level
   rules and validation; synthetic data; view-as-role. See [docs/RUNTIME.md](docs/RUNTIME.md).
+- **Export / import and CLI**: one YAML file per element (Git-friendly, lossless, reproducible zip archives
+  with integrity checks); imports become proposals; `orchivio validate | lint | export | import | diff` for CI.
 - **Flow builder** (`apps/web`): a React Flow editor for Server/Client Flows with a palette, inspector,
   undo/redo, keyboard-operable connections and live server validation; saves as a proposal. Flows are
   validated, **executed** by the Logic Engine in the preview (transactional, under the caller's security),
