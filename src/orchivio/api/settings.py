@@ -46,6 +46,14 @@ class Settings(BaseSettings):
     # trusted public keys (base64) may verify packages signed elsewhere, e.g. by another installation.
     package_signing_key: SecretStr | None = None
     package_trusted_public_keys: list[str] = []
+    # Outbound webhooks (docs/INTEGRATIONS.md). The two `allow_*` switches are for local development only.
+    webhook_allow_http: bool = False
+    webhook_allow_private_networks: bool = False
+    webhook_allowed_hosts: list[str] = []  # fnmatch patterns; empty = any public host
+    webhook_timeout_seconds: float = 10.0
+    webhook_max_attempts: int = 6
+    webhook_backoff_seconds: int = 30
+    webhook_pause_after_failures: int = 10
 
     @field_validator("anthropic_api_key", "llm_model", "metrics_token", "package_signing_key", mode="before")
     @classmethod

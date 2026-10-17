@@ -39,6 +39,7 @@ from orchivio.model.schema import FieldDef, parse_field_type, qualify
 from orchivio.ports import AuditRecord, AuditSink
 from orchivio.security import record_allowed, resolve_access, resolve_fields, row_predicate
 
+from . import outbox
 from .tables import USER_REF_LENGTH, EntityInfo, RuntimeSchema
 
 log = logging.getLogger("orchivio.runtime")
@@ -237,6 +238,8 @@ class AppData:
         self._computed: dict[str, list[tuple[FieldDef, CheckResult]]] = {}
         self._defaults: dict[tuple[str, str], CheckResult] = {}
         self._prepare_expressions()
+        if application_id is not None:
+            outbox.ensure(engine)
 
     # -- setup ----------------------------------------------------------------------------
 
@@ -411,6 +414,16 @@ class AppData:
             self._pending_audit.append(record)
         else:
             self.audit.record(record)
+
+    def _emit(self, kind: str, info: EntityInfo, pk: Any, row: Mapping[str, Any], previous: Mapping[str, Any] | None = None) -> None:
+        """Business event for the transactional outbox, written in the current transaction (FR-083)."""
+        if self.application_id is None:
+            return
+        payload: dict[str, Any] = {"entity": info.qualified, "id": to_json(pk), "record": self._present(info, row, None)}
+        if previous is not None:
+            payload["changed"] = [f.name for f in info.stored_fields if row.get(f.name) != previous.get(f.name)]
+        with self._conn(write=True) as conn:
+            outbox.add(conn, self.application_id, f"{info.qualified}.{kind}", f"{info.qualified}/{to_json(pk)}", payload, self.clock())
 
     def _coerce_pk(self, info: EntityInfo, raw: Any) -> Any:
         try:
@@ -591,6 +604,7 @@ class AppData:
             with self._conn() as conn:
                 row = dict(conn.execute(select(info.table).where(info.table.c[info.pk.name] == pk)).mappings().one())
             self._audit("record.created", info, user, pk)
+            self._emit("created", info, pk, row)
             self._hook("after_create", info, user, self.eval_record(entity, row, user))
             return row
 
@@ -633,6 +647,7 @@ class AppData:
             with self._conn() as conn:  # the caller was allowed to update it; no read predicate here
                 row = dict(conn.execute(select(t).where(t.c[info.pk.name] == pk)).mappings().one())
             self._audit("record.updated", info, user, pk)
+            self._emit("updated", info, pk, row, dict(current))
             self._hook("after_update", info, user, self.eval_record(entity, row, user),
                        self.eval_record(entity, dict(current), user))
             return row
@@ -656,6 +671,7 @@ class AppData:
             if res.rowcount == 0:
                 raise RowNotFound("record not found")
             self._audit("record.deleted", info, user, pk)
+            self._emit("deleted", info, pk, dict(current))
             self._hook("after_delete", info, user, before)
 
     def seed(self, entity: str, data: Mapping[str, Any]) -> dict[str, Any]:

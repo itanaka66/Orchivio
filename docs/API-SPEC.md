@@ -110,6 +110,10 @@ one owner (`409 last_owner`). Any member may leave an organization.
 | GET/PATCH/DELETE | `/app-users/{id}`; POST `/app-users/{id}/reset-password` | roles, status, display name / new temporary password (ends sessions) |
 | POST | `/apps/{app_id}/auth/login`, `/auth/logout`, `/auth/change-password`; GET `/auth/me` | application-plane sign-in (docs/APP-SECURITY.md §6) |
 | ANY | `/apps/{app_id}/data/{entity}[/{id}]`, POST `/apps/{app_id}/flows/{flow}/run` | the generated app's data and flows as the signed-in end user |
+| GET/POST | `/applications/{id}/webhooks` | outbound webhook subscriptions (admin): list / create (`url`, `secret_ref`, `events`, `fields`) |
+| GET/PATCH/DELETE | `/webhooks/{id}` | read / change (including `status: active|paused`) / delete |
+| POST | `/webhooks/{id}/test` | queue one `orchivio.ping` delivery |
+| GET | `/webhooks/{id}/deliveries`, `/webhook-deliveries/{id}`; POST `/webhook-deliveries/{id}/retry` | delivery log (`status`), one delivery with payload, requeue a dead one |
 | GET | `/healthz`, `/readyz` | liveness / readiness (unauthenticated; docs/OPERATIONS.md) |
 | GET | `/metrics` | Prometheus text; bearer `ORCHIVIO_METRICS_TOKEN`, disabled when unset |
 

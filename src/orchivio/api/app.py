@@ -25,6 +25,7 @@ from orchivio.runtime import PreviewStore
 from .audit_sink import DbAuditSink
 from .metrics import Metrics
 from .observability import configure_logging, logger, new_request_id, request_id_var
+from orchivio.integrations import dispatcher_from_settings
 from orchivio.jobs import Worker
 
 from .routes import ALL
@@ -79,8 +80,10 @@ def create_app(
     async def lifespan(_: FastAPI) -> AsyncIterator[None]:
         stop, thread = threading.Event(), None
         if settings.worker_enabled:
+            dispatcher = dispatcher_from_settings(settings, session_factory, app.state.preview_store.engine)
             worker = Worker(session_factory, app.state.preview_store, audit=app.state.audit_sink,
-                            lease_seconds=settings.worker_lease_seconds, per_app_limit=settings.worker_per_app_limit)
+                            lease_seconds=settings.worker_lease_seconds, per_app_limit=settings.worker_per_app_limit,
+                            extra_steps=(dispatcher.tick,))
             thread = threading.Thread(target=worker.run_forever, args=(settings.worker_interval_seconds, stop),
                                       name="orchivio-jobs", daemon=True)
             thread.start()

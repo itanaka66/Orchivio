@@ -61,6 +61,10 @@ Status: ✅ implemented and tested · 🟡 partly / not verified end-to-end · �
 | A5 | Anonymous over-exposure | Opt-in flag classified A3; only the `anonymous` role applies; consistency checker warning | ✅ |
 | A6 | A hidden field is inferred through filters, sorting, error messages, flows or computed fields | Hidden fields are removed server-side; filter/sort/write errors for hidden fields equal those for unknown fields; flows run with the caller's field access; consistency checker flags computed fields that leak | ✅ tested · 🟡 entity hooks see whole records by design; future exports, aggregates and search must reuse the same field filter |
 
+| A7 | SSRF through webhook destinations (internal services, cloud metadata, DNS rebinding, redirects) | Static URL checks plus resolve-and-pin at send time; every resolved address must be public; no redirects; optional allowlist; refused destinations fail permanently | ✅ unit and socket tests · 🟡 no egress firewall: network-level controls remain the operator's job |
+| A8 | Event payloads leak data to a receiver | `fields` allow-list, default ids only; URL kept out of the audit log; signing secret only by reference | ✅ |
+| A9 | Forged or replayed webhook requests at the receiver | HMAC-SHA256 over timestamp + body, constant-time verification helper, replay window | ✅ |
+
 ## 4. Assumptions
 
 - PostgreSQL, the host OS and the TLS terminator are operated securely.

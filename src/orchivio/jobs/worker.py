@@ -41,11 +41,13 @@ class TickResult:
 class Worker:
     def __init__(self, session_factory: sessionmaker[Session], preview: PreviewStore, *, audit: AuditSink | None = None,
                  worker_id: str | None = None, lease_seconds: int = 120, per_app_limit: int = 2, batch: int = 10,
-                 grace_seconds: int = 120, clock: Callable[[], datetime] = queue.utcnow) -> None:
+                 grace_seconds: int = 120, clock: Callable[[], datetime] = queue.utcnow,
+                 extra_steps: tuple[Callable[[], Any], ...] = ()) -> None:
         self.sessions, self.preview, self.audit = session_factory, preview, audit
         self.id = worker_id or f"worker-{uuid.uuid4().hex[:8]}"
         self.lease, self.per_app, self.batch, self.clock = lease_seconds, per_app_limit, batch, clock
         self.planner = Planner(grace_seconds)
+        self.extra_steps = extra_steps
 
     def tick(self) -> TickResult:
         out = TickResult()
@@ -57,6 +59,11 @@ class Worker:
                                              per_app_limit=self.per_app)]
             s.commit()
         out.claimed = len(ids)
+        for step in self.extra_steps:
+            try:
+                step()
+            except Exception:  # noqa: BLE001 - one failing subsystem must not stop the others
+                log.exception("periodic step failed")
         for job_id in ids:
             outcome = self._execute(job_id)
             if outcome == "succeeded":
