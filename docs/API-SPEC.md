@@ -80,6 +80,7 @@ one owner (`409 last_owner`). Any member may leave an organization.
 | GET | `/revisions/{id}/diff/{base_id}` | both must belong to the same application |
 | POST | `/applications/{id}/rollback` | restores an earlier model as a *new* revision |
 | GET/POST/DELETE | `/tokens`, `/tokens/{id}` | own tokens; the secret is returned once at creation |
+| GET | `/revisions/{id}/openapi.json` | OpenAPI 3.1 document of the application's data API for that revision |
 | GET | `/revisions/{id}/export` | reproducible zip of canonical files (admin; audited) |
 | POST | `/applications/{id}/import` | raw `application/zip` body (max `ORCHIVIO_MAX_IMPORT_BYTES`, 8 MiB); verified, then stored as a proposal (`?title=`) |
 | GET | `/revisions/{id}/lint`, `/revisions/{id}/elements/{element_id}/usages` | stored lint findings (`include_suppressed`) / find usages |
@@ -89,7 +90,8 @@ one owner (`409 last_owner`). Any member may leave an organization.
 | POST | `/applications/{id}/preview/flows/{flow}/run` | run a server flow in the preview as the simulated user; returns status, error and the step trace |
 | POST/GET | `/revisions/{id}/test-runs`, `/test-runs/{id}`, POST `/test-runs/{id}/ai/repair` | generated tests |
 | POST | `/models/validate`, `/models/validate-flow`, `/models/lint`, `/models/diff`, `/expressions/check` | stateless tools (any authenticated caller); `validate-flow` checks one unsaved flow in a model's context and returns issue paths ending in `steps/<id>…` |
-| GET | `/healthz` | unauthenticated |
+| GET | `/healthz`, `/readyz` | liveness / readiness (unauthenticated; docs/OPERATIONS.md) |
+| GET | `/metrics` | Prometheus text; bearer `ORCHIVIO_METRICS_TOKEN`, disabled when unset |
 
 ### Creating a revision
 

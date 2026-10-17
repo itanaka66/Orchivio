@@ -53,8 +53,24 @@ class CanonicalError(ValueError):
         self.message, self.path = message, path
 
 
+_UNICODE_BREAKS = re.compile("[  ]")
+
+
+class _Dumper(yaml.SafeDumper):
+    """PyYAML writes U+0085, U+2028 and U+2029 inside single quotes, where a YAML loader folds them
+    into newlines. Double quotes with escapes keep them exact."""
+
+
+def _represent_str(dumper: yaml.SafeDumper, value: str) -> yaml.ScalarNode:
+    style = '"' if _UNICODE_BREAKS.search(value) else None
+    return dumper.represent_scalar("tag:yaml.org,2002:str", value, style=style)
+
+
+_Dumper.add_representer(str, _represent_str)
+
+
 def _dump(data: Any) -> str:
-    return yaml.safe_dump(data, sort_keys=False, allow_unicode=True, default_flow_style=False, width=100)
+    return yaml.dump(data, Dumper=_Dumper, sort_keys=False, allow_unicode=True, default_flow_style=False, width=100)
 
 
 def _plain(obj: Any) -> dict[str, Any]:

@@ -11,6 +11,8 @@ SRC = Path(__file__).resolve().parents[2] / "src" / "orchivio"
 ALLOWED: dict[str, set[str]] = {
     "ai": {"llm", "model"},
     "auth": set(),
+    "ops": {"db", "ports"},
+    "codegen": {"model", "security"},
     "logic": {"expr", "model", "runtime"},
     "testgen": {"expr", "logic", "model", "runtime", "security"},
     "runtime": {"expr", "model", "policy", "ports", "security"},
@@ -21,7 +23,7 @@ ALLOWED: dict[str, set[str]] = {
     "model": {"expr", "policy"},
     "security": {"expr", "model", "policy"},
     "db": {"model", "policy"},
-    "api": {"ai", "auth", "logic", "runtime", "testgen", "expr", "model", "security", "policy", "db", "llm", "ports"},
+    "api": {"ai", "auth", "codegen", "logic", "runtime", "testgen", "expr", "model", "security", "policy", "db", "llm", "ports"},
 }
 
 

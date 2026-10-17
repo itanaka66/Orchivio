@@ -146,7 +146,11 @@ Properties (checked by property tests over generated models, including arbitrary
   *proposal*; an import never changes the model directly, so it is diffed, risk-classified and approved like any
   other change.
 
-## 10. Planned
+## 10. Generated OpenAPI
+
+`orchivio openapi model.yaml` and `GET /revisions/{id}/openapi.json` produce an OpenAPI 3.1 document of the data API: `/data/{module.Entity}` (list, create) and `/data/{module.Entity}/{id}` (read, update, delete), with `Entity`, `EntityCreate`, `EntityUpdate` and `EntityPage` schemas derived from the fields (types, `maxLength`, `minimum`/`maximum`, enums, references as their key type; generated and computed fields are `readOnly` and absent from inputs; unknown properties are rejected). Operations no role may perform are omitted; `x-orchivio-roles` and `x-orchivio-row-constraints` document who may do what. In the Studio preview the paths are served under `/api/v1/applications/{id}/preview`. Decimals are returned as strings to keep precision. A contract test validates real responses and the accept/reject behaviour of request bodies against these schemas.
+
+## 11. Planned
 
 Flows, processes, scheduled jobs, integrations, AI steps, themes, translations, field-level
 security, per-element canonical YAML files (DESIGN.md §8.9).

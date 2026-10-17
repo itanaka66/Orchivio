@@ -34,6 +34,10 @@ structures, APIs, business logic and tests. AI proposes changes; humans approve 
   rules and validation; synthetic data; view-as-role. See [docs/RUNTIME.md](docs/RUNTIME.md).
 - **Export / import and CLI**: one YAML file per element (Git-friendly, lossless, reproducible zip archives
   with integrity checks); imports become proposals; `orchivio validate | lint | export | import | diff` for CI.
+- **OpenAPI for generated apps**: `GET /revisions/{id}/openapi.json` / `orchivio openapi` — schemas and
+  operations derived from the model (roles and row constraints documented), validated against the real API in tests.
+- **Operations**: `/healthz`, `/readyz` (databases + schema revision), token-protected Prometheus `/metrics`, verified
+  logical backup/restore (`orchivio backup | restore | verify-backup`). See [docs/OPERATIONS.md](docs/OPERATIONS.md).
 - **Flow builder** (`apps/web`): a React Flow editor for Server/Client Flows with a palette, inspector,
   undo/redo, keyboard-operable connections and live server validation; saves as a proposal. Flows are
   validated, **executed** by the Logic Engine in the preview (transactional, under the caller's security),
@@ -102,6 +106,7 @@ docs/           specifications, ADRs, threat model
 | [docs/AI-BUILDER.md](docs/AI-BUILDER.md) | AI Builder, proposals, approval |
 | [docs/RUNTIME.md](docs/RUNTIME.md) | Preview runtime, synthetic data, generated tests |
 | [docs/LINT-RULES.md](docs/LINT-RULES.md) | Linter rule catalog (generated) |
+| [docs/OPERATIONS.md](docs/OPERATIONS.md) | Health, metrics, backup and restore |
 | [docs/FLOW-SPEC.md](docs/FLOW-SPEC.md) | Server/Client Flow model and validation rules |
 | [apps/web/README.md](apps/web/README.md) | Web Studio and flow builder |
 | [docs/DATABASE.md](docs/DATABASE.md) | Platform database schema |

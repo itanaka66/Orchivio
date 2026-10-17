@@ -298,3 +298,12 @@ def test_editing_one_element_changes_only_its_file(model, data):
 def test_uuid_helper_is_available():  # keeps the import used and documents the id format
     assert uuid.UUID(str(uuid.uuid4()))
     assert yaml.safe_load("a: 1") == {"a": 1}
+
+
+@pytest.mark.parametrize("value", ["\x85", "a b", " ", "line\x85break", "\x85\n", "tab\there", "\r\n", "\x00\x1f", "﻿"])
+def test_unicode_line_breaks_and_control_characters_survive(ident, value):
+    """Found by property testing: PyYAML single-quotes U+0085/2028/2029 and loaders fold them to newlines."""
+    m = ident.model_copy(deep=True)
+    m.application.name = value
+    m.modules[0].entities[0].display_name = value
+    assert from_files(to_files(m)) == m

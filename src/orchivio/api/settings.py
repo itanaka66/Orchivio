@@ -31,11 +31,13 @@ class Settings(BaseSettings):
     session_cookie_name: str = "orchivio_session"
     # Cookie `Secure` flag. Must stay on in prod; set false only for plain-HTTP local dev.
     cookie_secure: bool | None = None  # None => true in prod, false in dev
+    # /metrics is disabled unless a token is set; scrapers send `Authorization: Bearer <token>`.
+    metrics_token: SecretStr | None = None
     login_max_failures: int = 5
     login_window_seconds: int = 900
     log_json: bool = False
 
-    @field_validator("anthropic_api_key", "llm_model", mode="before")
+    @field_validator("anthropic_api_key", "llm_model", "metrics_token", mode="before")
     @classmethod
     def _blank_is_unset(cls, v: object) -> object:
         return None if v is None or (isinstance(v, str) and not v.strip()) else v

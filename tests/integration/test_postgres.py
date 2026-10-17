@@ -109,3 +109,49 @@ def test_runtime_and_generated_tests_on_postgres(engine):
     failed = [(r.id, r.message) for r in report.results if r.status == "failed"]
     assert failed == []
     assert report.counts["skipped"] == 0 and report.counts["passed"] >= 20
+
+
+def test_backup_and_restore_on_postgres(engine):
+    """Circular foreign keys, the identity sequence and timestamptz must survive a restore."""
+    from datetime import UTC, datetime
+
+    from orchivio.ops import backup, restore
+
+    with engine.begin() as conn:
+        command.upgrade(alembic_config(conn), "head")
+    try:
+        with Session(engine) as s:
+            user, org = User(email="bk@example.com", display_name="BK"), Organization(name="O", slug="bk-org")
+            s.add_all([user, org])
+            s.flush()
+            project = Project(organization_id=org.id, name="P", slug="bk-proj")
+            s.add(project)
+            s.flush()
+            app = Application(project_id=project.id, key="inv", name="Inv")
+            s.add(app)
+            s.flush()
+            model = AppModel.model_validate(migrate_to_latest(load_yaml("model.yaml")))
+            RevisionRepository(s).create(app.id, model, created_by=user.id, organization_id=org.id)
+            s.add_all([AuditEvent(action="bk.one"), AuditEvent(action="bk.two")])
+            s.commit()
+        data = backup(engine, now=datetime(2026, 1, 1, tzinfo=UTC))
+
+        with engine.begin() as conn:  # an empty database at the same revision
+            command.downgrade(alembic_config(conn), "base")
+        with engine.begin() as conn:
+            command.upgrade(alembic_config(conn), "head")
+        report = restore(data, engine)
+        assert report.tables["applications"] == 1 and report.tables["audit_events"] >= 2
+
+        with engine.connect() as conn:
+            current = conn.execute(text("SELECT current_revision_id FROM applications")).scalar()
+            assert current is not None  # the deferred circular reference was filled in
+            assert conn.execute(text("SELECT created_at FROM users")).scalar().tzinfo is not None
+        with Session(engine) as s:  # the identity sequence continues after the restored ids
+            existing = s.scalar(text("SELECT MAX(id) FROM audit_events"))
+            s.add(AuditEvent(action="bk.after"))
+            s.commit()
+            assert s.scalar(text("SELECT MAX(id) FROM audit_events")) > existing
+    finally:
+        with engine.begin() as conn:
+            command.downgrade(alembic_config(conn), "base")
