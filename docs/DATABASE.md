@@ -45,7 +45,7 @@ own data in separate schemas/databases and never share these tables
 |---|---|
 | `ai_conversations`, `ai_messages` | Conversation history |
 | `ai_jobs` | Provider, model, prompt-template version, usage, status, timings |
-| `proposals` | Unified change proposals from the AI Builder, MCP agents and humans: `change_set_json`, `approval_level` 0–4, `status`, `approved_by`, `result_revision_id` |
+| `proposals` | Unified change proposals (`base_revision_id` is null for an application's first revision) from the AI Builder, MCP agents and humans: `change_set_json`, `approval_level` 0–4, `status`, `approved_by`, `result_revision_id` |
 | `builds`, `test_runs`, `deployments` | Execution records (references to artifact storage) |
 
 ### Audit

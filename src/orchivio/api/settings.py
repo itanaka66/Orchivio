@@ -5,6 +5,7 @@ from __future__ import annotations
 from functools import lru_cache
 from typing import Literal
 
+from pydantic import SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -13,9 +14,15 @@ class Settings(BaseSettings):
 
     env: Literal["dev", "prod"] = "dev"
     database_url: str = "sqlite:///./orchivio.db"
+    # Preview (runtime) data lives here, never in the platform database (FR-035).
+    preview_database_url: str = "sqlite:///./preview.db"
     artifact_dir: str = "./artifacts"
     max_body_bytes: int = 1_048_576
-    llm_provider: Literal["mock"] = "mock"
+    # "none" disables the AI endpoints. "anthropic" needs ORCHIVIO_ANTHROPIC_API_KEY and
+    # sends prompts to a hosted API; projects must opt in (settings.ai_allow_external).
+    llm_provider: Literal["none", "anthropic"] = "none"
+    llm_model: str | None = None
+    anthropic_api_key: SecretStr | None = None
 
     # Accounts and sessions
     allow_registration: bool = True
@@ -26,6 +33,11 @@ class Settings(BaseSettings):
     login_max_failures: int = 5
     login_window_seconds: int = 900
     log_json: bool = False
+
+    @field_validator("anthropic_api_key", "llm_model", mode="before")
+    @classmethod
+    def _blank_is_unset(cls, v: object) -> object:
+        return None if v is None or (isinstance(v, str) and not v.strip()) else v
 
     @property
     def secure_cookies(self) -> bool:

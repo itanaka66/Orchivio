@@ -66,6 +66,9 @@ class LLMTimeout(LLMError):
 @runtime_checkable
 class LLMProvider(Protocol):
     name: str
+    # True if prompts leave the deployment (hosted API). Callers must have consent (A3,
+    # DESIGN.md section 12.3) before sending project data to such a provider.
+    external: bool
 
     def complete(self, request: LLMRequest) -> LLMResponse:
         """Return one completion. Must honour ``request.timeout_s`` and raise ``LLMTimeout``."""

@@ -64,6 +64,7 @@ Error-severity issues block creating a revision.
 | `duplicate-module/-enum/-entity/-field/-page/-route/-role/-access/-enum-value` | error | Name or key reused (access: same entity + role twice) |
 | `bad-type`, `unknown-enum`, `unknown-entity` | error | Type string invalid or target missing |
 | `no-primary-key`, `multiple-primary-keys` | error | Non-transient entities need exactly one |
+| `ref-to-transient`, `bad-generated` | error | Reference to a transient entity; `generated` on a type other than uuid/datetime |
 | `bad-constraint`, `bad-default`, `bad-computed` | error | Constraint doesn't fit the type; computed field is also a key/unique/generated/defaulted |
 | `unknown-index-field`, `unknown-column` | error | Reference to a missing field |
 | `missing-mode` | error | `form` page without `create`/`edit` |

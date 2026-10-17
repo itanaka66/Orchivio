@@ -9,6 +9,7 @@ services:
       POSTGRES_DB: orchivio
     volumes:
       - db-data:/var/lib/postgresql/data
+      - ./docker/initdb:/docker-entrypoint-initdb.d:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U orchivio"]
       interval: 5s
@@ -33,6 +34,10 @@ services:
       ORCHIVIO_ALLOW_REGISTRATION: ${ORCHIVIO_ALLOW_REGISTRATION:-true}
       ORCHIVIO_LOG_JSON: "true"
       ORCHIVIO_DATABASE_URL: postgresql+psycopg://orchivio:${POSTGRES_PASSWORD}@db:5432/orchivio
+      ORCHIVIO_PREVIEW_DATABASE_URL: postgresql+psycopg://orchivio:${POSTGRES_PASSWORD}@db:5432/orchivio_preview
+      ORCHIVIO_LLM_PROVIDER: ${ORCHIVIO_LLM_PROVIDER:-none}
+      ORCHIVIO_ANTHROPIC_API_KEY: ${ORCHIVIO_ANTHROPIC_API_KEY:-}
+      ORCHIVIO_LLM_MODEL: ${ORCHIVIO_LLM_MODEL:-}
       ORCHIVIO_ARTIFACT_DIR: /data/artifacts
     volumes:
       - artifacts:/data/artifacts

@@ -229,6 +229,27 @@ def diff_revisions(revision_id: uuid.UUID, base_revision_id: uuid.UUID,
             "changes": [c.as_dict() for c in d.changes]}
 
 
+@router.get("/revisions/{revision_id}/lint")
+def revision_lint(revision_id: uuid.UUID, include_suppressed: bool = Query(False),
+                  principal: Principal = Depends(current_principal), db: Session = Depends(get_db)) -> dict[str, Any]:
+    rev, _, _ = load_revision(db, principal, revision_id, "model.read")
+    rows = RevisionRepository(db).lint_findings(rev.id)
+    items = [{"rule_id": f.rule_id, "severity": f.severity, "element_id": str(f.element_id) if f.element_id else None,
+              "message": f.message, "suppressed": f.suppressed, "justification": f.justification}
+             for f in rows if include_suppressed or not f.suppressed]
+    return {"items": items, "total": len(items)}
+
+
+@router.get("/revisions/{revision_id}/elements/{element_id}/usages")
+def element_usages(revision_id: uuid.UUID, element_id: uuid.UUID,
+                   principal: Principal = Depends(current_principal), db: Session = Depends(get_db)) -> dict[str, Any]:
+    """Find usages: which elements of this revision depend on ``element_id``."""
+    rev, _, _ = load_revision(db, principal, revision_id, "model.read")
+    refs = RevisionRepository(db).usages(rev.id, element_id)
+    return {"element_id": str(element_id),
+            "used_by": [{"element_id": str(r.from_element_id), "kind": r.ref_kind} for r in refs]}
+
+
 @router.post("/applications/{app_id}/rollback", status_code=201, response_model=RevisionOut)
 def rollback(app_id: uuid.UUID, body: RollbackIn, request: Request,
              principal: Principal = Depends(current_principal), db: Session = Depends(get_db)) -> AppRevision:

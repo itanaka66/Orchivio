@@ -9,15 +9,18 @@ SRC = Path(__file__).resolve().parents[2] / "src" / "orchivio"
 
 # package -> sibling packages it may import
 ALLOWED: dict[str, set[str]] = {
+    "ai": {"llm", "model"},
     "auth": set(),
+    "testgen": {"expr", "model", "runtime", "security"},
+    "runtime": {"expr", "model", "policy", "ports", "security"},
     "expr": set(),
     "policy": set(),
     "llm": set(),
     "ports": set(),
     "model": {"expr", "policy"},
     "security": {"expr", "model", "policy"},
-    "db": {"model"},
-    "api": {"auth", "expr", "model", "security", "policy", "db", "llm", "ports"},
+    "db": {"model", "policy"},
+    "api": {"ai", "auth", "runtime", "testgen", "expr", "model", "security", "policy", "db", "llm", "ports"},
 }
 
 

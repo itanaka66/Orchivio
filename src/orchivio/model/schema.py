@@ -122,6 +122,14 @@ class SecurityModel(_Strict):
     anonymous: bool = False  # explicit opt-in; requires A3 approval (FR-067)
 
 
+class LintSuppression(_Strict):
+    """Silences one lint rule on one element; the justification is part of the revision."""
+
+    rule: Annotated[str, StringConstraints(pattern=r"^[a-z][a-z0-9-]{2,63}$")]
+    element_id: ElementId
+    justification: str = Field(min_length=10, max_length=500)
+
+
 class ApplicationInfo(_Strict):
     key: Annotated[str, StringConstraints(pattern=r"^[a-z][a-z0-9_-]{0,62}$")]
     name: str = Field(min_length=1, max_length=200)
@@ -135,6 +143,7 @@ class AppModel(_Strict):
     application: ApplicationInfo
     modules: list[ModuleDef] = Field(default_factory=list)
     security: SecurityModel = Field(default_factory=SecurityModel)
+    lint_suppressions: list[LintSuppression] = Field(default_factory=list)
 
 
 # --- helpers --------------------------------------------------------------
@@ -162,7 +171,9 @@ def qualify(module_key: str, name: str) -> str:
 
 def canonical_json(model: AppModel | dict[str, Any]) -> str:
     """Stable serialisation used for hashing and storage comparisons."""
-    data = model.model_dump(mode="json", exclude_none=True) if isinstance(model, AppModel) else model
+    data = model.model_dump(mode="json", exclude_none=True) if isinstance(model, AppModel) else dict(model)
+    if not data.get("lint_suppressions"):
+        data.pop("lint_suppressions", None)  # keeps hashes of models that have none unchanged
     return json.dumps(data, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
 
 

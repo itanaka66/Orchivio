@@ -18,6 +18,7 @@ class MockProvider:
     """
 
     name = "mock"
+    external = False
 
     def __init__(self, script: Iterable[str | Exception] = (), responder: Responder | None = None):
         self._script = deque(script)

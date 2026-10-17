@@ -38,7 +38,7 @@ def test_register_rules(app):
 
 
 def test_registration_can_be_disabled(db_url):
-    app = create_app(Settings(env="dev", database_url=db_url, allow_registration=False))
+    app = create_app(Settings(env="dev", database_url=db_url, preview_database_url="sqlite:///:memory:", allow_registration=False))
     r = Api(app).post("/auth/register", json=GOOD)
     assert r.status_code == 403 and r.json()["error"]["code"] == "registration_disabled"
 
@@ -62,7 +62,7 @@ def test_login_failures_are_indistinguishable_and_audited(app):
 
 
 def test_login_throttle_and_reset(db_url):
-    app = create_app(Settings(env="dev", database_url=db_url, login_max_failures=3))
+    app = create_app(Settings(env="dev", database_url=db_url, preview_database_url="sqlite:///:memory:", login_max_failures=3))
     api = Api(app)
     api.post("/auth/register", json=GOOD)
     bad = {"email": GOOD["email"], "password": "wrong password here"}
@@ -78,7 +78,7 @@ def test_cookie_attributes(app, db_url):
     login = {"email": GOOD["email"], "password": GOOD["password"]}
     cookie = Api(app).post("/auth/login", json=login).headers["set-cookie"].lower()
     assert "httponly" in cookie and "samesite=lax" in cookie and "path=/" in cookie and "secure" not in cookie
-    prod = create_app(Settings(env="prod", database_url=db_url))  # same database, secure cookies on
+    prod = create_app(Settings(env="prod", database_url=db_url, preview_database_url="sqlite:///:memory:"))  # same database, secure cookies on
     r = TestClient(prod, base_url="https://testserver").post("/api/v1/auth/login", json=login)
     assert "secure" in r.headers["set-cookie"].lower()
 

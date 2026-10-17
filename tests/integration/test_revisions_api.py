@@ -195,3 +195,49 @@ def test_deleting_a_project_removes_its_revisions(ctx, raw_model, app):
     assert p["owner"].delete(f"/projects/{proj['id']}?confirm=inventory").status_code == 204
     with app.state.session_factory() as s:
         assert s.query(AppRevision).count() == 0
+
+
+# --- lint and usages --------------------------------------------------------------------
+
+
+def test_blocking_lint_error_rejects_the_revision_until_suppressed(ctx, raw_model):
+    proj, p = ctx
+    bad = copy.deepcopy(raw_model)
+    bad["security"]["access"][1]["row_constraint"] = "record.quantity / 2 > 1"
+    r = create_app(p["owner"], proj, bad)
+    assert r.status_code == 422
+    assert any(i["code"] == "lint:sec-constraint-not-compilable" for i in r.json()["error"]["details"])
+
+    lint = p["owner"].post("/models/lint", json={"model": bad}).json()
+    assert lint["blocking"] == 1 and len(lint["rules"]) >= 20
+
+    # Ids don't exist before the first revision, so a client that wants to suppress a rule in a
+    # new model supplies its own element_id for the target element.
+    rule_id = "11111111-2222-4333-8444-555555555555"
+    bad["security"]["access"][1]["element_id"] = rule_id
+    bad["lint_suppressions"] = [{"rule": "sec-constraint-not-compilable", "element_id": rule_id,
+                                 "justification": "Filtered in the reporting database instead"}]
+    ok = create_app(p["owner"], proj, bad)
+    assert ok.status_code == 201
+    findings = p["owner"].get(f"/revisions/{ok.json()['current_revision_id']}/lint?include_suppressed=true").json()
+    sup = next(f for f in findings["items"] if f["rule_id"] == "sec-constraint-not-compilable")
+    assert sup["suppressed"] and "reporting database" in sup["justification"]
+    hidden = p["owner"].get(f"/revisions/{ok.json()['current_revision_id']}/lint").json()
+    assert all(not f["suppressed"] for f in hidden["items"])
+
+
+def test_lint_results_and_usages_are_stored_per_revision(ctx, raw_model):
+    proj, p = ctx
+    app = create_app(p["owner"], proj, raw_model).json()
+    rev_id = app["current_revision_id"]
+    lint = p["viewer"].get(f"/revisions/{rev_id}/lint").json()
+    rules = {f["rule_id"] for f in lint["items"]}
+    assert "a11y-column-without-label" in rules and lint["total"] == len(lint["items"])
+
+    detail = p["viewer"].get(f"/revisions/{rev_id}").json()
+    fields = {f["name"]: f["element_id"] for f in detail["model_json"]["modules"][0]["entities"][0]["fields"]}
+    used = p["viewer"].get(f"/revisions/{rev_id}/elements/{fields['quantity']}/usages").json()
+    kinds = {u["kind"] for u in used["used_by"]}
+    assert "expr-field" in kinds and "page-column" in kinds
+    other = p["outsider"].get(f"/revisions/{rev_id}/lint")
+    assert other.status_code == 404

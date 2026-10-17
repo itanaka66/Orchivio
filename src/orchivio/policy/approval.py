@@ -75,6 +75,28 @@ def is_allowed(role: PlatformRole | str | None, action: str) -> bool:
     return need is not None and _RANK[r] >= _RANK[need]
 
 
+_LEVEL_ROLE: dict[ApprovalLevel, PlatformRole] = {
+    ApprovalLevel.A0: PlatformRole.VIEWER,
+    ApprovalLevel.A1: PlatformRole.EDITOR,
+    ApprovalLevel.A2: PlatformRole.EDITOR,
+    ApprovalLevel.A3: PlatformRole.ADMIN,
+    ApprovalLevel.A4: PlatformRole.OWNER,
+}
+
+
+def can_approve(role: PlatformRole | str | None, level: ApprovalLevel | int) -> bool:
+    """May a member with ``role`` approve a proposal that needs ``level``? A3+ also needs an
+    explicit acknowledgement from the caller (enforced where the decision is taken)."""
+    if role is None:
+        return False
+    try:
+        r = PlatformRole(role)
+        need = _LEVEL_ROLE[ApprovalLevel(level)]
+    except (ValueError, KeyError):
+        return False
+    return _RANK[r] >= _RANK[need]
+
+
 def level_for_action(action: str) -> ApprovalLevel:
     """Approval level an action needs. Unknown actions default to the strictest (A4)."""
     return _ACTION_LEVEL.get(action, ApprovalLevel.A4)
