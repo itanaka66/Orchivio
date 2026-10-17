@@ -283,6 +283,10 @@ class FlowRunner:
             where = None
             if cfg.get("where"):
                 res = self._check(sc, cfg["where"], record_entity=q, expected=BOOL)
+                visible = self.data.readable_fields(q, actor)
+                if visible is not None and not res.fields <= visible:
+                    raise FlowError("this condition uses fields your roles may not read: "
+                                    + ", ".join(sorted(res.fields - visible)), step.id, sc.qualified)
                 try:
                     pred = compile_predicate(res, SqlContext(current_user=UserRef(actor.id, actor.roles), now=self.clock(),
                                                              dialect=self.data.engine.dialect.name, variables=sc.values))

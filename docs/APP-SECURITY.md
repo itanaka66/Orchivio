@@ -41,6 +41,29 @@ Bold steps are implemented in `resolve_access` and `row_predicate`.
 - **Anonymous access** (`security.anonymous: true`) is an explicit opt-in that is classified A3
   by the diff and flagged by the consistency checker.
 
+### Field-level access (FR-064)
+
+An access rule may carry `fields: {read: [...], write: [...]}`. Omitted (or `null`) means every field; a list is
+an **allow-list**, so a field added to the entity later stays hidden from restricted rules until it is listed.
+
+* **Hidden means absent.** Fields a caller may not read are removed from list, get, create and update responses
+  (no key at all, not `null`). The primary key is always returned so records stay addressable. A role that can
+  create but not read gets only the key back.
+* **No probing.** Filtering (`f.<field>`) or sorting by a field the caller cannot read fails exactly like an
+  unknown field, and a write to a field the caller can neither read nor write is reported as `unknown field`.
+  A readable field outside `write` is reported as `read-only for your roles`.
+* **Union across roles.** A user's readable (writable) fields are the union of the allow-lists of the rules
+  granting that operation; one rule without a list makes everything visible. Lists are combined regardless of row
+  constraints. Row constraints themselves may mention hidden fields; they are evaluated on the server.
+* **Flows act as the caller.** `retrieve` returns hidden fields as empty, and a `where` that mentions a field the
+  caller cannot read stops the flow. Writes from `create`/`change` steps are checked like API writes. Entity hook
+  flows are model logic and see the whole record.
+* **Computed fields** are values like any other: list them in `read` only if you accept what they reveal. The
+  checker warns (`computed-field-leak`) when a readable computed field derives from fields the same rule hides.
+* Widening a list (or removing it) is a permission expansion and needs A3 approval; narrowing is an ordinary change.
+* The generated OpenAPI lists restricted roles in `x-orchivio-field-access` and marks as `required` only fields that
+  every role that can read the entity receives.
+
 ## 4. Consistency checker
 
 `check_consistency(model)` reports:
@@ -52,6 +75,8 @@ Bold steps are implemented in `resolve_access` and `row_predicate`.
 | `role-without-access` | warning | Role has no access rules and no pages |
 | `entity-without-readers` | warning | No role can read the entity |
 | `anonymous-access` | warning | Anonymous access is on (needs A3 approval) |
+| `computed-field-leak` | warning | A readable computed field is derived from fields the same rule hides |
+| `required-field-not-writable` | warning | A role may create the entity but cannot write a required field that has no default |
 
 ## 5. Usage sketch
 
@@ -91,7 +116,7 @@ separate from Studio accounts (FR-067).
 
 ## 7. Not yet implemented
 
-Field-level read/write (FR-064), page and action enforcement in a running app, OIDC and SAML sign-in, self-service
+Page and action enforcement in a running app, OIDC and SAML sign-in, self-service
 registration and password reset by email, MFA, a shared (multi-replica) login throttle, "view as role" preview, generated positive/negative tests
 per rule (FR-063 acceptance), PostgreSQL row-level security as defence in depth
 ([ADR-0003](adr/0003-app-security-enforcement.md)).
