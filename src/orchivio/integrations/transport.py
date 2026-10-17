@@ -43,6 +43,7 @@ def verify_signature(secret: str, header: str, body: bytes, *, tolerance: int = 
 class Response:
     status: int
     body: bytes = b""
+    content_type: str = ""
 
 
 class Transport(Protocol):
@@ -80,16 +81,22 @@ class PinnedTransport:
         self.policy, self.timeout, self.resolver, self.tls = policy, timeout, resolver, tls
 
     def post(self, url: str, headers: dict[str, str], body: bytes) -> Response:
+        return self.request("POST", url, headers, body)
+
+    def request(self, method: str, url: str, headers: dict[str, str], body: bytes | None = None, *,
+                timeout: float | None = None, max_bytes: int = MAX_RESPONSE_BYTES) -> Response:
         dest = check_url(url, self.policy)
         last: OSError | None = None
         for ip in resolve_public(dest, self.policy, self.resolver):
+            wait = timeout or self.timeout
             conn: http.client.HTTPConnection = (
-                _Pinned(dest.host, dest.port, ip, self.timeout, self.tls()) if dest.scheme == "https"
-                else _PinnedHttp(dest.host, dest.port, ip, self.timeout))
+                _Pinned(dest.host, dest.port, ip, wait, self.tls()) if dest.scheme == "https"
+                else _PinnedHttp(dest.host, dest.port, ip, wait))
             try:
-                conn.request("POST", dest.target, body=body, headers={**headers, "Content-Length": str(len(body))})
+                send = {**headers, **({"Content-Length": str(len(body))} if body is not None else {})}
+                conn.request(method, dest.target, body=body, headers=send)
                 resp = conn.getresponse()
-                return Response(resp.status, resp.read(MAX_RESPONSE_BYTES))
+                return Response(resp.status, resp.read(max_bytes), resp.getheader("Content-Type") or "")
             except (OSError, http.client.HTTPException) as e:
                 last = e if isinstance(e, OSError) else OSError(str(e))
             finally:

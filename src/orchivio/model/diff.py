@@ -15,7 +15,7 @@ from .schema import AppModel
 
 ChangeKind = Literal["added", "removed", "modified"]
 _CHILD_KEYS = {
-    "module": {"enumerations", "entities", "pages", "flows"},
+    "module": {"enumerations", "entities", "pages", "flows", "integrations"},
     "entity": {"fields"},
 }
 
@@ -109,6 +109,13 @@ def _risks(etype: str, old: dict[str, Any], new: dict[str, Any]) -> list[str]:
     elif etype == "access":
         if _widened(old, new):
             risks.append("permission-expansion")
+    elif etype == "integration":
+        risks.append("external-integration")  # what may leave the platform, and where, changed
+    elif etype == "flow":
+        before = {(s["config"].get("integration"), s["config"].get("operation")) for s in old.get("steps", []) if s["type"] == "call_integration"}
+        after = {(s["config"].get("integration"), s["config"].get("operation")) for s in new.get("steps", []) if s["type"] == "call_integration"}
+        if after - before:
+            risks.append("external-call")
     elif etype in ("entity", "page", "module") and old.get("name", old.get("key")) != new.get(
         "name", new.get("key")
     ):
@@ -123,7 +130,9 @@ def diff_models(base: AppModel, new: AppModel) -> ModelDiff:
 
     for eid, (etype, name, props) in b.items():
         if eid not in a:
-            risks = ["permission-grant"] if etype == "access" else []
+            risks = ["permission-grant"] if etype == "access" else ["external-integration"] if etype == "integration" else []
+            if etype == "flow" and any(s["type"] == "call_integration" for s in props.get("steps", [])):
+                risks = ["external-call"]
             lvl = ApprovalLevel.A3 if risks else ApprovalLevel.A2
             changes.append(Change("added", etype, eid, name, (), tuple(risks), lvl))
             continue
@@ -132,7 +141,7 @@ def diff_models(base: AppModel, new: AppModel) -> ModelDiff:
         if changed:
             risks = _risks(etype, old, props)
             lvl = ApprovalLevel.A2
-            if "permission-expansion" in risks:
+            if {"permission-expansion", "external-integration", "external-call"} & set(risks):
                 lvl = ApprovalLevel.A3
             if {"type-change", "enum-value-removed"} & set(risks):
                 lvl = max(lvl, ApprovalLevel.A3)

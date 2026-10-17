@@ -119,6 +119,8 @@ one owner (`409 last_owner`). Any member may leave an organization.
 | GET/POST | `/applications/{id}/inbound-webhooks` | signed endpoints that start a flow (admin): list / create |
 | GET/PATCH/DELETE | `/inbound-webhooks/{id}`; GET `/inbound-webhooks/{id}/events` | read / change mapping, role, secret, status / delete; accepted requests |
 | POST | `/hooks/{app_id}/{key}` | the public endpoint: authenticated only by `Orchivio-Signature`; `202`, `401`, `404`, `413`, `422`, `429` |
+| PUT/GET/DELETE | `/applications/{id}/destinations[/{name}]` | where a logical integration destination points and how to authenticate (admin) |
+| POST | `/applications/{id}/integrations/openapi-import` | OpenAPI 3.x (JSON/YAML) -> change proposal with an integration and its transient entities |
 | GET | `/healthz`, `/readyz` | liveness / readiness (unauthenticated; docs/OPERATIONS.md) |
 | GET | `/metrics` | Prometheus text; bearer `ORCHIVIO_METRICS_TOKEN`, disabled when unset |
 

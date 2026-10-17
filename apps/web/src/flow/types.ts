@@ -3,7 +3,7 @@
 
 export type StepType =
   | 'start' | 'retrieve' | 'create' | 'change' | 'delete'
-  | 'decision' | 'loop' | 'call_flow' | 'raise_error' | 'end'
+  | 'decision' | 'loop' | 'call_flow' | 'call_integration' | 'raise_error' | 'end'
 
 export type Handle = 'out' | 'true' | 'false' | 'body' | 'done'
 

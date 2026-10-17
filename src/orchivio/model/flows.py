@@ -12,13 +12,13 @@ from collections.abc import Callable
 from typing import Any
 
 from orchivio.expr import CheckEnv, ExprError, check
-from orchivio.expr.ast import BOOL, Type, list_t
+from orchivio.expr.ast import BOOL, DECIMAL, INT, STRING, Type, list_t
 
 from .schema import BUILTIN_ENTITIES, FieldDef, FlowDef, FlowStep, ModuleDef, qualify
 
 Report = Callable[[str, str, str, str], None]  # (code, path, message, severity)
 
-SERVER_STEPS = {"start", "retrieve", "create", "change", "delete", "decision", "loop", "call_flow",
+SERVER_STEPS = {"start", "retrieve", "create", "change", "delete", "decision", "loop", "call_flow", "call_integration",
                 "raise_error", "end"}
 CLIENT_STEPS = {"start", "decision", "call_flow", "end"}  # client flows cannot touch data (FR-053)
 TERMINAL = {"end", "raise_error"}
@@ -228,6 +228,11 @@ class FlowChecker:
             for r in (t.user.roles or []):
                 if r not in roles:
                     self.err("test-config", f"{w}/user", f"unknown role '{r}'")
+            for mock_key in (t.mocks or {}):
+                ig_key, _, op_id = mock_key.partition(".")
+                found = self.index.integrations.get(qualify(self.mod.key, ig_key))
+                if found is None or not any(o.id == op_id for o in found[1].operations):
+                    self.err("test-config", f"{w}/mocks/{mock_key}", "use \"<integration>.<operation>\" of an existing operation")
             for ent, rows in t.fixtures.items():
                 q = self.index.resolve_entity(self.mod.key, ent)
                 if q is None or q in BUILTIN_ENTITIES or self.index.entities[q][1].transient:
@@ -286,8 +291,8 @@ class FlowChecker:
         res = self._expr_result(src, where, env, expected, record_entity)
         return None if res is None else res.type
 
-    def _values(self, step: FlowStep, qname: str, values: Any, env: dict[str, Type], *, require_all: bool) -> None:
-        where = f"steps/{step.id}/config/values"
+    def _values(self, step: FlowStep, qname: str, values: Any, env: dict[str, Type], *, require_all: bool, key: str = "values") -> None:
+        where = f"steps/{step.id}/config/{key}"
         ent = self.index.entities[qname][1]
         if not isinstance(values, dict):
             self.err("config", where, "'values' must map field names to expressions")
@@ -316,6 +321,7 @@ class FlowChecker:
                               "create": {"entity", "values", "into"}, "change": {"target", "values"},
                               "delete": {"target"}, "decision": {"expr"},
                               "loop": {"over", "item", "max_iterations"}, "call_flow": {"flow", "args", "into"},
+                              "call_integration": {"integration", "operation", "args", "body", "into"},
                               "raise_error": {"message"}}.get(t, set())
         if unknown:
             self.err("config", w, f"unknown setting(s) for a {t} step: {', '.join(sorted(unknown))}")
@@ -390,12 +396,62 @@ class FlowChecker:
                         self._expr(args[p.name], f"{w}/args/{p.name}", env, pt)
                 for extra in set(args) - {p.name for p in callee.params}:
                     self.err("config", f"{w}/args/{extra}", f"flow '{target}' has no parameter '{extra}'")
+        elif t == "call_integration":
+            self._check_call_integration(step, cfg, env, define)
         elif t == "raise_error":
             m = cfg.get("message")
             if not isinstance(m, str) or not 1 <= len(m) <= 200:
                 self.err("config", f"{w}/message", "message is required (1-200 characters)")
         elif cfg:
             self.err("config", w, f"a {t} step has no settings")
+
+
+_PARAM_TYPES = {"string": STRING, "integer": INT, "decimal": DECIMAL, "boolean": BOOL}
+
+
+def _check_call_integration(self, step: FlowStep, cfg: dict[str, Any], env: dict[str, Type], define) -> None:
+    w = f"steps/{step.id}/config"
+    key, op_id = cfg.get("integration"), cfg.get("operation")
+    found = self.index.integrations.get(qualify(self.mod.key, key)) if isinstance(key, str) else None
+    if found is None:
+        self.err("config", f"{w}/integration", f"unknown integration '{key}'")
+        return
+    mod, ig = found
+    op = next((o for o in ig.operations if o.id == op_id), None)
+    if op is None:
+        self.err("config", f"{w}/operation", f"integration '{key}' has no operation '{op_id}'")
+        return
+    args = cfg.get("args", {})
+    if not isinstance(args, dict):
+        self.err("config", f"{w}/args", "'args' must map parameter names to expressions")
+        args = {}
+    for p in op.params:
+        if p.name in args:
+            self._expr(args[p.name], f"{w}/args/{p.name}", env, _PARAM_TYPES[p.type])
+        elif p.required:
+            self.err("config", f"{w}/args", f"missing argument '{p.name}'")
+    for extra in sorted(set(args) - {p.name for p in op.params}):
+        self.err("config", f"{w}/args/{extra}", f"operation '{op_id}' has no parameter '{extra}'")
+    if op.body:
+        q = self.index.resolve_entity(mod.key, op.body)
+        if q in self.index.entities:
+            self._values(step, q, cfg.get("body", {}), env, require_all=True, key="body")
+    elif cfg.get("body"):
+        self.err("config", f"{w}/body", f"operation '{op_id}' sends no body")
+    if op.response:
+        q = self.index.resolve_entity(mod.key, op.response)
+        if q in self.index.entities:
+            et = Type("entity", q)
+            into = cfg.get("into")
+            if into is None:
+                self.err("config", f"{w}/into", "'into' names the variable that receives the response")
+            else:
+                define(into, step, list_t(et) if op.response_kind == "list" else et)
+    elif cfg.get("into") is not None:
+        self.err("config", f"{w}/into", f"operation '{op_id}' returns nothing")
+
+
+FlowChecker._check_call_integration = _check_call_integration  # type: ignore[attr-defined]
 
 
 def flow_contract() -> dict[str, Any]:

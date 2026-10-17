@@ -99,8 +99,34 @@ types and pointers are checked when the webhook is saved. The sender posts JSON 
   (`ORCHIVIO_INBOUND_RATE_PER_MINUTE`, per process). Rejected requests are not recorded, so a corrected resend works.
 * Accepted requests are audited (`inbound_webhook.accepted`, application plane) without payload or secret.
 
+## Consumed REST APIs (FR-081)
+
+* **Model.** An `integration` lists typed operations (docs/MODEL-SPEC.md §13); flows call them with the
+  `call_integration` step. The model names a *destination*, never a URL.
+* **Destinations** (`PUT /applications/{id}/destinations/{name}`, admin): base URL and authentication
+  (`none`, `bearer`, or a named `header`; the credential is an `env:`/`file:` reference, never stored). An operation can
+  only reach a destination an admin has configured, so the set of reachable hosts is explicit. The URL goes through the
+  same checks as webhook targets (https, no credentials in the URL, public addresses only, optional allowlist) when saved
+  and again, resolved and pinned, on every call. No redirects; 10 s default timeout (per operation up to 30 s); responses
+  over 1 MiB fail. The configured address is not written to the audit log.
+* **Calling.** Path values are percent-encoded (and `.`/`..` refused), query values and the JSON body are built from the
+  evaluated arguments, and the answer must be 2xx; otherwise the flow stops with `<integration>.<operation> answered HTTP
+  <status>` (the response body is never put in the error). A typed response is converted field by field; a missing
+  required field or a wrong type stops the flow instead of letting bad data into variables. Responses are untrusted
+  data like any other input.
+* **Import** (`POST /applications/{id}/integrations/openapi-import?key=&destination=&module=`, admin; body is OpenAPI 3.x
+  JSON or YAML, at most 2 MiB). It creates a **change proposal** adding the integration and the transient entities that
+  type it; nothing changes until a person approves (A3). Imported: path/query parameters with scalar types, JSON object
+  request bodies, JSON object/list-of-objects responses, `allOf` merging, local `$ref`. Skipped *and reported*: header and
+  cookie parameters, array/object parameters, non-JSON bodies and responses, remote references (refused), anything over the
+  limits (200 operations, 100 properties per entity). Names are normalised to the model's rules and the wire names kept
+  (`json_name`, `response_map`). Re-importing under an existing key is refused (`integration_exists`).
+* **Where it runs.** Preview flow runs, end-user flow runs, scheduled and webhook-started jobs. Flow tests and generated
+  tests use mocks and never reach a network.
+
 ## Not built
 
-OpenAPI import and consumed integrations (FR-081), a
+Swagger 2.0 import (convert first), importing authentication schemes (set up the destination by hand), pagination and
+retries on consumed calls, external entities (FR-084), per-environment destinations (they are per application), a
 model-level `emit_event` step, broker adapters, per-environment allowlists (the allowlist is per installation), secret
 resolution beyond `env:`/`file:`, and a Studio UI.

@@ -41,9 +41,11 @@ boxes around does not create a model change (or an approval).
 | `decision` | `expr` (boolean) | `true`, `false` | – |
 | `loop` | `over` (list variable), `item`, `max_iterations` (1–1000, **required**) | `body`, `done` | `item`: a record, visible in the body only |
 | `call_flow` | `flow`, `args` (expression per parameter) | `out` | – |
+| `call_integration` | `integration`, `operation`, `args` (per parameter), `body` (per body field), `into` | `out` | the response, typed as the operation's response entity (a list of them for list operations) |
 | `raise_error` | `message` (1–200 characters) | none (terminal) | – |
 | `end` | – | none (terminal) | – |
 
+`call_integration` calls a consumed REST API (docs/INTEGRATIONS.md); it is a server-flow step, subject to an A3 approval when it first appears.
 Client flows may use only `start`, `decision`, `call_flow` and `end`; they cannot read or write data
 (FR-053). A **server** flow may call only server flows; a client flow may call either kind.
 

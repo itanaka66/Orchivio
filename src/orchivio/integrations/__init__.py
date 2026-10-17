@@ -1,6 +1,7 @@
 """Integration gateway: business events (outbox) delivered to outbound webhooks (FR-082/083)."""
 
 from .dispatcher import Dispatcher, DispatchResult, SecretUnavailable, build_event, matches, resolve_secret, valid_pattern
+from .rest import RestClient
 from .ssrf import Destination, DestinationError, Policy, check_url, is_public, resolve_public
 from .transport import PinnedTransport, Response, Transport, sign, verify_signature
 
@@ -21,6 +22,12 @@ def destination_policy(settings) -> Policy:
                   allowed_hosts=tuple(settings.webhook_allowed_hosts))
 
 
-__all__ = ["dispatcher_from_settings", "destination_policy", "Destination", "DestinationError", "DispatchResult", "Dispatcher", "PinnedTransport", "Policy", "Response",
+def integration_client_factory(settings, session_factory, *, transport=None):
+    """``application_id -> IntegrationClient``, sharing one pinned transport (destination policy from ``Settings``)."""
+    shared = transport or PinnedTransport(destination_policy(settings), timeout=settings.webhook_timeout_seconds)
+    return lambda application_id: RestClient(application_id, session_factory, shared)
+
+
+__all__ = ["integration_client_factory", "RestClient", "dispatcher_from_settings", "destination_policy", "Destination", "DestinationError", "DispatchResult", "Dispatcher", "PinnedTransport", "Policy", "Response",
            "SecretUnavailable", "Transport", "build_event", "check_url", "is_public", "matches", "resolve_public",
            "resolve_secret", "sign", "valid_pattern", "verify_signature"]

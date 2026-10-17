@@ -228,7 +228,8 @@ def _open(request: Request, c: Caller) -> AppData:
     try:
         return request.app.state.preview_store.open(
             c.application.id, c.model, c.model_hash, audit=request.app.state.audit_sink,
-            organization_id=c.project.organization_id, hooks=FlowHooks(c.model))
+            organization_id=c.project.organization_id, hooks=FlowHooks(c.model),
+            integrations=request.app.state.integration_clients(c.application.id))
     except PreviewNotBuilt as e:
         raise api_error(409, "not_available", "the application's data is not available yet") from e
     except PreviewStale as e:

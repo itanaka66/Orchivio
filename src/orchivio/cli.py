@@ -179,7 +179,7 @@ def run_worker(args: argparse.Namespace, out: TextIO) -> int:
     from .api.audit_sink import DbAuditSink
     from .api.settings import get_settings
     from .db import make_engine, make_session_factory
-    from .integrations import dispatcher_from_settings
+    from .integrations import dispatcher_from_settings, integration_client_factory
     from .jobs import Worker
     from .runtime import PreviewStore
 
@@ -189,7 +189,7 @@ def run_worker(args: argparse.Namespace, out: TextIO) -> int:
     dispatcher = dispatcher_from_settings(settings, sessions, preview.engine)
     worker = Worker(sessions, preview, audit=DbAuditSink(sessions),
                     lease_seconds=settings.worker_lease_seconds, per_app_limit=settings.worker_per_app_limit,
-                    extra_steps=(dispatcher.tick,))
+                    extra_steps=(dispatcher.tick,), integrations=integration_client_factory(settings, sessions))
     if args.once:
         t = worker.tick()
         print(f"planned {t.planned}, ran {t.claimed}: {t.succeeded} succeeded, {t.retried} to retry, {t.dead} dead", file=out)

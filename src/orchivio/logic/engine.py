@@ -10,9 +10,11 @@ from __future__ import annotations
 
 import time
 from collections.abc import Callable, Mapping
+from decimal import Decimal
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import Any
+from urllib.parse import quote
 
 from orchivio.expr import (
     CheckEnv,
@@ -31,7 +33,20 @@ from orchivio.expr.ast import BOOL, list_t
 from orchivio.model import AppModel
 from orchivio.model.schema import FieldDef, FlowDef, FlowStep, ModuleDef, qualify
 from orchivio.runtime import AppData, AppUser, DataError, HookFailed
-from orchivio.runtime.service import coerce_value, to_eval
+from orchivio.ports import IntegrationCall, IntegrationError
+from orchivio.runtime.service import coerce_value, to_eval, to_json
+
+MAX_RESPONSE_ITEMS = 1000
+
+
+def _wire(value: Any) -> str:
+    """A parameter value as it appears in a URL."""
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    if isinstance(value, Decimal):
+        return format(value, "f")
+    return str(value)
+
 
 END = "<end>"  # the flow finished (end step)
 RETURN = "<return>"  # a path ran out of steps (a loop body returns to its loop)
@@ -271,7 +286,79 @@ class FlowRunner:
             span.detail = f"{mod.key}.{callee.key}"
             self._invoke(run, mod, callee, args, user, depth=depth + 1)
             return self._next(sc, step)
+        if t == "call_integration":
+            return self._integration_step(run, sc, step, span)
         raise FlowError(f"unsupported step type '{t}'", step.id, sc.qualified)
+
+    def _integration_step(self, run: _Run, sc: _Scope, step: FlowStep, span: Span) -> str | None:
+        cfg = step.config
+        client = self.data.integrations
+        if client is None:
+            raise FlowError("this environment cannot call external APIs", step.id, sc.qualified)
+        found = self.schema.index.integrations.get(qualify(sc.module.key, str(cfg.get("integration"))))
+        op = next((o for o in found[1].operations if o.id == cfg.get("operation")), None) if found else None
+        if found is None or op is None:
+            raise FlowError("unknown integration operation", step.id, sc.qualified)
+        ig_mod, ig = found
+        args = self._values(run, sc, step, cfg.get("args"))
+        path, query = op.path, {}
+        for p in op.params:
+            value = args.get(p.name)
+            if value is None:
+                if p.required:
+                    raise FlowError(f"argument '{p.name}' has no value", step.id, sc.qualified)
+                continue
+            text = _wire(value)
+            if p.location == "path":
+                if text in (".", "..") or any(ord(c) < 32 for c in text):  # "/" and "%" are percent-encoded below
+                    raise FlowError(f"argument '{p.name}' cannot be used in a URL path", step.id, sc.qualified)
+                path = path.replace("{" + p.name + "}", quote(text, safe=""))
+            else:
+                query[p.json_name or p.name] = text
+        body = None
+        if op.body:
+            given = self._values(run, sc, step, cfg.get("body"))
+            body = {op.body_map.get(k, k): to_json(v) for k, v in given.items() if v is not None}
+        try:
+            res = client.call(IntegrationCall(ig.key, op.id, ig.destination, op.method, path, query, body, op.timeout_seconds))
+        except IntegrationError as e:
+            raise FlowError(f"{ig.key}.{op.id}: {e}", step.id, sc.qualified) from e
+        span.detail = f"{ig.key}.{op.id} -> HTTP {res.status}"
+        if not 200 <= res.status < 300:
+            raise FlowError(f"{ig.key}.{op.id} answered HTTP {res.status}", step.id, sc.qualified)
+        if op.response:
+            q = self.schema.index.resolve_entity(ig_mod.key, op.response) or ""
+            et = Type("entity", q)
+            name = str(cfg["into"])
+            if op.response_kind == "list":
+                if not isinstance(res.body, list) or len(res.body) > MAX_RESPONSE_ITEMS:
+                    raise FlowError(f"{ig.key}.{op.id}: expected a JSON list of at most {MAX_RESPONSE_ITEMS} items", step.id, sc.qualified)
+                sc.values[name] = [self._response_record(q, op.response_map, item, step, sc, f"{ig.key}.{op.id}[{i}]")
+                                   for i, item in enumerate(res.body)]
+                sc.types[name] = list_t(et)
+            else:
+                sc.values[name] = self._response_record(q, op.response_map, res.body, step, sc, f"{ig.key}.{op.id}")
+                sc.types[name] = et
+        return self._next(sc, step)
+
+    def _response_record(self, q: str, mapping: Mapping[str, str], obj: Any, step: FlowStep, sc: _Scope, where: str) -> dict[str, Any]:
+        """A JSON object as a record of the transient response entity; anything unexpected stops the flow."""
+        if not isinstance(obj, dict):
+            raise FlowError(f"{where}: expected a JSON object", step.id, sc.qualified)
+        mod, ent = self.schema.index.entities[q]
+        rec: dict[str, Any] = {}
+        for f in ent.fields:
+            raw = obj.get(mapping.get(f.name, f.name))
+            if raw is None:
+                if f.required:
+                    raise FlowError(f"{where}: the response has no value for '{f.name}'", step.id, sc.qualified)
+                rec[f.name] = None
+                continue
+            try:
+                rec[f.name] = to_eval(coerce_value(self.schema, mod.key, f, raw))
+            except ValueError as e:
+                raise FlowError(f"{where}: field '{f.name}' {e}", step.id, sc.qualified) from e
+        return rec
 
     def _data_step(self, run: _Run, sc: _Scope, step: FlowStep, span: Span) -> str | None:
         cfg, t, user = step.config, step.type, run.user

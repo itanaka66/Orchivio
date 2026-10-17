@@ -72,6 +72,8 @@ written in the same transaction (docs/INTEGRATIONS.md).
 (receipts, unique per webhook and event id). `job_runs.trigger` also allows `webhook` and `job_runs.source_ref`
 records which request started a run.
 
+`integration_destinations` (per application: logical name, base URL, auth type, header name, credential *reference*).
+
 ### Audit
 `audit_events` — append-only. `plane` (platform/application) and `channel`
 (studio/api/mcp) separate streams. **No foreign keys on purpose:** audit history must outlive

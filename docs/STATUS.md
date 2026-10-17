@@ -45,6 +45,7 @@ service), **Schema** (data structures only), **Planned**.
 | FR-095 | Immutable deployment packages | Done (control plane) | Reproducible zip, expand/contract plan, SBOM of direct dependencies, Ed25519 signature; no transitive SBOM |
 | FR-096 | Environment constants and secret references | Partial | Stored and audited; references are not resolved anywhere yet |
 | FR-097 | Near-zero-downtime migrations | Not started | Plans only |
+| FR-081 | Consumed REST via OpenAPI import | Done (MVP) | Typed operations, import as an A3 proposal, allowlisted destinations, SSRF-pinned calls; per application, not per environment; no pagination or retries |
 | FR-082 | Inbound and outbound webhooks | Done (MVP) | Outbound: signed CloudEvents, retries, dead letters, circuit breaker, SSRF guard. Inbound: signature-verified, replay-protected, payload-mapped, queued flow runs; secrets by reference only; limiter is per process |
 | FR-083 | Business events | Done (outbox) | Transactional outbox for record created/updated/deleted, relayed at-least-once; no brokers, no custom events |
 | FR-089 | Data import/export with mapping | Partial | CSV only: per-row errors, modes, dry run, column mapping, all through app security; no Excel, no upsert |

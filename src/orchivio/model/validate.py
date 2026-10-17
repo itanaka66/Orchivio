@@ -6,6 +6,7 @@ of ``Issue`` objects. Error-severity issues block approval of a proposal.
 
 from __future__ import annotations
 
+import re
 from collections import Counter
 from collections.abc import Sequence
 from dataclasses import dataclass
@@ -24,6 +25,7 @@ from .schema import (
     EntityDef,
     FieldDef,
     FlowDef,
+    IntegrationDef,
     ModuleDef,
     PageDef,
     parse_field_type,
@@ -69,11 +71,14 @@ class ModelIndex:
         self.model = model
         self.entities: dict[str, tuple[ModuleDef, EntityDef]] = {}
         self.enums: dict[str, Sequence[str]] = {}
+        self.integrations: dict[str, tuple[ModuleDef, IntegrationDef]] = {}
         for mod in model.modules:
             for ent in mod.entities:
                 self.entities.setdefault(f"{mod.key}.{ent.name}", (mod, ent))
             for en in mod.enumerations:
                 self.enums.setdefault(f"{mod.key}.{en.name}", en.values)
+            for ig in mod.integrations or []:
+                self.integrations.setdefault(f"{mod.key}.{ig.key}", (mod, ig))
 
     def resolve_entity(self, module_key: str, name: str) -> str | None:
         q = qualify(module_key, name)
@@ -191,6 +196,7 @@ class _Validator:
                 all_page_keys.append(pg.key)
                 all_routes.append(pg.path)
             self.dupes([f.key for f in mod.flows], "duplicate-flow", f"{base}/flows", "flow key")
+            self.integrations(mod, base)
         self.dupes(all_page_keys, "duplicate-page", "/modules", "page key")
         self.dupes(all_routes, "duplicate-route", "/modules", "route")
         self.flows()
@@ -200,6 +206,45 @@ class _Validator:
             if sup.element_id not in known:
                 self.err("unknown-suppression-element", f"/lint_suppressions/{si}", "suppression targets an unknown element")
         return self.issues
+
+    # -- consumed REST APIs
+    def integrations(self, mod: ModuleDef, base: str) -> None:
+        self.dupes([i.key for i in mod.integrations or []], "duplicate-integration", f"{base}/integrations", "integration key")
+        for ig in mod.integrations or []:
+            ipath = f"{base}/integrations/{ig.key}"
+            self.dupes([o.id for o in ig.operations], "duplicate-operation", f"{ipath}/operations", "operation id")
+            for op in ig.operations:
+                p = f"{ipath}/operations/{op.id}"
+                eid = ig.element_id
+                self.dupes([x.name for x in op.params], "duplicate-param", f"{p}/params", "parameter")
+                placeholders = re.findall(r"\{([^{}]*)\}", op.path)
+                declared = {x.name for x in op.params if x.location == "path"}
+                for name in placeholders:
+                    if name not in declared:
+                        self.err("integration-path", p, f"the path uses {{{name}}} but no path parameter has that name", eid)
+                for name in sorted(declared - set(placeholders)):
+                    self.err("integration-path", p, f"path parameter '{name}' does not appear in the path", eid)
+                for x in op.params:
+                    if x.location == "path" and not x.required:
+                        self.err("integration-path", p, f"path parameter '{x.name}' must be required", eid)
+                if op.body and op.method in ("GET", "DELETE"):
+                    self.err("integration-body", p, f"a {op.method} operation cannot send a body", eid)
+                if bool(op.response) != bool(op.response_kind):
+                    self.err("integration-response", p, "response and response_kind go together", eid)
+                for kind, name, mapping in (("body", op.body, op.body_map), ("response", op.response, op.response_map)):
+                    if name is None:
+                        if mapping:
+                            self.err("integration-map", p, f"{kind}_map needs a {kind} entity", eid)
+                        continue
+                    q = self.index.resolve_entity(mod.key, name)
+                    found = self.index.entities.get(q or "")
+                    if found is None or not found[1].transient:
+                        self.err("integration-entity", p, f"{kind} entity '{name}' must be a transient entity of the model", eid)
+                        continue
+                    names = {f.name for f in found[1].fields}
+                    for fname in mapping:
+                        if fname not in names:
+                            self.err("integration-map", p, f"{kind}_map names unknown field '{fname}' of {name}", eid)
 
     # -- entities and fields
     def entity(self, mod: ModuleDef, ent: EntityDef, path: str) -> None:

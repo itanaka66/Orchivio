@@ -16,6 +16,9 @@
     "call_flow": [
       "out"
     ],
+    "call_integration": [
+      "out"
+    ],
     "change": [
       "out"
     ],
@@ -61,6 +64,7 @@
     "decision",
     "loop",
     "call_flow",
+    "call_integration",
     "raise_error",
     "end"
   ],
@@ -73,6 +77,7 @@
     "decision",
     "loop",
     "call_flow",
+    "call_integration",
     "raise_error",
     "end"
   ]

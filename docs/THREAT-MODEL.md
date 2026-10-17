@@ -71,6 +71,10 @@ Status: ✅ implemented and tested · 🟡 partly / not verified end-to-end · �
 | A12 | Forged, replayed or probing requests to the public inbound endpoint | HMAC-SHA256 with constant-time compare and 5-minute window; uniform 401 for every authentication failure (including an unreadable secret); 404 for unknown/paused; dedup on event id; body-size and rate limits; mapping checked only after authentication and values never echoed | ✅ tested · 🟡 rate limit is per process; unauthenticated requests still cost a database lookup |
 | A13 | A webhook sender escalates through the flow it triggers | The flow runs as the fixed `run_as_role` chosen by an admin (not by the sender); parameters are mapped and type-checked; application security applies to every step | ✅ |
 
+| A14 | A model or import points a flow at an internal service or sends data to an attacker's host | The model holds only logical destination names; admins configure the URLs; static and resolve-and-pin checks on every call; allowlist; imports are A3 proposals; new calls in a flow are A3 | ✅ tested |
+| A15 | A malicious OpenAPI document (remote refs, cycles, huge schemas, odd names) | Local `$ref` only, depth/size/operation/property limits, names re-derived, nothing fetched | ✅ tested |
+| A16 | A hostile or broken API answer corrupts data or leaks through errors | Typed conversion with required-field and type checks, 1 MiB cap, no body text in errors, path values percent-encoded | ✅ tested |
+
 ## 4. Assumptions
 
 - PostgreSQL, the host OS and the TLS terminator are operated securely.
