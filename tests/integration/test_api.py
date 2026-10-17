@@ -110,3 +110,22 @@ def test_api_helper_isolation(app):
     a, b = Api(app).signup("a@example.com"), Api(app).signup("b@example.com")
     assert a.get("/me").json()["user"]["email"] == "a@example.com"
     assert b.get("/me").json()["user"]["email"] == "b@example.com"
+
+
+def test_validate_flow_endpoint(new_api, raw_model):
+    api = new_api()
+    flow = raw_model["modules"][0]["flows"][0]
+    ok = api.post("/models/validate-flow", json={"model": raw_model, "module": "core", "flow": flow}).json()
+    assert ok == {"valid": True, "issues": []}
+
+    bad = copy.deepcopy(flow)
+    next(s for s in bad["steps"] if s["id"] == "any")["config"]["expr"] = "size(low)"
+    body = api.post("/models/validate-flow", json={"model": raw_model, "module": "core", "flow": bad}).json()
+    assert body["valid"] is False and body["issues"][0]["path"].endswith("/steps/any/config/expr")
+
+    broken = {"key": "X", "steps": [{"id": "BAD ID", "type": "start"}]}
+    r = api.post("/models/validate-flow", json={"model": raw_model, "module": "core", "flow": broken})
+    assert r.status_code == 422 and r.json()["error"]["code"] == "invalid_flow"
+    r = api.post("/models/validate-flow", json={"model": raw_model, "module": "nope", "flow": flow})
+    assert r.status_code == 422 and r.json()["error"]["code"] == "unknown_module"
+    assert TestClient(api.c.app).post("/api/v1/models/validate-flow", json={}).status_code == 401

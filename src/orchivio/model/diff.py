@@ -15,7 +15,7 @@ from .schema import AppModel
 
 ChangeKind = Literal["added", "removed", "modified"]
 _CHILD_KEYS = {
-    "module": {"enumerations", "entities", "pages"},
+    "module": {"enumerations", "entities", "pages", "flows"},
     "entity": {"fields"},
 }
 
@@ -73,6 +73,9 @@ def _flatten(model: AppModel) -> dict[str, tuple[str, str, dict[str, Any]]]:
         etype = key[0]
         skip = _CHILD_KEYS.get(etype, set()) | {"element_id"}
         props = el.model_dump(mode="json", exclude=skip)
+        if etype == "flow":  # node positions are layout, not behaviour
+            for step in props.get("steps", []):
+                step.pop("position", None)
         name = ".".join(key[1:])
         out[el.element_id] = (etype, name, props)
     return out

@@ -1,0 +1,138 @@
+{
+  "description": "Mark products that fell below their reorder level and raise an error if none exist.",
+  "edges": [
+    {
+      "handle": "out",
+      "id": "e1",
+      "source": "start",
+      "target": "find"
+    },
+    {
+      "handle": "out",
+      "id": "e2",
+      "source": "find",
+      "target": "any"
+    },
+    {
+      "handle": "true",
+      "id": "e3",
+      "source": "any",
+      "target": "each"
+    },
+    {
+      "handle": "false",
+      "id": "e4",
+      "source": "any",
+      "target": "none"
+    },
+    {
+      "handle": "body",
+      "id": "e5",
+      "source": "each",
+      "target": "bump"
+    },
+    {
+      "handle": "done",
+      "id": "e6",
+      "source": "each",
+      "target": "done"
+    }
+  ],
+  "element_id": "00000000-0000-4000-8000-000000000014",
+  "key": "ReorderLowStock",
+  "kind": "server",
+  "params": [
+    {
+      "name": "min_gap",
+      "type": "integer"
+    }
+  ],
+  "steps": [
+    {
+      "config": {},
+      "id": "start",
+      "position": {
+        "x": 0.0,
+        "y": 0.0
+      },
+      "type": "start"
+    },
+    {
+      "config": {
+        "entity": "Product",
+        "into": "low",
+        "limit": 100,
+        "many": true,
+        "where": "quantity <= reorder_level - min_gap"
+      },
+      "id": "find",
+      "label": "Find products",
+      "position": {
+        "x": 0.0,
+        "y": 120.0
+      },
+      "type": "retrieve"
+    },
+    {
+      "config": {
+        "expr": "size(low) > 0"
+      },
+      "id": "any",
+      "label": "Any found?",
+      "position": {
+        "x": 0.0,
+        "y": 240.0
+      },
+      "type": "decision"
+    },
+    {
+      "config": {
+        "item": "product",
+        "max_iterations": 100,
+        "over": "low"
+      },
+      "id": "each",
+      "label": "For each product",
+      "position": {
+        "x": -140.0,
+        "y": 380.0
+      },
+      "type": "loop"
+    },
+    {
+      "config": {
+        "target": "product",
+        "values": {
+          "reorder_level": "product.reorder_level + 5"
+        }
+      },
+      "id": "bump",
+      "position": {
+        "x": -280.0,
+        "y": 520.0
+      },
+      "type": "change"
+    },
+    {
+      "config": {},
+      "id": "done",
+      "label": "Done",
+      "position": {
+        "x": -140.0,
+        "y": 660.0
+      },
+      "type": "end"
+    },
+    {
+      "config": {
+        "message": "No product is below its reorder level"
+      },
+      "id": "none",
+      "position": {
+        "x": 160.0,
+        "y": 380.0
+      },
+      "type": "raise_error"
+    }
+  ]
+}

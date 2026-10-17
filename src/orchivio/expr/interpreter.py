@@ -52,6 +52,7 @@ class EvalContext:
     now: datetime | None = None
     env: Mapping[str, Any] = field(default_factory=dict)
     enums: Mapping[str, tuple[str, ...]] = field(default_factory=dict)
+    variables: Mapping[str, Any] = field(default_factory=dict)
 
 
 def _norm(v: Any) -> Any:
@@ -120,6 +121,8 @@ class _Evaluator:
             return rec
         if rec is not None and name in rec:
             return _norm(rec[name])
+        if name in self.ctx.variables:
+            return _norm(self.ctx.variables[name])
         if name in self.ctx.enums:
             return EnumScope(name)
         raise self.err(f"unknown identifier '{name}'", node)

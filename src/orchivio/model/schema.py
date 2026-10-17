@@ -101,11 +101,61 @@ class PageDef(Element):
     actions: list[PageAction | str] = Field(default_factory=list)
 
 
+FLOW_KEY_PATTERN = r"^[A-Za-z][A-Za-z0-9_]{0,62}$"
+STEP_ID_PATTERN = r"^[a-z][a-z0-9_]{0,30}$"
+FlowKey = Annotated[str, StringConstraints(pattern=FLOW_KEY_PATTERN)]
+StepId = Annotated[str, StringConstraints(pattern=STEP_ID_PATTERN)]
+VarName = Annotated[str, StringConstraints(pattern=STEP_ID_PATTERN)]
+
+StepType = Literal["start", "retrieve", "create", "change", "delete", "decision", "loop", "call_flow",
+                   "raise_error", "end"]
+Handle = Literal["out", "true", "false", "body", "done"]
+
+
+class Position(_Strict):
+    """Editor layout only; never affects behaviour or diffs."""
+
+    x: float = Field(ge=-100_000, le=100_000)
+    y: float = Field(ge=-100_000, le=100_000)
+
+
+class FlowParam(_Strict):
+    name: VarName
+    type: str
+
+
+class FlowStep(_Strict):
+    id: StepId
+    type: StepType
+    label: str | None = Field(default=None, max_length=100)
+    config: dict[str, Any] = Field(default_factory=dict)
+    position: Position | None = None
+
+
+class FlowEdge(_Strict):
+    id: StepId
+    source: StepId
+    target: StepId
+    handle: Handle = "out"
+
+
+class FlowDef(Element):
+    """A Server or Client Flow as a directed acyclic graph of allowlisted steps (FLOW-SPEC.md)."""
+
+    key: FlowKey
+    kind: Literal["server", "client"] = "server"
+    description: str | None = Field(default=None, max_length=500)
+    params: list[FlowParam] = Field(default_factory=list, max_length=30)
+    steps: list[FlowStep] = Field(default_factory=list, max_length=200)
+    edges: list[FlowEdge] = Field(default_factory=list, max_length=400)
+
+
 class ModuleDef(Element):
     key: KeyName
     enumerations: list[EnumDef] = Field(default_factory=list)
     entities: list[EntityDef] = Field(default_factory=list)
     pages: list[PageDef] = Field(default_factory=list)
+    flows: list[FlowDef] = Field(default_factory=list)
 
 
 class AccessRule(Element):

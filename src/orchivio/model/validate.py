@@ -14,12 +14,14 @@ from typing import Literal
 from orchivio.expr import CheckEnv, ExprError, check
 from orchivio.expr.ast import BOOL, DATETIME, DECIMAL, INT, STRING, Type, enum_t, ref_t
 
+from .flows import FlowChecker, call_cycles
 from .ids import iter_elements
 from .schema import (
     BUILTIN_ENTITIES,
     AppModel,
     EntityDef,
     FieldDef,
+    FlowDef,
     ModuleDef,
     PageDef,
     parse_field_type,
@@ -125,6 +127,22 @@ def validate_model(model: AppModel) -> list[Issue]:
     return _Validator(model).run()
 
 
+def validate_flow(model: AppModel, module_key: str, flow: FlowDef) -> list[Issue]:
+    """Validate one (possibly unsaved) flow in the context of ``model``. Used for live editor feedback."""
+    mi = next((i for i, m in enumerate(model.modules) if m.key == module_key), None)
+    if mi is None:
+        raise KeyError(module_key)
+    v = _Validator(model)
+    flows = {f"{m.key}.{f.key}": f for m in model.modules for f in m.flows}
+    module_of = {f"{m.key}.{f.key}": m for m in model.modules for f in m.flows}
+    flows[f"{module_key}.{flow.key}"], module_of[f"{module_key}.{flow.key}"] = flow, model.modules[mi]
+    v.check_flow(model.modules[mi], mi, flow, flows)
+    for cycle in call_cycles(flows, module_of):
+        if f"{module_key}.{flow.key}" in cycle:
+            v.err("flow-call-cycle", f"/modules/{mi}/flows/{flow.key}", "flows call each other in a cycle: " + " -> ".join(cycle), flow.element_id)
+    return v.issues
+
+
 def has_errors(issues: Sequence[Issue]) -> bool:
     return any(i.severity == "error" for i in issues)
 
@@ -163,8 +181,10 @@ class _Validator:
                 self.page(mod, pg, f"{base}/pages/{pi}")
                 all_page_keys.append(pg.key)
                 all_routes.append(pg.path)
+            self.dupes([f.key for f in mod.flows], "duplicate-flow", f"{base}/flows", "flow key")
         self.dupes(all_page_keys, "duplicate-page", "/modules", "page key")
         self.dupes(all_routes, "duplicate-route", "/modules", "route")
+        self.flows()
         self.security()
         known = {el.element_id for _, el in iter_elements(m) if el.element_id}
         for si, sup in enumerate(m.lint_suppressions):
@@ -307,6 +327,22 @@ class _Validator:
                 src = getattr(act, attr)
                 if src:
                     self.expr(src, env, BOOL, f"{path}/actions/{ai}/{attr}", pg.element_id)
+
+    # -- flows
+    def flows(self) -> None:
+        flows = {f"{m.key}.{f.key}": f for m in self.model.modules for f in m.flows}
+        module_of = {f"{m.key}.{f.key}": m for m in self.model.modules for f in m.flows}
+        for mi, mod in enumerate(self.model.modules):
+            for fl in mod.flows:
+                self.check_flow(mod, mi, fl, flows)
+        for cycle in call_cycles(flows, module_of):
+            self.err("flow-call-cycle", "/modules", "flows call each other in a cycle: " + " -> ".join(cycle))
+
+    def check_flow(self, mod: ModuleDef, mi: int, fl: FlowDef, flows: dict[str, FlowDef]) -> None:
+        def report(code: str, path: str, msg: str, sev: str) -> None:
+            self.add(sev, code, path, msg, fl.element_id)  # type: ignore[arg-type]
+
+        FlowChecker(self.index, mod, fl, flows, report, f"/modules/{mi}/flows/{fl.key}").run()
 
     # -- security
     def security(self) -> None:

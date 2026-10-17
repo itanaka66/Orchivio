@@ -85,7 +85,7 @@ one owner (`409 last_owner`). Any member may leave an organization.
 | POST | `/applications/{id}/ai/analyze`, `/ai/propose`, `/ai/explain` | AI Builder (needs a configured provider) |
 | POST | `/applications/{id}/preview/reset`; GET `…/preview/status`; CRUD `…/preview/data/{entity}[/{id}]` | preview runtime (docs/RUNTIME.md) |
 | POST/GET | `/revisions/{id}/test-runs`, `/test-runs/{id}`, POST `/test-runs/{id}/ai/repair` | generated tests |
-| POST | `/models/validate`, `/models/lint`, `/models/diff`, `/expressions/check` | stateless tools (any authenticated caller) |
+| POST | `/models/validate`, `/models/validate-flow`, `/models/lint`, `/models/diff`, `/expressions/check` | stateless tools (any authenticated caller); `validate-flow` checks one unsaved flow in a model's context and returns issue paths ending in `steps/<id>…` |
 | GET | `/healthz` | unauthenticated |
 
 ### Creating a revision

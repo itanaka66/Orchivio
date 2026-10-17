@@ -48,6 +48,10 @@ to that table *and* the test in the same change.
   reaches into security or HTTP concerns.
 - `llm` and `ports` are leaf interfaces. Nothing in the domain imports a vendor SDK.
 
+## Web Studio
+
+`apps/web` is a separate React/TypeScript application (Vite). It talks to the API only over HTTP (same origin in production, a dev proxy locally) and shares nothing with the Python code except generated files: `scripts/export_web_contract.py` writes the flow contract and sample data into `apps/web/src/flow/`, and a backend test fails if they are stale.
+
 ## Request flow (today)
 
 ```
