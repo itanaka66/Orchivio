@@ -170,7 +170,16 @@ application/security records are nodes too) and merges property by property (`or
 Merge properties (idempotent, commutative when both sides agree, identity with an unchanged side) are checked
 with Hypothesis in `tests/unit/test_merge.py`.
 
-## 12. Planned
+## 12. Schedules
+
+A server flow may have `schedule: {cron, run_as_role, args, enabled, missed_runs, max_attempts, backoff_seconds}`.
+`cron` is five fields in UTC (`orchivio.model.cron`: lists, ranges, steps, `*`; Sunday is 0 or 7; day-of-month
+and day-of-week are OR-ed when both are restricted; no names or `L`/`W`/`#`). Rules: `schedule-not-server`,
+`schedule-hook`, `bad-cron` (also for expressions that never fire, such as 30 Feb), `unknown-role`, and
+`schedule-args` (each parameter needs a literal value that fits its type; no unknown names). Execution semantics
+are in docs/OPERATIONS.md §4. Adding a schedule is an ordinary property change of the flow in diffs and merges.
+
+## 13. Planned
 
 Flows, processes, scheduled jobs, integrations, AI steps, themes, translations, field-level
 security, per-element canonical YAML files (DESIGN.md §8.9).

@@ -48,6 +48,11 @@ own data in separate schemas/databases and never share these tables
 | `proposals` | Unified change proposals (`base_revision_id` is null for an application's first revision) from the AI Builder, MCP agents and humans: `change_set_json`, `approval_level` 0–4, `status`, `approved_by`, `result_revision_id` |
 | `builds`, `test_runs`, `deployments` | Execution records (references to artifact storage) |
 
+### Jobs
+`job_runs` — the task queue and run history (status `queued|running|succeeded|dead|cancelled`, lease columns,
+attempts, `scheduled_for`; unique `(application_id, flow, scheduled_for)` makes planning idempotent).
+`schedule_state` — where the planner stopped for each scheduled flow (advanced by compare-and-set).
+
 ### Audit
 `audit_events` — append-only. `plane` (platform/application) and `channel`
 (studio/api/mcp) separate streams. **No foreign keys on purpose:** audit history must outlive

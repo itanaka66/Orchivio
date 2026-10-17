@@ -3,7 +3,10 @@
 from __future__ import annotations
 
 import secrets
+import threading
 import time
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from typing import Any
 
 from fastapi import FastAPI, Header, HTTPException, Request
@@ -22,6 +25,8 @@ from orchivio.runtime import PreviewStore
 from .audit_sink import DbAuditSink
 from .metrics import Metrics
 from .observability import configure_logging, logger, new_request_id, request_id_var
+from orchivio.jobs import Worker
+
 from .routes import ALL
 from .settings import Settings, get_settings
 from .throttle import LoginThrottle
@@ -69,7 +74,24 @@ def create_app(
     if session_factory is None:
         session_factory = make_session_factory(engine or make_engine(settings.database_url))
 
-    app = FastAPI(title="Orchivio API", version=__version__, docs_url="/api/docs", openapi_url="/api/openapi.json")
+    @asynccontextmanager
+    async def lifespan(_: FastAPI) -> AsyncIterator[None]:
+        stop, thread = threading.Event(), None
+        if settings.worker_enabled:
+            worker = Worker(session_factory, app.state.preview_store, audit=app.state.audit_sink,
+                            lease_seconds=settings.worker_lease_seconds, per_app_limit=settings.worker_per_app_limit)
+            thread = threading.Thread(target=worker.run_forever, args=(settings.worker_interval_seconds, stop),
+                                      name="orchivio-jobs", daemon=True)
+            thread.start()
+        try:
+            yield
+        finally:
+            stop.set()
+            if thread is not None:
+                thread.join(timeout=5)
+
+    app = FastAPI(title="Orchivio API", version=__version__, docs_url="/api/docs", openapi_url="/api/openapi.json",
+                  lifespan=lifespan)
     app.state.settings = settings
     app.state.session_factory = session_factory
     app.state.preview_store = PreviewStore(preview_engine or make_engine(settings.preview_database_url))

@@ -93,6 +93,10 @@ one owner (`409 last_owner`). Any member may leave an organization.
 | POST | `/applications/{id}/preview/flows/{flow}/run` | run a server flow in the preview as the simulated user; returns status, error and the step trace |
 | POST/GET | `/revisions/{id}/test-runs`, `/test-runs/{id}`, POST `/test-runs/{id}/ai/repair` | generated tests |
 | POST | `/models/validate`, `/models/validate-flow`, `/models/lint`, `/models/diff`, `/expressions/check` | stateless tools (any authenticated caller); `validate-flow` checks one unsaved flow in a model's context and returns issue paths ending in `steps/<id>…` |
+| GET | `/applications/{id}/schedules` | scheduled flows of the current revision with `next_run_at` and last run |
+| GET/POST | `/applications/{id}/jobs` | list (`status`) / queue a server flow now (`flow`, `args?`, `run_as_role?`; defaults from its schedule) |
+| GET | `/jobs/{id}` | run status, attempts, error, result |
+| POST | `/jobs/{id}/retry`, `/jobs/{id}/cancel` | dead → queued with fresh attempts (`409 not_dead`) / queued → cancelled (`409 not_queued`) |
 | GET | `/healthz`, `/readyz` | liveness / readiness (unauthenticated; docs/OPERATIONS.md) |
 | GET | `/metrics` | Prometheus text; bearer `ORCHIVIO_METRICS_TOKEN`, disabled when unset |
 

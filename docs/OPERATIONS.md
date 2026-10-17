@@ -61,17 +61,44 @@ variant runs in CI (`test_backup_and_restore_on_postgres`, **untested until the 
 
 Moving between SQLite and PostgreSQL is not a supported use of the backup format.
 
-## 4. Configuration reference
+## 4. Scheduled jobs and the task queue
+
+A server flow can carry a `schedule` (docs/MODEL-SPEC.md §12): UTC cron, the application role it runs as, literal
+arguments, `missed_runs` (`skip`|`run_once`), `max_attempts` and `backoff_seconds`. Runs go through the
+`job_runs` table, so manual runs (`POST /applications/{id}/jobs`) and scheduled runs share one queue.
+
+* **Running a worker.** `orchivio worker` (add `--once` for one pass, e.g. from cron) polls every
+  `--interval` seconds; or set `ORCHIVIO_WORKER_ENABLED=true` to run one inside the API process. Start as many
+  as you like.
+* **Single execution.** The planner advances `schedule_state.last_planned_at` by compare-and-set and the queue
+  has a unique `(application, flow, scheduled_for)`, so an occurrence is queued once however many workers run.
+  Claims are compare-and-set updates; a claim is a lease (`ORCHIVIO_WORKER_LEASE_SECONDS`, default 120). A
+  worker that dies leaves an expired lease, which counts as a failed attempt: delivery is **at-least-once**, so
+  flows with side effects outside the database should be idempotent.
+* **Retries.** A failed attempt (the flow failed, the preview was not built, a crash) is requeued after
+  `backoff_seconds * 2^(attempt-1)` (at most a day); after `max_attempts` the run is **dead** (the dead-letter
+  queue, shown by `GET /applications/{id}/jobs?status=dead`), a `job.dead` audit event is written, and it
+  can be given fresh attempts with `POST /jobs/{id}/retry`.
+* **Concurrency.** At most `ORCHIVIO_WORKER_PER_APP_LIMIT` (default 2) runs per application at a time.
+* **Missed runs.** `skip` runs only the latest occurrence of a window and only if it is at most two minutes old;
+  `run_once` runs the latest however late and collapses the earlier ones. The look-back is capped at 24 hours
+  and the first sighting of a schedule never replays history.
+* **Where it runs.** Against the application's preview runtime (there are no production environments yet),
+  under the system identity `system:schedule:<flow>` holding only `run_as_role`. The preview must be built for
+  the current model, otherwise the attempt fails with a hint.
+
+## 5. Configuration reference
 
 All settings are environment variables with the `ORCHIVIO_` prefix (see `.env.example`):
 `ENV` (`dev`/`prod`), `DATABASE_URL`, `PREVIEW_DATABASE_URL` (must differ in prod), `ARTIFACT_DIR`,
 `ALLOW_REGISTRATION`, `SESSION_TTL_HOURS`, `COOKIE_SECURE`, `LOGIN_MAX_FAILURES`, `LOG_JSON`,
-`MAX_BODY_BYTES`, `MAX_IMPORT_BYTES`, `METRICS_TOKEN`, `LLM_PROVIDER`, `ANTHROPIC_API_KEY`, `LLM_MODEL`.
+`MAX_BODY_BYTES`, `MAX_IMPORT_BYTES`, `METRICS_TOKEN`, `WORKER_ENABLED`, `WORKER_INTERVAL_SECONDS`, `WORKER_LEASE_SECONDS`, `WORKER_PER_APP_LIMIT`, `LLM_PROVIDER`, `ANTHROPIC_API_KEY`, `LLM_MODEL`.
 
 Run migrations explicitly (`alembic upgrade head`); the API does not migrate on start.
 
-## 5. Known gaps
+## 6. Known gaps
 
 No retention jobs for sessions, audit events or conversations; no automatic scheduling of backups (use cron
 or your orchestrator); no log shipping or OpenTelemetry traces (planned, FR-123); no rate limiting beyond the
-login throttle; the login throttle is per process.
+login throttle; the login throttle is per process. Jobs have no UI, no per-environment schedule enablement and
+no queue metrics yet.
