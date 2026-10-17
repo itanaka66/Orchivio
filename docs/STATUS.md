@@ -40,7 +40,7 @@ service), **Schema** (data structures only), **Planned**.
 | FR-067 | End-user authentication for generated apps | Partial | Local accounts, sessions, forced first-login password change, anonymous opt-in; no OIDC/SAML, MFA, self-registration or email reset; serves preview data only |
 | FR-066 | Consistency checker | Done | 5 checks |
 | FR-086 | Studio MCP server | Partial | Read/search/usages/lint/validate/proposal/tests tools, proposal-only writes, audit, rate limit; no `model.explain`, no SSE; exercised only with a test client, not a real MCP agent |
-| FR-087 | MCP client for the AI Builder | Not started | |
+| FR-087 | MCP client for the AI Builder | Partial | Organization registry, discovery, per-tool policy (A0 only), one bounded planning round, untrusted-output handling, audit; no interactive approval for stronger tools, no resources/prompts, no OAuth |
 | FR-094 | Environments and promotion pipeline | Partial | Ordered stages, stage/test/migration/approval gates, separation of duties; records the deployment only, no executor |
 | FR-095 | Immutable deployment packages | Done (control plane) | Reproducible zip, expand/contract plan, SBOM of direct dependencies, Ed25519 signature; no transitive SBOM |
 | FR-096 | Environment constants and secret references | Partial | Stored and audited; references are not resolved anywhere yet |

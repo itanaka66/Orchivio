@@ -74,6 +74,8 @@ records which request started a run.
 
 `integration_destinations` (per application: logical name, base URL, auth type, header name, credential *reference*).
 
+`mcp_servers` (per organization: name, URL, credential *reference*, status, last discovered tools, per-tool policy).
+
 ### Audit
 `audit_events` — append-only. `plane` (platform/application) and `channel`
 (studio/api/mcp) separate streams. **No foreign keys on purpose:** audit history must outlive

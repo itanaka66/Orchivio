@@ -121,6 +121,10 @@ one owner (`409 last_owner`). Any member may leave an organization.
 | POST | `/hooks/{app_id}/{key}` | the public endpoint: authenticated only by `Orchivio-Signature`; `202`, `401`, `404`, `413`, `422`, `429` |
 | PUT/GET/DELETE | `/applications/{id}/destinations[/{name}]` | where a logical integration destination points and how to authenticate (admin) |
 | POST | `/applications/{id}/integrations/openapi-import` | OpenAPI 3.x (JSON/YAML) -> change proposal with an integration and its transient entities |
+| GET/POST | `/organizations/{id}/mcp-servers` | external MCP servers for the AI Builder (org admin): list / register |
+| GET/PATCH/DELETE | `/organizations/{id}/mcp-servers/{name}` | read / change URL, credential reference, status / remove |
+| POST | `/organizations/{id}/mcp-servers/{name}/discover` | list the server's tools (new ones start disabled) |
+| PUT | `/organizations/{id}/mcp-servers/{name}/tools/{tool}` | `{enabled, level}`; only `A0` can be enabled |
 | GET | `/healthz`, `/readyz` | liveness / readiness (unauthenticated; docs/OPERATIONS.md) |
 | GET | `/metrics` | Prometheus text; bearer `ORCHIVIO_METRICS_TOKEN`, disabled when unset |
 

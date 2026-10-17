@@ -8,6 +8,11 @@ from .builder import (
     BuildResult,
     Explanation,
     ExplanationResult,
+    PlanResult,
+    PlannedCall,
+    ToolContext,
+    ToolInfo,
+    ToolPlan,
     element_context,
 )
 
@@ -19,5 +24,10 @@ __all__ = [
     "BuilderError",
     "Explanation",
     "ExplanationResult",
+    "PlanResult",
+    "PlannedCall",
+    "ToolContext",
+    "ToolInfo",
+    "ToolPlan",
     "element_context",
 ]

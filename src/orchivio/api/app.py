@@ -25,7 +25,8 @@ from orchivio.runtime import PreviewStore
 from .audit_sink import DbAuditSink
 from .metrics import Metrics
 from .observability import configure_logging, logger, new_request_id, request_id_var
-from orchivio.integrations import dispatcher_from_settings, integration_client_factory
+from orchivio.integrations import PinnedTransport, destination_policy, dispatcher_from_settings, integration_client_factory
+from orchivio.integrations.mcp_client import ToolBroker
 from orchivio.jobs import Worker
 
 from .routes import ALL
@@ -105,6 +106,8 @@ def create_app(
     app.state.metrics = Metrics()
     app.state.mcp_limiter = RateLimiter(settings.mcp_rate_per_minute)
     app.state.integration_clients = integration_client_factory(settings, session_factory)  # application id -> client
+    app.state.mcp_transport = PinnedTransport(destination_policy(settings), timeout=settings.webhook_timeout_seconds)
+    app.state.mcp_broker = ToolBroker(session_factory, app.state.mcp_transport, timeout=settings.webhook_timeout_seconds)
     app.state.inbound_limiter = RateLimiter(settings.inbound_rate_per_minute)
     app.state.throttle = LoginThrottle(settings.login_max_failures, settings.login_window_seconds)
 

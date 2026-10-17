@@ -724,3 +724,28 @@ class IntegrationDestination(Base):
     secret_ref: Mapped[str | None] = mapped_column(String(300))  # a reference, never the credential
     created_by: Mapped[uuid.UUID | None] = mapped_column(Uuid)
     created_at: Mapped[datetime] = _created()
+
+
+class McpServer(Base):
+    """An external MCP server the AI Builder may use for background information (FR-087). Organization level:
+    registering one is an admin act, and tools are usable only after an admin enables them explicitly."""
+
+    __tablename__ = "mcp_servers"
+    __table_args__ = (
+        UniqueConstraint("organization_id", "name", name="uq_mcp_servers_name"),
+        _in("status", ("active", "disabled"), "status"),
+    )
+
+    id: Mapped[uuid.UUID] = _id()
+    organization_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    name: Mapped[str] = mapped_column(String(63), nullable=False)
+    url: Mapped[str] = mapped_column(String(2000), nullable=False)
+    secret_ref: Mapped[str | None] = mapped_column(String(300))  # bearer credential, by reference only
+    status: Mapped[str] = mapped_column(String(10), nullable=False, default="active")
+    tools: Mapped[list[Any]] = mapped_column(PortableJSON, nullable=False, default=list)  # last discovery, normalised
+    tool_policy: Mapped[dict[str, Any]] = mapped_column(PortableJSON, nullable=False, default=dict)  # name -> {enabled, level}
+    discovered_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_by: Mapped[uuid.UUID | None] = mapped_column(Uuid)
+    created_at: Mapped[datetime] = _created()
