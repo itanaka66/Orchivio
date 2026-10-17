@@ -8,20 +8,22 @@ service), **Schema** (data structures only), **Planned**.
 
 | ID | Requirement | Status | Notes |
 |---|---|---|---|
-| FR-001/002 | Auth, organizations, projects | Schema | Tables exist; no endpoints, no password handling yet |
-| FR-003 | Platform RBAC | Library | `orchivio.policy.is_allowed`; not enforced by any endpoint yet |
+| FR-001 | Registration, login, logout | Done | Sessions + CSRF, scrypt, throttling, API tokens |
+| FR-002 | Organizations and projects | Done | Create/list/update/delete, members, tenant isolation tests |
+| FR-003 | Platform RBAC | Done | owner/admin/editor/viewer enforced on every platform endpoint |
+| FR-004 | Project activity history | Done | `GET /organizations/{id}/audit-events` (admin) |
 | FR-005 | Project export/import | Planned | Canonical JSON hash exists; no export format/endpoint |
 | FR-010..015 | AI intake, plans, proposals, approval | Schema | `proposals`, `ai_jobs`, `ai_*` tables; no orchestrator |
 | FR-018 | Provider adapters | Library | Interface + mock; no real provider adapter |
 | FR-020 | Entities, fields, relationships | Done | Schema + validation (no runtime) |
 | FR-021/022 | Pages, forms, lists | Schema | Validated; no renderer |
 | FR-023 | Declarative validation | Schema | Constraints modelled; no runtime enforcement |
-| FR-025 | Immutable revisions | Done | `RevisionRepository`; PostgreSQL trigger **not yet run against PostgreSQL** |
-| FR-026 | Diff and rollback | Done | Library + repository; rollback creates a new revision |
+| FR-025 | Immutable revisions | Done | `RevisionRepository` and `/applications/{id}/revisions`; PostgreSQL trigger **not yet run against PostgreSQL** |
+| FR-026 | Diff and rollback | Done | API + repository; rollback creates a new revision; A3+ changes need `acknowledge_risks` |
 | FR-027 | Static model checks | Done | See MODEL-SPEC.md rule table |
 | FR-028 | Enumerations | Done | Removal of a value is flagged risky |
 | FR-029 | Modules | Schema | Multiple modules validate; cross-module enum use in expressions is limited |
-| FR-043 | Audit logs | Partial | Revision events recorded; append-only trigger is PostgreSQL-only and untested |
+| FR-043 | Audit logs | Partial | Auth, membership, project, token and revision events recorded and queryable; append-only trigger is PostgreSQL-only and untested |
 | FR-050 | Typed expression language | Done | Parser, checker, interpreter, limits |
 | FR-051 | Computed fields | Partial | Type-checked, cycle detection; no stored/virtual runtime |
 | FR-060..063 | Two-plane security, row constraints | Library | Access resolution + SQL compiler; no runtime data layer yet |
@@ -42,13 +44,21 @@ Everything not listed is **Planned**.
   `IS DISTINCT FROM` predicates) are exercised only by the `postgres-migrations` CI job, which
   has not run yet.
 - `Dockerfile`, `docker-compose.yml` and `.github/workflows/ci.yml` have not been run.
+- Cookie behaviour was tested with the Starlette test client, not a real browser (the `Secure` flag
+  is asserted on the header only).
 - `ruff` was not available when the code was written; lint cleanliness is unchecked.
 - The SQL predicate compiler is checked against SQLite only.
 
 ## Known limitations
 
 - Request-size limiting trusts `Content-Length`; enforce a body limit at the reverse proxy too.
-- Stateless API endpoints accept a single static bearer token; real authentication is Phase 1.
+- The login throttle is per process; running several API replicas needs a shared store.
+- No email verification, password reset, MFA or SSO; registration is open unless
+  `ORCHIVIO_ALLOW_REGISTRATION=false`. There is no first-user bootstrap other than registering.
+- Members can only be added if they already have an account (no invitations).
+- Risky revisions are confirmed by a flag from the same caller; a second approver and the
+  proposal workflow are planned.
+- Database migrations are not run automatically at start-up (`alembic upgrade head`).
 - Expressions: no relationship traversal (`record.owner.name`), no empty list literals, no
   object literals; `/` and `%` do not compile to SQL (see EXPRESSION-SPEC.md).
 - Enumerations from another module cannot be named inside expressions.

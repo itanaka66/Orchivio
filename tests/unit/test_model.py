@@ -1,7 +1,7 @@
 import copy
 
 import pytest
-from conftest import load_yaml
+from tests_support import load_yaml
 from pydantic import ValidationError
 
 from orchivio.model import (

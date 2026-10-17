@@ -28,6 +28,7 @@ own data in separate schemas/databases and never share these tables
 | `organizations` | Tenant boundary | unique `slug` |
 | `memberships` | User ↔ organization with role | PK `(organization_id, user_id)`; role ∈ owner/admin/editor/viewer |
 | `projects` | Belongs to one organization | unique `(organization_id, slug)` |
+| `sessions` | Server-side login sessions (cookie token and CSRF token stored only as hashes) | unique `token_hash`; `expires_at`, `revoked_at` |
 | `api_tokens` | Scoped, expiring tokens (also MCP, planned) | unique `token_hash`; bound to an organization, optionally a project |
 
 ### Models and revisions

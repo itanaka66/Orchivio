@@ -5,7 +5,6 @@ from __future__ import annotations
 from functools import lru_cache
 from typing import Literal
 
-from pydantic import SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -15,15 +14,22 @@ class Settings(BaseSettings):
     env: Literal["dev", "prod"] = "dev"
     database_url: str = "sqlite:///./orchivio.db"
     artifact_dir: str = "./artifacts"
-    # Static bootstrap token for the stateless tool endpoints. Required when env=prod.
-    api_token: SecretStr | None = None
     max_body_bytes: int = 1_048_576
     llm_provider: Literal["mock"] = "mock"
 
-    @field_validator("api_token", mode="before")
-    @classmethod
-    def _blank_token_is_unset(cls, v: object) -> object:
-        return None if v is None or (isinstance(v, str) and not v.strip()) else v
+    # Accounts and sessions
+    allow_registration: bool = True
+    session_ttl_hours: int = 12
+    session_cookie_name: str = "orchivio_session"
+    # Cookie `Secure` flag. Must stay on in prod; set false only for plain-HTTP local dev.
+    cookie_secure: bool | None = None  # None => true in prod, false in dev
+    login_max_failures: int = 5
+    login_window_seconds: int = 900
+    log_json: bool = False
+
+    @property
+    def secure_cookies(self) -> bool:
+        return self.env == "prod" if self.cookie_secure is None else self.cookie_secure
 
 
 @lru_cache

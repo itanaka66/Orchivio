@@ -8,6 +8,7 @@ it (platform RBAC, tenant boundaries) is the caller's responsibility; see
 from __future__ import annotations
 
 import uuid
+from dataclasses import dataclass
 from typing import Any
 
 from sqlalchemy import func, select
@@ -27,6 +28,19 @@ from orchivio.model import (
 from .models import Application, AppRevision, AuditEvent, Branch
 
 MAIN = "main"
+
+
+@dataclass(frozen=True)
+class Plan:
+    """What ``create`` would store: the identified model, its issues and the diff vs current."""
+
+    model: AppModel
+    issues: list[Issue]
+    diff: ModelDiff | None  # None for the first revision
+
+    @property
+    def valid(self) -> bool:
+        return not has_errors(self.issues)
 
 
 class ModelInvalid(Exception):
@@ -68,6 +82,21 @@ class RevisionRepository:
     def diff(self, revision_id: uuid.UUID, base_revision_id: uuid.UUID) -> ModelDiff:
         return diff_models(to_model(self.get(base_revision_id)), to_model(self.get(revision_id)))
 
+    # -- planning
+    def _current(self, app: Application) -> AppRevision | None:
+        return self.session.get(AppRevision, app.current_revision_id) if app.current_revision_id else None
+
+    def plan(self, application_id: uuid.UUID, model: AppModel) -> Plan:
+        """Dry run of ``create``: assign ids, validate and diff. Writes nothing."""
+        app = self.session.get(Application, application_id)
+        if app is None:
+            raise NotFound(f"application {application_id}")
+        parent = self._current(app)
+        previous = to_model(parent) if parent else None
+        identified = assign_element_ids(model, previous=previous)
+        diff = diff_models(previous, identified) if previous else None
+        return Plan(identified, validate_model(identified), diff)
+
     # -- writes
     def _application(self, application_id: uuid.UUID) -> Application:
         app = self.session.get(Application, application_id, with_for_update=True)
@@ -101,11 +130,11 @@ class RevisionRepository:
         if any error-severity issue is found; nothing is written in that case.
         """
         app = self._application(application_id)
-        parent = self.session.get(AppRevision, app.current_revision_id) if app.current_revision_id else None
-        identified = assign_element_ids(model, previous=to_model(parent) if parent else None)
-        issues = validate_model(identified)
-        if has_errors(issues):
-            raise ModelInvalid(issues)
+        parent = self._current(app)
+        plan = self.plan(application_id, model)
+        if not plan.valid:
+            raise ModelInvalid(plan.issues)
+        identified = plan.model
 
         branch = self._main_branch(app)
         next_no = (

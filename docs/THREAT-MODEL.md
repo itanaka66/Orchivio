@@ -29,13 +29,15 @@ Status: ✅ implemented and tested · 🟡 partly / not verified end-to-end · �
 | T3 | **Injection via expressions/row constraints** | Values only as bind parameters; identifiers validated and quoted; non-compilable ⇒ deny; interpreter/SQL equivalence tests | ✅ SQLite · 🟡 PostgreSQL |
 | T4 | **Row-level rule bypass** through a new query path | Single data-access layer must apply `row_predicate` everywhere; generated negative tests; linter | ⬜ data layer, tests, linter not built |
 | T5 | **Privilege escalation via permission expansion** | Diff flags grants/expansions/anonymous as A3; consistency checker | ✅ detection · ⬜ approval enforcement |
-| T6 | **Cross-tenant access** | Every query scoped through membership; ids never trusted; cross-org tests | ⬜ (schema supports it; no endpoints yet) |
+| T6 | **Cross-tenant access** | Every resource resolved to its organization and authorized through membership; identical 404 for missing and hidden; cross-org tests | ✅ for the platform API (tests per resource); ⬜ application plane |
 | T7 | **Audit tampering** | Append-only table, no FKs, DB triggers, separate retention role | 🟡 migration written, never run on PostgreSQL |
 | T8 | **Revision tampering** | Immutable revisions, `model_hash`, trigger | 🟡 as above |
 | T9 | **Secret leakage** (keys in model, logs or LLM context) | Secrets only by reference; hashed tokens/passwords; redact before LLM calls; no stack traces in errors | 🟡 errors and hashing design done; redaction ⬜ |
 | T10 | **Path traversal in artifact storage** | Validated keys + resolved-path check | ✅ tested |
-| T11 | **Resource exhaustion (API)** | Body-size limit, bounded pagination, expression limits | 🟡 `Content-Length` only; rate limiting ⬜ |
-| T12 | **Unauthenticated access** | Bearer token required in prod; startup refuses prod without it | 🟡 bootstrap token only; real auth ⬜ |
+| T11 | **Resource exhaustion (API)** | Body-size limit, bounded pagination, expression limits, login throttle, password length cap | 🟡 `Content-Length` only; throttle is per process; general rate limiting ⬜ |
+| T12 | **Unauthenticated access / credential attacks** | Sessions (HttpOnly, SameSite=Lax, Secure in prod, server-side revocation, hashed), CSRF token, scrypt, generic login errors with constant-time dummy verification, throttling, scoped expiring API tokens that cannot mint tokens | ✅ tested; 🟡 SSO/MFA ⬜, throttle not shared across replicas |
+| T17 | **CSRF** | `X-CSRF-Token` on unsafe cookie-authenticated requests; SameSite=Lax | ✅ tested |
+| T18 | **User enumeration** | Same response and timing class for unknown/wrong/disabled logins | 🟡 registration reveals `email_taken`; member invite reveals `user_not_found` to admins |
 | T13 | **SSRF / data exfiltration through integrations and webhooks** | Per-environment allowlists, private-network blocking | ⬜ (Phase 9) |
 | T14 | **Malicious MCP tool use / injection through tool output** | Scoped tokens, proposal-only writes, tool output treated as data | ⬜ (Phase 9) |
 | T15 | **Supply-chain compromise** | Dependency and secret scanning, SBOM in CI; pinned runtime versions | ⬜ |
@@ -50,5 +52,5 @@ Status: ✅ implemented and tested · 🟡 partly / not verified end-to-end · �
 ## 5. Open items
 
 Choose worker isolation technology; decide on PostgreSQL RLS as defence in depth
-([ADR-0003](adr/0003-app-security-enforcement.md)); define retention periods; add rate limiting
-and CSRF protection with the session implementation.
+([ADR-0003](adr/0003-app-security-enforcement.md)); define retention periods; add general rate
+limiting, a shared throttle store (multi-replica), and MFA/SSO.

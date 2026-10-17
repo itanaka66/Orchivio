@@ -20,7 +20,11 @@ structures, APIs, business logic and tests. AI proposes changes; humans approve 
   hash-checked, branch-ready revisions with audit events.
 - **Interfaces** with reference adapters: LLM provider (mock + validated/retrying structured
   output), job queue, artifact store, audit sink.
-- **HTTP API scaffold**: health check and stateless `validate` / `diff` / `expression check`.
+- **Accounts and tenancy**: registration, login (cookie sessions with CSRF, or scoped API tokens),
+  organizations with owner/admin/editor/viewer roles, members, projects, audit log.
+- **Applications and revisions over HTTP**: create, validate, diff, roll back; changes that
+  expand permissions or remove data need explicit acknowledgement.
+- **Model tools**: authenticated `validate` / `diff` / `expression check` endpoints.
 
 ## Quick start
 
@@ -30,20 +34,23 @@ Requires Python 3.11+.
 python -m venv .venv && source .venv/bin/activate   # Windows: .venv\Scripts\activate
 pip install -e ".[dev,server]"
 pytest                                               # unit + integration tests (SQLite)
+
+alembic upgrade head                                 # creates ./orchivio.db (SQLite) by default
 uvicorn orchivio.api.main:app --reload               # http://127.0.0.1:8000/api/docs
 ```
 
-Try the validator against the sample model:
+Create an account and an application from the sample model (cookie-based session, as a browser
+would use it):
 
 ```bash
-python - <<'EOF'
-import yaml, json, urllib.request
-model = yaml.safe_load(open("examples/inventory-app/model.yaml"))
-req = urllib.request.Request("http://127.0.0.1:8000/api/v1/models/validate",
-    data=json.dumps({"model": model}).encode(), headers={"Content-Type": "application/json"})
-print(json.load(urllib.request.urlopen(req))["valid"])
-EOF
+B=http://127.0.0.1:8000/api/v1
+curl -c jar -H 'Content-Type: application/json' -d '{"email":"me@example.com","password":"a long passphrase","display_name":"Me"}' $B/auth/register
+CSRF=$(curl -sc jar -H 'Content-Type: application/json' -d '{"email":"me@example.com","password":"a long passphrase"}' $B/auth/login | python -c "import sys,json;print(json.load(sys.stdin)['csrf_token'])")
+curl -b jar -H "X-CSRF-Token: $CSRF" -H 'Content-Type: application/json' -d '{"name":"Acme","slug":"acme"}' $B/organizations
 ```
+
+Automation should use an API token (`POST /tokens`, then `Authorization: Bearer orv_…`);
+see [docs/API-SPEC.md](docs/API-SPEC.md) for every endpoint.
 
 With Docker (untested in CI so far): `cp .env.example .env`, set `POSTGRES_PASSWORD`, then
 `docker compose up --build`.
@@ -77,5 +84,7 @@ docs/           specifications, ADRs, threat model
 
 ## License
 
-The repository currently contains the GNU GPL v3 text in [LICENSE](LICENSE). The final licence is
-an open decision ([ADR-0006](docs/adr/0006-licence.md)); do not assume it is settled.
+GNU General Public License v3.0 (GPL-3.0-or-later) — Copyright (C) 2026 株式会社エージーネディア / agNedia Inc.
+
+The full text is in [LICENSE](LICENSE); see [ADR-0006](docs/adr/0006-licence.md) for the decision
+and what it does and does not cover.

@@ -1,26 +1,35 @@
 # ADR-0006: Open-source licence
 
-Status: **Open — needs the project owner** · Date: 2026-10-17 · DESIGN.md §18, §22 item 6
+Status: **Accepted** · Date: 2026-10-17 · DESIGN.md §18, §22 item 6
+
+## Decision
+Orchivio is licensed under the **GNU General Public License v3.0 or later (GPL-3.0-or-later)**.
+Copyright (C) 2026 株式会社エージーネディア / agNedia Inc. The full text is in `LICENSE`.
 
 ## Context
-The repository's `LICENSE` file is the GNU GPL v3 text (it came from repository creation). The
-design asks for a deliberate choice (§18.1): compare permissive (MIT/Apache-2.0) with copyleft
-options, and review the core, plugins, generated artifacts and examples separately.
+DESIGN.md §18.1 asks for a deliberate choice between permissive and copyleft licences and for
+the core, plugins, generated artifacts and examples to be reviewed separately.
 
-## Questions to settle
-1. Should the **core** be permissive (maximum adoption, allows closed forks and hosted
-   forks) or copyleft (GPL-3.0 / AGPL-3.0, which closes the network-service gap if hosted use
-   matters)?
-2. Is **generated application code and the exported model** guaranteed free of the platform's
-   licence obligations? (Strongly recommended; otherwise users cannot confidently ship what they
-   build.)
-3. Licence for **plugins/components** and the future registry.
-4. Contributor terms (DCO or CLA) before accepting outside contributions.
+## Consequences
+- Anyone distributing a modified Orchivio must provide the corresponding source under the GPL.
+  GPL-3.0 does **not** by itself cover use over a network (that is AGPL territory), so a hosted
+  fork is not obliged to publish its changes. Revisit if that matters.
+- Dependencies must be GPL-3.0-compatible. Check every new dependency's licence (CONTRIBUTING.md);
+  generate the SBOM and `NOTICE` before a release.
+- Contributions are accepted under the same licence. A contributor agreement (DCO or CLA) is
+  still undecided; settle it before accepting substantial outside contributions, because
+  relicensing later requires every contributor's consent.
 
-## Interim position
-No code is being relicensed. Until this ADR is decided, the repository stays under the GPL v3
-text already present, `pyproject.toml` points at that file, and no claim is made about a final
-licence. Check dependency licences for compatibility with whichever licence is chosen (SBOM and
-`NOTICE` are release requirements, §18.1).
+## Still to clarify (not decided by this ADR)
+1. **Generated applications and exported models.** The GPL applies to Orchivio's own code. Users
+   must be able to ship what they build, so state explicitly that application models, generated
+   code and generated artifacts are *not* covered by the platform's licence, and take care that
+   any code the generator copies from Orchivio into its output (templates, runtime libraries)
+   is under terms that allow this (for example the GPL runtime-library exception or a separate
+   permissive licence for those parts).
+2. **Plugins, components and the module registry** (Phase 12): licence requirements and the
+   linking boundary.
+3. **Trademark:** the licence grants no rights to the name; clearance is a separate item (§18.2).
 
-This is a legal and strategic decision; seek advice where appropriate.
+Item 1 should be settled before the first public release. This is a legal matter; seek advice
+where appropriate.
