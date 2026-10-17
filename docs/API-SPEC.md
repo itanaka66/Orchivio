@@ -93,6 +93,7 @@ one owner (`409 last_owner`). Any member may leave an organization.
 | POST | `/applications/{id}/preview/flows/{flow}/run` | run a server flow in the preview as the simulated user; returns status, error and the step trace |
 | POST/GET | `/revisions/{id}/test-runs`, `/test-runs/{id}`, POST `/test-runs/{id}/ai/repair` | generated tests |
 | POST | `/models/validate`, `/models/validate-flow`, `/models/lint`, `/models/diff`, `/expressions/check` | stateless tools (any authenticated caller); `validate-flow` checks one unsaved flow in a model's context and returns issue paths ending in `steps/<id>…` |
+| POST | `/mcp` | Studio MCP server (JSON-RPC 2.0, Streamable HTTP without SSE; bearer API token only); see below |
 | GET | `/healthz`, `/readyz` | liveness / readiness (unauthenticated; docs/OPERATIONS.md) |
 | GET | `/metrics` | Prometheus text; bearer `ORCHIVIO_METRICS_TOKEN`, disabled when unset |
 
@@ -112,6 +113,27 @@ one owner (`409 last_owner`). Any member may leave an organization.
 
 `acknowledge_risks` is the human confirmation step. Approval by a second person and the proposal
 workflow for AI and MCP changes (`/proposals`) are planned.
+
+### MCP server
+
+`POST /api/v1/mcp` implements `initialize`, `ping`, `tools/list` and `tools/call` (protocol versions 2025-06-18 and
+2025-03-26; notifications get `202`; batches and `GET` streams are not supported). Sessions are refused: only
+`Authorization: Bearer orv_…` tokens, so a token's organization, optional project and **scopes** bound what an agent
+can do. Tools run the same code and permission checks as the REST routes:
+
+| Tool | Level | Scope needed |
+|---|---|---|
+| `application.list`, `model.read`, `model.search`, `model.usages`, `model.lint`, `proposal.get`, `proposal.list` | A0 | `project.read` / `model.read` |
+| `model.validate` | A0 | any authenticated token |
+| `proposal.create` | A1 | `model.propose` (stored as a pending proposal with `source: "mcp"`) |
+| `tests.run` | A1 | `model.propose` |
+
+There is deliberately no tool that applies a proposal, creates a revision or approves anything: a person decides in
+the Studio, so an agent cannot raise its own approval level. Tool failures are results with `isError: true` and an
+`error` object (`code`, `status`, `details`); malformed JSON-RPC gets protocol errors. Each `tools/call` is audited
+(`mcp.tool_call`: tool, SHA-256 of the arguments, outcome — never the arguments themselves) and limited per token
+(`ORCHIVIO_MCP_RATE_PER_MINUTE`, default 120; `429`). Not implemented: `model.explain`, the MCP *client* (FR-087),
+resources/prompts, SSE.
 
 ### Branches and merging
 

@@ -36,6 +36,7 @@ class Settings(BaseSettings):
     login_max_failures: int = 5
     login_window_seconds: int = 900
     log_json: bool = False
+    mcp_rate_per_minute: int = 120  # tools/call requests per API token
 
     @field_validator("anthropic_api_key", "llm_model", "metrics_token", mode="before")
     @classmethod

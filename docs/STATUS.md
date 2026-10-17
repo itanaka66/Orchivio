@@ -37,6 +37,8 @@ service), **Schema** (data structures only), **Planned**.
 | FR-051 | Computed fields | Done | Type-checked, cycle detection; virtual (read) and stored (write) in the preview runtime |
 | FR-060..063 | Two-plane security, row constraints | Partial | Enforced by the preview data service on every operation; no end-user accounts yet (identity is simulated) |
 | FR-066 | Consistency checker | Done | 5 checks |
+| FR-086 | Studio MCP server | Partial | Read/search/usages/lint/validate/proposal/tests tools, proposal-only writes, audit, rate limit; no `model.explain`, no SSE; exercised only with a test client, not a real MCP agent |
+| FR-087 | MCP client for the AI Builder | Not started | |
 | FR-090 | Branch-ready revision graph | Done | `parent_revision_ids`, `branches` |
 | FR-091 | Branches and semantic merge | Done (API) | Three-way merge by element id with typed conflicts and per-conflict resolution; no UI yet, no per-branch preview |
 | FR-052 | Server Flows | Done (preview) | Modelled, validated, edited visually and executed transactionally under the caller's security; no elevation, no production deployment |

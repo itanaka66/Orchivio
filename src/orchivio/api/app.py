@@ -23,6 +23,7 @@ from .audit_sink import DbAuditSink
 from .metrics import Metrics
 from .observability import configure_logging, logger, new_request_id, request_id_var
 from .routes import ALL
+from .routes.mcp import RateLimiter
 from .settings import Settings, get_settings
 from .throttle import LoginThrottle
 
@@ -77,6 +78,7 @@ def create_app(
     app.state.artifacts = LocalArtifactStore(settings.artifact_dir)
     app.state.llm_provider = llm_provider or _provider_from_settings(settings)
     app.state.metrics = Metrics()
+    app.state.mcp_limiter = RateLimiter(settings.mcp_rate_per_minute)
     app.state.throttle = LoginThrottle(settings.login_max_failures, settings.login_window_seconds)
 
     @app.middleware("http")
