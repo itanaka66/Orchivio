@@ -1,0 +1,49 @@
+# Legacy schema 1.0 example (DESIGN.md section 8.3). Kept to test N-1 migration.
+schema_version: "1.0"
+application:
+  key: inventory
+  name: Inventory Manager
+  version: "0.1.0"
+  default_locale: en-US
+
+entities:
+  - name: Product
+    display_name: Product
+    fields:
+      - name: id
+        type: uuid
+        primary_key: true
+        generated: true
+      - name: name
+        type: string
+        required: true
+        max_length: 200
+      - name: sku
+        type: string
+        required: true
+        unique: true
+      - name: quantity
+        type: integer
+        required: true
+        minimum: 0
+      - name: created_at
+        type: datetime
+        generated: true
+    permissions:
+      read: [viewer, editor, admin]
+      create: [editor, admin]
+      update: [editor, admin]
+      delete: [admin]
+
+pages:
+  - key: product-list
+    path: /products
+    type: list
+    entity: Product
+    actions: [view, create, edit]
+
+  - key: product-create
+    path: /products/new
+    type: form
+    entity: Product
+    mode: create

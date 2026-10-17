@@ -1,0 +1,46 @@
+# Local development stack. Not hardened for production use.
+# Usage: cp .env.example .env && docker compose up --build
+services:
+  db:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: orchivio
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: orchivio
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U orchivio"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    ports:
+      - "127.0.0.1:5432:5432"
+
+  migrate:
+    build: .
+    command: ["alembic", "upgrade", "head"]
+    environment:
+      DATABASE_URL: postgresql+psycopg://orchivio:${POSTGRES_PASSWORD}@db:5432/orchivio
+    depends_on:
+      db:
+        condition: service_healthy
+
+  api:
+    build: .
+    environment:
+      ORCHIVIO_ENV: ${ORCHIVIO_ENV:-dev}
+      ORCHIVIO_API_TOKEN: ${ORCHIVIO_API_TOKEN:-}
+      ORCHIVIO_DATABASE_URL: postgresql+psycopg://orchivio:${POSTGRES_PASSWORD}@db:5432/orchivio
+      ORCHIVIO_ARTIFACT_DIR: /data/artifacts
+    volumes:
+      - artifacts:/data/artifacts
+    ports:
+      - "127.0.0.1:8000:8000"
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+
+volumes:
+  db-data:
+  artifacts:
