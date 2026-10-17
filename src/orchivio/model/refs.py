@@ -73,12 +73,20 @@ def build_refs(model: AppModel) -> list[Ref]:
                             if src:
                                 expr_refs(pg.element_id, src, target.split(".")[0], target)
     flow_id = {f"{m.key}.{f.key}": f.element_id for m in model.modules for f in m.flows}
+    integration_id = {f"{m.key}.{i.key}": i.element_id for m in model.modules for i in m.integrations or []}
     for mod in model.modules:
+        for ig in mod.integrations or []:  # an operation depends on the entities that type its body and response
+            for op in ig.operations:
+                for name in (op.body, op.response):
+                    if name:
+                        add(ig.element_id, ent_id.get(index.resolve_entity(mod.key, name) or ""), "integration-entity")
         for fl in mod.flows:
             for step in fl.steps:
                 cfg = step.config
                 if isinstance(cfg.get("entity"), str):
                     add(fl.element_id, ent_id.get(index.resolve_entity(mod.key, cfg["entity"]) or ""), "flow-entity")
+                if step.type == "call_integration" and isinstance(cfg.get("integration"), str):
+                    add(fl.element_id, integration_id.get(qualify(mod.key, cfg["integration"])), "flow-integration")
                 if step.type == "call_flow" and isinstance(cfg.get("flow"), str):
                     add(fl.element_id, flow_id.get(qualify(mod.key, cfg["flow"])), "flow-call")
     for rule in model.security.access:

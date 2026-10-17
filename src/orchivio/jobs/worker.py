@@ -42,12 +42,14 @@ class Worker:
     def __init__(self, session_factory: sessionmaker[Session], preview: PreviewStore, *, audit: AuditSink | None = None,
                  worker_id: str | None = None, lease_seconds: int = 120, per_app_limit: int = 2, batch: int = 10,
                  grace_seconds: int = 120, clock: Callable[[], datetime] = queue.utcnow,
-                 extra_steps: tuple[Callable[[], Any], ...] = ()) -> None:
+                 extra_steps: tuple[Callable[[], Any], ...] = (),
+                 integrations: Callable[[uuid.UUID], Any] | None = None) -> None:
         self.sessions, self.preview, self.audit = session_factory, preview, audit
         self.id = worker_id or f"worker-{uuid.uuid4().hex[:8]}"
         self.lease, self.per_app, self.batch, self.clock = lease_seconds, per_app_limit, batch, clock
         self.planner = Planner(grace_seconds)
         self.extra_steps = extra_steps
+        self.integrations = integrations
 
     def tick(self) -> TickResult:
         out = TickResult()
@@ -124,7 +126,8 @@ class Worker:
         project = s.get(Project, app.project_id)
         job.model_hash = rev.model_hash
         data = self.preview.open(app.id, model, rev.model_hash, audit=self.audit,
-                                 organization_id=project.organization_id if project else None, hooks=FlowHooks(model))
+                                 organization_id=project.organization_id if project else None, hooks=FlowHooks(model),
+                                 integrations=self.integrations(app.id) if self.integrations else None)
         user = AppUser(f"system:{job.trigger}:{job.flow}", frozenset({job.run_as_role}))
         res = FlowRunner(data.model, data).run(job.flow, job.args, user)
         return {"status": res.status, "steps": res.steps_executed, "error": res.error, "error_step": res.error_step}

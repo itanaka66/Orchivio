@@ -138,7 +138,8 @@ def _open(request: Request, db: Session, principal: Principal, app_id: uuid.UUID
         raise api_error(422, "invalid_request", "X-Preview-User must be 1-64 characters")
     try:
         data = request.app.state.preview_store.open(app.id, model, rev.model_hash, audit=request.app.state.audit_sink,
-                                                   organization_id=project.organization_id, hooks=FlowHooks(model))
+                                                   organization_id=project.organization_id, hooks=FlowHooks(model),
+                                                   integrations=request.app.state.integration_clients(app.id))
     except PreviewNotBuilt as e:
         raise api_error(409, "preview_not_built", "reset the preview first") from e
     except PreviewStale as e:

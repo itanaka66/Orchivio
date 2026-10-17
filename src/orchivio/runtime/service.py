@@ -36,7 +36,7 @@ from orchivio.expr import (
 )
 from orchivio.model import AppModel
 from orchivio.model.schema import FieldDef, parse_field_type, qualify
-from orchivio.ports import AuditRecord, AuditSink
+from orchivio.ports import AuditRecord, AuditSink, IntegrationClient
 from orchivio.security import record_allowed, resolve_access, resolve_fields, row_predicate
 
 from . import outbox
@@ -222,8 +222,10 @@ def to_json(value: Any) -> Any:
 class AppData:
     def __init__(self, engine: Engine, schema: RuntimeSchema, *, audit: AuditSink | None = None,
                  application_id: uuid.UUID | None = None, organization_id: uuid.UUID | None = None,
-                 clock: Callable[[], datetime] = lambda: datetime.now(UTC), hooks: Hooks | None = None) -> None:
+                 clock: Callable[[], datetime] = lambda: datetime.now(UTC), hooks: Hooks | None = None,
+                 integrations: IntegrationClient | None = None) -> None:
         self.engine = engine
+        self.integrations = integrations  # consumed REST APIs for flows; None = not available here
         self.schema = schema
         self.model: AppModel = schema.model
         self.audit = audit

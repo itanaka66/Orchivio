@@ -15,7 +15,7 @@ from typing import Any
 from sqlalchemy import Column, DateTime, Engine, MetaData, String, Table, delete, inspect, insert, select
 
 from orchivio.model import AppModel
-from orchivio.ports import AuditSink
+from orchivio.ports import AuditSink, IntegrationClient
 
 from . import outbox
 from .service import AppData, Hooks
@@ -62,7 +62,7 @@ class PreviewStore:
 
     def reset(self, application_id: uuid.UUID, model: AppModel, model_hash: str, *,
               audit: AuditSink | None = None, organization_id: uuid.UUID | None = None,
-              hooks: Hooks | None = None) -> tuple[RuntimeSchema, AppData]:
+              hooks: Hooks | None = None, integrations: IntegrationClient | None = None) -> tuple[RuntimeSchema, AppData]:
         """Drop this application's preview tables and rebuild them (empty) from ``model``."""
         self.drop(application_id)
         schema = RuntimeSchema(model, table_prefix(application_id))
@@ -71,11 +71,11 @@ class PreviewStore:
             conn.execute(insert(META).values(prefix=table_prefix(application_id), model_hash=model_hash,
                                              built_at=datetime.now(UTC)))
         return schema, AppData(self.engine, schema, audit=audit, application_id=application_id,
-                               organization_id=organization_id, hooks=hooks)
+                               organization_id=organization_id, hooks=hooks, integrations=integrations)
 
     def open(self, application_id: uuid.UUID, model: AppModel, model_hash: str, *,
              audit: AuditSink | None = None, organization_id: uuid.UUID | None = None,
-             hooks: Hooks | None = None) -> AppData:
+             hooks: Hooks | None = None, integrations: IntegrationClient | None = None) -> AppData:
         status = self.status(application_id)
         if status is None:
             raise PreviewNotBuilt("the preview has not been built")
@@ -83,4 +83,4 @@ class PreviewStore:
             raise PreviewStale("the model changed since the preview was built; reset it")
         schema = RuntimeSchema(model, table_prefix(application_id))
         return AppData(self.engine, schema, audit=audit, application_id=application_id, organization_id=organization_id,
-                       hooks=hooks)
+                       hooks=hooks, integrations=integrations)

@@ -82,6 +82,8 @@ def flatten(m: AppModel) -> Flat:
                 f.add(Node(_need(fld.element_id, fld.name), "field", eid, "fields", _dump(fld, set())))
         for pg in mod.pages:
             f.add(Node(_need(pg.element_id, pg.key), "page", mid, "pages", _dump(pg, set())))
+        for ig in mod.integrations or []:
+            f.add(Node(_need(ig.element_id, ig.key), "integration", mid, "integrations", _dump(ig, set())))
         for fl in mod.flows:
             fid = _need(fl.element_id, fl.key)
             f.add(Node(fid, "flow", mid, "flows", _dump(fl, {"steps", "edges", "params", "tests"})))
@@ -113,7 +115,7 @@ def unflatten(f: Flat, *, schema_version: str = "1.1") -> AppModel:
         return [f.nodes[i] for i in f.order.get((parent, slot), []) if i in f.nodes]
 
     def with_id(n: Node, extra: Mapping[str, Any] | None = None) -> dict[str, Any]:
-        return {**n.props, **(extra or {}), **({"element_id": n.id} if n.kind in ("module", "enum", "entity", "field", "page", "flow", "access") else {})}
+        return {**n.props, **(extra or {}), **({"element_id": n.id} if n.kind in ("module", "enum", "entity", "field", "page", "flow", "access", "integration") else {})}
 
     modules = []
     for mn in kids(ROOT, "modules"):
@@ -122,6 +124,7 @@ def unflatten(f: Flat, *, schema_version: str = "1.1") -> AppModel:
             "enumerations": [with_id(e) for e in kids(mn.id, "enumerations")],
             "entities": [with_id(e, {"fields": [with_id(x) for x in kids(e.id, "fields")]}) for e in kids(mn.id, "entities")],
             "pages": [with_id(p) for p in kids(mn.id, "pages")],
+            **({"integrations": [with_id(i) for i in kids(mn.id, "integrations")]} if kids(mn.id, "integrations") else {}),
             "flows": [with_id(fl, {"steps": [x.props for x in kids(fl.id, "steps")], "edges": [x.props for x in kids(fl.id, "edges")],
                                    "params": [x.props for x in kids(fl.id, "params")], "tests": [x.props for x in kids(fl.id, "tests")]})
                       for fl in kids(mn.id, "flows")]}))

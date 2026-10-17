@@ -701,3 +701,26 @@ class InboundDelivery(Base):
     event_id: Mapped[str] = mapped_column(String(128), nullable=False)
     job_id: Mapped[uuid.UUID | None] = mapped_column(Uuid)
     received_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class IntegrationDestination(Base):
+    """Where a logical integration destination lives for one application: base URL and how to authenticate.
+    Configured outside the model so the model stays portable and every target is explicitly allowlisted."""
+
+    __tablename__ = "integration_destinations"
+    __table_args__ = (
+        UniqueConstraint("application_id", "name", name="uq_integration_destinations_name"),
+        _in("auth_type", ("none", "bearer", "header"), "auth_type"),
+    )
+
+    id: Mapped[uuid.UUID] = _id()
+    application_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("applications.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    name: Mapped[str] = mapped_column(String(63), nullable=False)
+    base_url: Mapped[str] = mapped_column(String(2000), nullable=False)
+    auth_type: Mapped[str] = mapped_column(String(10), nullable=False, default="none")
+    auth_header: Mapped[str | None] = mapped_column(String(64))
+    secret_ref: Mapped[str | None] = mapped_column(String(300))  # a reference, never the credential
+    created_by: Mapped[uuid.UUID | None] = mapped_column(Uuid)
+    created_at: Mapped[datetime] = _created()

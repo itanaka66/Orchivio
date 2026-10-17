@@ -181,7 +181,35 @@ and day-of-week are OR-ed when both are restricted; no names or `L`/`W`/`#`). Ru
 `schedule-args` (each parameter needs a literal value that fits its type; no unknown names). Execution semantics
 are in docs/OPERATIONS.md §4. Adding a schedule is an ordinary property change of the flow in diffs and merges.
 
-## 13. Planned
+## 13. Integrations (consumed REST APIs)
+
+`modules[].integrations[]` (omitted when empty, so models without any keep their hash) describe external REST APIs
+a flow may call (FR-081):
+
+```yaml
+integrations:
+  - key: billing
+    destination: billing-api          # a logical name; the real base URL and credential are configured per application
+    operations:
+      - id: get_rate
+        method: GET
+        path: /rates/{currency_code}   # placeholders name path parameters
+        params: [ { name: currency_code, location: path, type: string } ]   # type: string|integer|decimal|boolean; json_name = wire name if different
+        response: Rate                 # a transient entity of the module; response_kind: object | list
+        response_map: { total_amount: totalAmount }   # entity field -> JSON property, where different
+      - { id: create_invoice, method: POST, path: /invoices, body: InvoiceRequest, response: InvoiceReceipt, response_kind: object }
+```
+
+Bodies and responses are typed by **transient entities** (no table), so expressions use them like records
+(`rate.rate > 100`). Validation: `duplicate-integration`, `duplicate-operation`, `duplicate-param`, `integration-path`
+(placeholders and declared path parameters must match; path parameters are required), `integration-body` (no body on
+GET/DELETE), `integration-response`, `integration-entity` (must be a transient entity of the model), `integration-map`;
+and for flows the `call_integration` step checks (known integration and operation, typed arguments, all required body
+fields, `into` exactly when there is a response). Flow tests give canned answers with `mocks:
+{"<integration>.<operation>": {status, json}}`; a call without a mock fails the test. Adding an integration, or a flow
+step that calls an operation the flow did not call before, is classified A3 (`external-integration`, `external-call`).
+
+## 14. Planned
 
 Flows, processes, scheduled jobs, integrations, AI steps, themes, translations, field-level
 security, per-element canonical YAML files (DESIGN.md §8.9).

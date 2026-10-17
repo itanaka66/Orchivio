@@ -16,6 +16,7 @@ from orchivio.expr import CheckEnv, EvalContext, ExprError, UserRef, check, eval
 from orchivio.expr.ast import BOOL
 from orchivio.model import AppModel
 from orchivio.model.schema import FlowDef, FlowTestCase
+from orchivio.ports import MockIntegrations
 from orchivio.runtime import AppUser, DataError, PreviewStore
 
 from .engine import FlowResult, FlowRunner, Limits
@@ -46,6 +47,7 @@ def run_flow_test(model: AppModel, model_hash: str, engine: Engine, flow_key: st
                     return FlowTestOutcome(case.name, False, [f"fixture for {entity} was rejected: {e.message} {e.details or ''}".strip()])
         roles = frozenset(case.user.roles if case.user.roles is not None else model.security.roles)
         user = AppUser(case.user.id, roles)
+        data.integrations = MockIntegrations(case.mocks)
         result = FlowRunner(model, data, limits=limits).run(flow_key, case.args, user)
         messages = _assert(case, result, data, user, flow_key)
         return FlowTestOutcome(case.name, not messages, messages, result)

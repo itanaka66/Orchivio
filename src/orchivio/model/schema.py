@@ -109,7 +109,7 @@ StepId = Annotated[str, StringConstraints(pattern=STEP_ID_PATTERN)]
 VarName = Annotated[str, StringConstraints(pattern=STEP_ID_PATTERN)]
 
 StepType = Literal["start", "retrieve", "create", "change", "delete", "decision", "loop", "call_flow",
-                   "raise_error", "end"]
+                   "call_integration", "raise_error", "end"]
 Handle = Literal["out", "true", "false", "body", "done"]
 
 
@@ -159,6 +159,15 @@ class FlowExpect(_Strict):
     records: list[RecordExpectation] = Field(default_factory=list, max_length=20)
 
 
+class IntegrationMock(_Strict):
+    """A canned answer for an integration operation in a flow test (tests never reach the network)."""
+
+    status: int = Field(default=200, ge=100, le=599)
+    json_body: Any = Field(default=None, alias="json")
+
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+
 class FlowTestCase(_Strict):
     """A declarative flow test: fixtures in, run, assertions out (FR-058)."""
 
@@ -166,6 +175,7 @@ class FlowTestCase(_Strict):
     args: dict[str, Any] = Field(default_factory=dict)
     user: FlowTestUser = Field(default_factory=FlowTestUser)
     fixtures: dict[str, list[dict[str, Any]]] = Field(default_factory=dict)
+    mocks: dict[str, IntegrationMock] | None = None  # "<integration>.<operation>" -> canned response
     expect: FlowExpect = Field(default_factory=FlowExpect)
 
 
@@ -194,12 +204,55 @@ class FlowDef(Element):
     schedule: ScheduleDef | None = None
 
 
+HTTP_METHODS = ("GET", "POST", "PUT", "PATCH", "DELETE")
+INTEGRATION_PARAM_TYPES = ("string", "integer", "decimal", "boolean")
+IntegrationKey = Annotated[str, StringConstraints(pattern=r"^[a-z][a-z0-9_]{0,62}$")]
+DestinationName = Annotated[str, StringConstraints(pattern=r"^[a-z][a-z0-9-]{0,62}$")]
+HttpPath = Annotated[str, StringConstraints(pattern=r"^/[A-Za-z0-9/_\-.{}~%:@!$&'()*+,;=]*$", max_length=300)]
+
+
+class IntegrationParam(_Strict):
+    name: FieldName
+    location: Literal["path", "query"]
+    type: Literal["string", "integer", "decimal", "boolean"] = "string"
+    required: bool = True
+    json_name: str | None = Field(default=None, max_length=100)  # the name on the wire when it is not ``name``
+
+
+class IntegrationOperation(_Strict):
+    """One call of an external REST API, typed by the model: scalar parameters, a request-body entity and a
+    response entity (both transient entities of the module)."""
+
+    id: KeyName
+    method: Literal["GET", "POST", "PUT", "PATCH", "DELETE"]
+    path: HttpPath
+    summary: str | None = Field(default=None, max_length=200)
+    params: list[IntegrationParam] = Field(default_factory=list, max_length=30)
+    body: EntityName | None = None
+    body_map: dict[str, str] = Field(default_factory=dict, max_length=100)  # field -> JSON property, where different
+    response: EntityName | None = None
+    response_kind: Literal["object", "list"] | None = None
+    response_map: dict[str, str] = Field(default_factory=dict, max_length=100)
+    timeout_seconds: int = Field(default=10, ge=1, le=30)
+
+
+class IntegrationDef(Element):
+    """A consumed REST API (FR-081). ``destination`` is a logical name; the real base URL and credentials are
+    configured per installation outside the model, so the model stays portable and destinations stay allowlisted."""
+
+    key: IntegrationKey
+    description: str | None = Field(default=None, max_length=500)
+    destination: DestinationName
+    operations: list[IntegrationOperation] = Field(default_factory=list, max_length=200)
+
+
 class ModuleDef(Element):
     key: KeyName
     enumerations: list[EnumDef] = Field(default_factory=list)
     entities: list[EntityDef] = Field(default_factory=list)
     pages: list[PageDef] = Field(default_factory=list)
     flows: list[FlowDef] = Field(default_factory=list)
+    integrations: list[IntegrationDef] | None = None  # None (not []) keeps the hash of models without any
 
 
 class FieldAccess(_Strict):

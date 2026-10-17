@@ -14,6 +14,7 @@ export function summary(type: string, c: Record<string, unknown>): string {
     case 'decision': return s('expr') || 'no condition'
     case 'loop': return `${s('item') || '?'} in ${s('over') || '?'} (max ${String(c.max_iterations ?? '?')})`
     case 'call_flow': return s('flow') || '?'
+    case 'call_integration': return `${s('integration') || '?'}.${s('operation') || '?'}${s('into') ? ` → ${s('into')}` : ''}`
     case 'raise_error': return s('message') || 'no message'
     default: return ''
   }

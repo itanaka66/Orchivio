@@ -86,6 +86,17 @@ export const STEP_META: Record<StepType, StepMeta> = {
     ],
     defaults: () => ({ flow: '', args: {} }),
   },
+  call_integration: {
+    label: 'Call API', glyph: '⇄', description: 'Call an operation of a consumed REST API (configured integration).',
+    fields: [
+      { name: 'integration', label: 'Integration', kind: 'text', required: true },
+      { name: 'operation', label: 'Operation', kind: 'text', required: true },
+      { name: 'args', label: 'Parameters', kind: 'args' },
+      { name: 'body', label: 'Request body fields', kind: 'args' },
+      { name: 'into', label: 'Store response in', kind: 'variable' },
+    ],
+    defaults: () => ({ integration: '', operation: '', args: {} }),
+  },
   raise_error: {
     label: 'Raise error', glyph: '⚠', description: 'Stop the flow and roll back with a message.',
     fields: [{ name: 'message', label: 'Message', kind: 'text', required: true }],

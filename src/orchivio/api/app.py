@@ -25,7 +25,7 @@ from orchivio.runtime import PreviewStore
 from .audit_sink import DbAuditSink
 from .metrics import Metrics
 from .observability import configure_logging, logger, new_request_id, request_id_var
-from orchivio.integrations import dispatcher_from_settings
+from orchivio.integrations import dispatcher_from_settings, integration_client_factory
 from orchivio.jobs import Worker
 
 from .routes import ALL
@@ -83,7 +83,7 @@ def create_app(
             dispatcher = dispatcher_from_settings(settings, session_factory, app.state.preview_store.engine)
             worker = Worker(session_factory, app.state.preview_store, audit=app.state.audit_sink,
                             lease_seconds=settings.worker_lease_seconds, per_app_limit=settings.worker_per_app_limit,
-                            extra_steps=(dispatcher.tick,))
+                            extra_steps=(dispatcher.tick,), integrations=app.state.integration_clients)
             thread = threading.Thread(target=worker.run_forever, args=(settings.worker_interval_seconds, stop),
                                       name="orchivio-jobs", daemon=True)
             thread.start()
@@ -104,6 +104,7 @@ def create_app(
     app.state.llm_provider = llm_provider or _provider_from_settings(settings)
     app.state.metrics = Metrics()
     app.state.mcp_limiter = RateLimiter(settings.mcp_rate_per_minute)
+    app.state.integration_clients = integration_client_factory(settings, session_factory)  # application id -> client
     app.state.inbound_limiter = RateLimiter(settings.inbound_rate_per_minute)
     app.state.throttle = LoginThrottle(settings.login_max_failures, settings.login_window_seconds)
 
