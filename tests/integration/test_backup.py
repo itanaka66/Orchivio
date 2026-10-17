@@ -1,5 +1,6 @@
 """Backup and restore (FR-044): a restored system must behave like the original."""
 
+from orchivio.db.schema_revision import SCHEMA_REVISION
 import io
 import json
 import shutil
@@ -117,7 +118,7 @@ def test_restore_refuses_a_database_that_is_not_empty_or_not_at_the_same_revisio
 def test_corruption_and_tampering_are_detected(system):
     data = backup(system["engine"], artifacts_dir=system["artifacts"])
     manifest, _ = read_backup(data)
-    assert manifest["tables"]["users"]["rows"] == 2 and manifest["schema_revision"] == "0003"
+    assert manifest["tables"]["users"]["rows"] == 2 and manifest["schema_revision"] == SCHEMA_REVISION
 
     def rewrite(change):
         out = io.BytesIO()

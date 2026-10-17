@@ -415,3 +415,60 @@ class AuditEvent(Base):
     target_id: Mapped[str | None] = mapped_column(String(64))
     meta: Mapped[dict[str, Any]] = mapped_column("metadata", PortableJSON, nullable=False, default=dict)
     created_at: Mapped[datetime] = _created()
+
+
+JOB_RUN_STATUS = ("queued", "running", "succeeded", "dead", "cancelled")
+
+
+class JobRun(Base):
+    """Background task queue and the history of scheduled runs (FR-055/056).
+
+    ``(application_id, flow, scheduled_for)`` is unique, so however many nodes plan the same cron occurrence
+    only one row exists. Manual and retry rows have no ``scheduled_for`` and are not constrained.
+    """
+
+    __tablename__ = "job_runs"
+    __table_args__ = (
+        _in("status", JOB_RUN_STATUS, "status"),
+        _in("trigger", ("schedule", "manual"), "trigger"),
+        UniqueConstraint("application_id", "flow", "scheduled_for", name="uq_job_runs_occurrence"),
+        Index("ix_job_runs_due", "status", "available_at"),
+    )
+
+    id: Mapped[uuid.UUID] = _id()
+    application_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("applications.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    flow: Mapped[str] = mapped_column(String(130), nullable=False)  # module.flow
+    args: Mapped[dict[str, Any]] = mapped_column(PortableJSON, nullable=False, default=dict)
+    run_as_role: Mapped[str] = mapped_column(String(64), nullable=False)
+    trigger: Mapped[str] = mapped_column(String(16), nullable=False)
+    scheduled_for: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    status: Mapped[str] = mapped_column(String(16), nullable=False, default="queued")
+    attempt: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    max_attempts: Mapped[int] = mapped_column(Integer, nullable=False, default=3)
+    backoff_seconds: Mapped[int] = mapped_column(Integer, nullable=False, default=60)
+    available_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    locked_by: Mapped[str | None] = mapped_column(String(100))
+    locked_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    model_hash: Mapped[str | None] = mapped_column(String(80))
+    error: Mapped[str | None] = mapped_column(Text)
+    result: Mapped[dict[str, Any] | None] = mapped_column(PortableJSON)
+    created_by: Mapped[uuid.UUID | None] = mapped_column(Uuid)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class ScheduleState(Base):
+    """Where the scheduler stopped planning for one scheduled flow. Advanced by compare-and-set."""
+
+    __tablename__ = "schedule_state"
+    __table_args__ = (UniqueConstraint("application_id", "flow", name="uq_schedule_state_flow"),)
+
+    id: Mapped[uuid.UUID] = _id()
+    application_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("applications.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    flow: Mapped[str] = mapped_column(String(130), nullable=False)
+    last_planned_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
