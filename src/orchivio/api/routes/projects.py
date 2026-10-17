@@ -11,10 +11,11 @@ from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from orchivio.db import ModelInvalid, ProposalRepository, RevisionRepository, to_model
+from orchivio.db import BranchError, ModelInvalid, ProposalRepository, RevisionRepository, to_model
 from orchivio.codegen import build_openapi
-from orchivio.db.models import Application, AppRevision, Project
+from orchivio.db.models import Application, AppRevision, Branch, Project
 from orchivio.db.proposals import NoChanges
+from orchivio.db.repository import NotFound
 from orchivio.model import CanonicalError, ModelDiff, build_archive, read_archive
 from orchivio.policy import ApprovalLevel
 
@@ -35,6 +36,9 @@ from .proposals import proposal_detail
 from ..schemas import (
     AppIn,
     AppOut,
+    BranchIn,
+    BranchOut,
+    MergeIn,
     Page,
     ProjectIn,
     ProjectOut,
@@ -193,14 +197,21 @@ def create_revision(app_id: uuid.UUID, body: RevisionIn, request: Request,
                     principal: Principal = Depends(current_principal), db: Session = Depends(get_db)) -> AppRevision:
     app, project = load_application(db, principal, app_id, "model.apply")
     repo = RevisionRepository(db)
-    plan = repo.plan(app.id, load_model(body.model))
+    try:
+        plan = repo.plan(app.id, load_model(body.model), body.branch)
+        status = None if body.branch == "main" else repo.branches_by_name(app.id, body.branch).status
+    except NotFound as e:
+        raise not_found("branch") from e
     if not plan.valid:
         raise _model_invalid(ModelInvalid(plan.issues))
     if plan.diff is not None and plan.diff.is_empty:
         raise api_error(409, "no_changes", "the model is identical to the current revision")
-    _gate_risks(plan.diff, body.acknowledge_risks)
+    if body.branch == "main":  # risky changes are gated where they reach main: here or at merge
+        _gate_risks(plan.diff, body.acknowledge_risks)
+    elif status != "open":
+        raise api_error(409, "branch_closed", "this branch is merged or abandoned")
     rev = repo.create(app.id, plan.model, created_by=principal.user_id, message=body.message,
-                      organization_id=project.organization_id)
+                      organization_id=project.organization_id, branch=body.branch)
     db.commit()
     return rev
 
@@ -212,6 +223,91 @@ def list_revisions(app_id: uuid.UUID, limit: int = Query(50, ge=1, le=200), offs
     total = db.scalar(select(func.count()).select_from(AppRevision).where(AppRevision.application_id == app.id)) or 0
     revs = RevisionRepository(db).list(app.id, limit=limit, offset=offset)
     return Page(items=[RevisionOut.model_validate(r) for r in revs], limit=limit, offset=offset, total=total)
+
+
+# --- branches ----------------------------------------------------------------
+
+
+def _load_branch(db: Session, principal: Principal, branch_id: uuid.UUID, permission: str) -> tuple[Branch, Application, Project]:
+    branch = db.get(Branch, branch_id)
+    if branch is None:
+        raise not_found("branch")
+    app, project = load_application(db, principal, branch.application_id, permission)
+    return branch, app, project
+
+
+@router.get("/applications/{app_id}/branches", response_model=list[BranchOut])
+def list_branches(app_id: uuid.UUID, principal: Principal = Depends(current_principal),
+                  db: Session = Depends(get_db)) -> list[Branch]:
+    app, _ = load_application(db, principal, app_id, "model.read")
+    rows = RevisionRepository(db).branches(app.id)
+    db.commit()  # the main branch row may have been created lazily
+    return rows
+
+
+@router.post("/applications/{app_id}/branches", status_code=201, response_model=BranchOut)
+def create_branch(app_id: uuid.UUID, body: BranchIn, principal: Principal = Depends(current_principal),
+                  db: Session = Depends(get_db)) -> Branch:
+    app, project = load_application(db, principal, app_id, "model.apply")
+    try:
+        branch = RevisionRepository(db).create_branch(app.id, body.name, from_revision_id=body.from_revision_id,
+                                                      created_by=principal.user_id, organization_id=project.organization_id)
+    except BranchError as e:
+        raise api_error(409 if e.code in ("branch_exists", "no_revision") else 422, e.code, str(e)) from e
+    except NotFound as e:
+        raise not_found("revision") from e
+    db.commit()
+    return branch
+
+
+@router.delete("/branches/{branch_id}", status_code=204)
+def abandon_branch(branch_id: uuid.UUID, principal: Principal = Depends(current_principal),
+                   db: Session = Depends(get_db)) -> Response:
+    branch, app, project = _load_branch(db, principal, branch_id, "model.apply")
+    try:
+        RevisionRepository(db).abandon_branch(branch, by=principal.user_id, organization_id=project.organization_id)
+    except BranchError as e:
+        raise api_error(409, e.code, str(e)) from e
+    db.commit()
+    return Response(status_code=204)
+
+
+@router.post("/branches/{branch_id}/merge")
+def merge_branch(branch_id: uuid.UUID, body: MergeIn, response: Response, principal: Principal = Depends(current_principal),
+                 db: Session = Depends(get_db)) -> dict[str, Any]:
+    """Three-way merge of this branch into ``into`` (default ``main``). Conflicts are returned, never guessed;
+    resolve them by element via ``resolutions`` ({conflict id: "ours"|"theirs"|"keep"|"drop"})."""
+    branch, app, project = _load_branch(db, principal, branch_id, "model.apply")
+    if branch.status != "open":
+        raise api_error(409, "branch_closed", "this branch is merged or abandoned")
+    repo = RevisionRepository(db)
+
+    def gate(diff: ModelDiff) -> None:
+        if body.into == "main":
+            _gate_risks(diff, body.acknowledge_risks)
+
+    try:
+        out = repo.merge_branches(app.id, branch.name, body.into, resolutions=body.resolutions, dry_run=body.dry_run,
+                                  message=body.message, created_by=principal.user_id,
+                                  organization_id=project.organization_id, require_acknowledged=gate)
+    except NotFound as e:
+        raise not_found("branch") from e
+    except BranchError as e:
+        raise api_error(422 if e.code == "same_branch" else 409, e.code, str(e)) from e
+    if out.status == "conflicts":
+        raise api_error(409, "merge_conflicts", f"{len(out.conflicts)} conflict(s) need a resolution",
+                        [c.as_dict() for c in out.conflicts])
+    if out.status == "invalid":
+        details = [i.as_dict() for i in out.issues if i.severity == "error"] or [c.as_dict() for c in out.conflicts]
+        raise api_error(422, "merge_invalid", "the merged model is not valid; resolve differently or fix the branch", details)
+    db.commit()
+    if out.status == "merged":
+        response.status_code = 201
+    return {"status": out.status, "revision_id": str(out.revision.id) if out.revision else None,
+            "revision_no": out.revision.revision_no if out.revision else None,
+            "conflicts_resolved": len(out.all_conflicts), "merged_from_both": out.merged_from_both,
+            "level": out.diff.level.name if out.diff else None,
+            "changes": [c.as_dict() for c in out.diff.changes] if out.diff else []}
 
 
 @router.get("/revisions/{revision_id}", response_model=RevisionDetail)

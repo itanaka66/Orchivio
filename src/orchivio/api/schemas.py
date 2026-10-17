@@ -149,6 +149,29 @@ class AppOut(BaseModel):
 
 class RevisionIn(_In):
     model: dict[str, Any]
+    branch: str = Field(default="main", max_length=61)
+    message: str | None = Field(default=None, max_length=1000)
+    acknowledge_risks: bool = False
+
+
+class BranchIn(_In):
+    name: str = Field(min_length=1, max_length=61)
+    from_revision_id: uuid.UUID | None = None
+
+
+class BranchOut(_Out):
+    id: uuid.UUID
+    application_id: uuid.UUID
+    name: str
+    status: str
+    head_revision_id: uuid.UUID | None
+    created_at: datetime
+
+
+class MergeIn(_In):
+    into: str = Field(default="main", max_length=61)
+    resolutions: dict[str, str] = Field(default_factory=dict)
+    dry_run: bool = False
     message: str | None = Field(default=None, max_length=1000)
     acknowledge_risks: bool = False
 

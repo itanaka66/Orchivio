@@ -5,6 +5,7 @@ from .diff import Change, MissingElementId, ModelDiff, diff_models
 from .ids import assign_element_ids, iter_elements
 from .lint import RULES, Finding, Rule, blocking, catalog_markdown, lint
 from .refs import Ref, build_refs, usages
+from .merge import Conflict, MergeResult, flatten, merge, unflatten
 from .migrate import UnsupportedSchemaVersion, migrate_to_latest
 from .schema import SCHEMA_VERSION, AppModel, canonical_json, model_hash
 from .validate import Issue, ModelIndex, has_errors, validate_flow, validate_model
@@ -15,8 +16,10 @@ __all__ = [
     "AppModel",
     "CanonicalError",
     "Change",
+    "Conflict",
     "Finding",
     "Issue",
+    "MergeResult",
     "MissingElementId",
     "ModelDiff",
     "ModelIndex",
@@ -30,14 +33,17 @@ __all__ = [
     "catalog_markdown",
     "canonical_json",
     "diff_models",
+    "flatten",
     "from_files",
     "has_errors",
     "iter_elements",
     "lint",
+    "merge",
     "migrate_to_latest",
     "model_hash",
     "read_archive",
     "to_files",
+    "unflatten",
     "usages",
     "validate_flow",
     "validate_model",

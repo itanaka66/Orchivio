@@ -38,6 +38,7 @@ service), **Schema** (data structures only), **Planned**.
 | FR-060..063 | Two-plane security, row constraints | Partial | Enforced by the preview data service on every operation; no end-user accounts yet (identity is simulated) |
 | FR-066 | Consistency checker | Done | 5 checks |
 | FR-090 | Branch-ready revision graph | Done | `parent_revision_ids`, `branches` |
+| FR-091 | Branches and semantic merge | Done (API) | Three-way merge by element id with typed conflicts and per-conflict resolution; no UI yet, no per-branch preview |
 | FR-052 | Server Flows | Done (preview) | Modelled, validated, edited visually and executed transactionally under the caller's security; no elevation, no production deployment |
 | FR-053 | Client Flows | Partial | Modelled and validated (decision/call/end only); no browser runtime |
 | FR-054 | Entity event hooks | Done (preview) | before/after create/update/delete bound to server flows, atomic, bounded recursion |
