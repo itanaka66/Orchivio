@@ -146,6 +146,12 @@ def validate_flow(model: AppModel, module_key: str, flow: FlowDef) -> list[Issue
     return v.issues
 
 
+def literal_fits(param_type: str, v: object) -> bool:
+    """Is the JSON value ``v`` acceptable for a flow parameter of this type? (Other types travel as strings.)"""
+    return {"integer": isinstance(v, int) and not isinstance(v, bool), "boolean": isinstance(v, bool),
+            "decimal": isinstance(v, (int, float)) and not isinstance(v, bool)}.get(param_type, v is None or isinstance(v, str))
+
+
 def has_errors(issues: Sequence[Issue]) -> bool:
     return any(i.severity == "error" for i in issues)
 
@@ -395,10 +401,7 @@ class _Validator:
             if name not in s.args:
                 self.err("schedule-args", f"{path}/args", f"parameter '{name}' needs a value", eid)
                 continue
-            v = s.args[name]
-            ok = {"integer": isinstance(v, int) and not isinstance(v, bool), "boolean": isinstance(v, bool),
-                  "decimal": isinstance(v, (int, float)) and not isinstance(v, bool)}.get(p.type, v is None or isinstance(v, str))
-            if not ok:
+            if not literal_fits(p.type, s.args[name]):
                 self.err("schedule-args", f"{path}/args/{name}", f"value does not fit parameter type '{p.type}'", eid)
 
     # -- security

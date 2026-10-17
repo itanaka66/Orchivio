@@ -116,6 +116,9 @@ one owner (`409 last_owner`). Any member may leave an organization.
 | GET | `/webhooks/{id}/deliveries`, `/webhook-deliveries/{id}`; POST `/webhook-deliveries/{id}/retry` | delivery log (`status`), one delivery with payload, requeue a dead one |
 | POST | `/apps/{app_id}/import/{entity}`; `/applications/{id}/preview/import/{entity}` | CSV import as the signed-in user / simulated role (`mode`, `dry_run`, `delimiter`, `ignore_unknown`, `map.*`); `422 import_rejected` lists row errors |
 | GET | `/apps/{app_id}/export/{entity}`; `/applications/{id}/preview/export/{entity}` | CSV download; needs the `export` operation, audited |
+| GET/POST | `/applications/{id}/inbound-webhooks` | signed endpoints that start a flow (admin): list / create |
+| GET/PATCH/DELETE | `/inbound-webhooks/{id}`; GET `/inbound-webhooks/{id}/events` | read / change mapping, role, secret, status / delete; accepted requests |
+| POST | `/hooks/{app_id}/{key}` | the public endpoint: authenticated only by `Orchivio-Signature`; `202`, `401`, `404`, `413`, `422`, `429` |
 | GET | `/healthz`, `/readyz` | liveness / readiness (unauthenticated; docs/OPERATIONS.md) |
 | GET | `/metrics` | Prometheus text; bearer `ORCHIVIO_METRICS_TOKEN`, disabled when unset |
 

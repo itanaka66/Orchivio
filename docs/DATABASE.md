@@ -68,6 +68,10 @@ artifact store), `package_deployments` (status `pending_approval|deployed|reject
 The outbox itself, `orchivio_outbox`, lives in the **runtime** database next to the application's data so that it is
 written in the same transaction (docs/INTEGRATIONS.md).
 
+`inbound_webhooks` (key, target flow, run-as role, secret reference, parameter mapping) and `inbound_deliveries`
+(receipts, unique per webhook and event id). `job_runs.trigger` also allows `webhook` and `job_runs.source_ref`
+records which request started a run.
+
 ### Audit
 `audit_events` — append-only. `plane` (platform/application) and `channel`
 (studio/api/mcp) separate streams. **No foreign keys on purpose:** audit history must outlive

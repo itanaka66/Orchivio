@@ -46,6 +46,8 @@ class Settings(BaseSettings):
     # trusted public keys (base64) may verify packages signed elsewhere, e.g. by another installation.
     package_signing_key: SecretStr | None = None
     package_trusted_public_keys: list[str] = []
+    inbound_max_body_bytes: int = 256 * 1024
+    inbound_rate_per_minute: int = 60  # per inbound webhook
     csv_max_bytes: int = 2 * 1024 * 1024
     csv_max_rows: int = 5000
     csv_max_export_rows: int = 10_000

@@ -125,6 +125,6 @@ class Worker:
         job.model_hash = rev.model_hash
         data = self.preview.open(app.id, model, rev.model_hash, audit=self.audit,
                                  organization_id=project.organization_id if project else None, hooks=FlowHooks(model))
-        user = AppUser(f"system:schedule:{job.flow}", frozenset({job.run_as_role}))
+        user = AppUser(f"system:{job.trigger}:{job.flow}", frozenset({job.run_as_role}))
         res = FlowRunner(data.model, data).run(job.flow, job.args, user)
         return {"status": res.status, "steps": res.steps_executed, "error": res.error, "error_step": res.error_step}

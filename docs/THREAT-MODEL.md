@@ -68,6 +68,9 @@ Status: ✅ implemented and tested · 🟡 partly / not verified end-to-end · �
 | A10 | CSV import used to bypass validation, row/field access or hooks | Rows are created through `AppData.create` as the caller; unwritable columns are refused; size, row and column limits | ✅ tested |
 | A11 | Formula injection and bulk exfiltration through CSV export | Separate `export` grant (A3 to widen), field and row filters, row cap, audit, quote-prefixing of formula cells | ✅ tested |
 
+| A12 | Forged, replayed or probing requests to the public inbound endpoint | HMAC-SHA256 with constant-time compare and 5-minute window; uniform 401 for every authentication failure (including an unreadable secret); 404 for unknown/paused; dedup on event id; body-size and rate limits; mapping checked only after authentication and values never echoed | ✅ tested · 🟡 rate limit is per process; unauthenticated requests still cost a database lookup |
+| A13 | A webhook sender escalates through the flow it triggers | The flow runs as the fixed `run_as_role` chosen by an admin (not by the sender); parameters are mapped and type-checked; application security applies to every step | ✅ |
+
 ## 4. Assumptions
 
 - PostgreSQL, the host OS and the TLS terminator are operated securely.

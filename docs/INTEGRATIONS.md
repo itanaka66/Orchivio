@@ -1,7 +1,7 @@
 # Integrations: business events and outbound webhooks
 
-Covers FR-083 (transactional outbox) and the outbound half of FR-082. Not built: inbound webhooks, consumed REST /
-OpenAPI import (FR-081), broker adapters, CSV/Excel import (FR-089).
+Covers FR-083 (transactional outbox) and FR-082 (outbound and inbound webhooks). Not built: consumed REST / OpenAPI
+import (FR-081), broker adapters.
 
 ## Business events
 
@@ -72,8 +72,35 @@ Checked when a subscription is saved (static) and again on every send (resolved)
   host. `ORCHIVIO_WEBHOOK_ALLOW_PRIVATE_NETWORKS` disables the address check and exists for local development only.
 * No redirects, 10 s timeout (`ORCHIVIO_WEBHOOK_TIMEOUT_SECONDS`), response bodies capped at 64 KiB and not stored.
 
+## Inbound webhooks
+
+An admin (`integration.manage`) registers an endpoint that starts a server flow:
+`POST /applications/{id}/inbound-webhooks` with `key`, `flow`, `run_as_role`, `secret_ref` (`env:`/`file:`),
+`arg_map` (flow parameter -> RFC 6901 JSON pointer into the payload, e.g. `/data/id`) and optional `defaults`
+(parameter -> literal, used when the pointer finds nothing). Every flow parameter needs a pointer or a default; roles,
+types and pointers are checked when the webhook is saved. The sender posts JSON to the returned
+`url_path` (`/api/v1/hooks/{application id}/{key}`):
+
+* **Authentication is the signature.** Same scheme as outbound deliveries: header
+  `Orchivio-Signature: t=<unix>,v1=<hex HMAC-SHA256 of "<t>.<raw body>">` (`orchivio.integrations.sign` builds it),
+  timestamp within 5 minutes. A missing, wrong or stale signature, and a server that cannot read the secret, all answer
+  the same `401 invalid_signature`; unknown, paused or foreign endpoints answer `404`. There is no session, cookie or
+  token on this route.
+* **Replay protection.** The event id is the `Webhook-Id` header if present, else the signature value. A second
+  request with the same id is acknowledged (`200`-class `202` with `duplicate: true`) and runs nothing. Receipts are
+  kept 7 days (`GET /inbound-webhooks/{id}/events`).
+* **Execution.** An accepted request is queued as a job (trigger `webhook`, up to 3 attempts), so the flow runs
+  asynchronously with the usual retries and dead-letter handling, as the system identity `system:webhook:<flow>` holding
+  only `run_as_role`. The response is `202 {accepted, duplicate, job_id}`; follow the job under
+  `/applications/{id}/jobs`.
+* **Payload checks happen after authentication** and never echo values: a pointer that finds nothing or a value of the
+  wrong type is `422 invalid_payload` naming the parameter; non-JSON is `400`; bodies over 256 KiB are `413`
+  (`ORCHIVIO_INBOUND_MAX_BODY_BYTES`); more than 60 requests a minute per webhook are `429`
+  (`ORCHIVIO_INBOUND_RATE_PER_MINUTE`, per process). Rejected requests are not recorded, so a corrected resend works.
+* Accepted requests are audited (`inbound_webhook.accepted`, application plane) without payload or secret.
+
 ## Not built
 
-Inbound webhooks (signature-verified triggers for flows), OpenAPI import and consumed integrations (FR-081), a
+OpenAPI import and consumed integrations (FR-081), a
 model-level `emit_event` step, broker adapters, per-environment allowlists (the allowlist is per installation), secret
 resolution beyond `env:`/`file:`, and a Studio UI.
