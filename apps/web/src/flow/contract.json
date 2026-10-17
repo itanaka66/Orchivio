@@ -1,0 +1,79 @@
+{
+  "clientSteps": [
+    "start",
+    "decision",
+    "call_flow",
+    "end"
+  ],
+  "handleNames": [
+    "out",
+    "true",
+    "false",
+    "body",
+    "done"
+  ],
+  "handles": {
+    "call_flow": [
+      "out"
+    ],
+    "change": [
+      "out"
+    ],
+    "create": [
+      "out"
+    ],
+    "decision": [
+      "true",
+      "false"
+    ],
+    "delete": [
+      "out"
+    ],
+    "end": [],
+    "loop": [
+      "body",
+      "done"
+    ],
+    "raise_error": [],
+    "retrieve": [
+      "out"
+    ],
+    "start": [
+      "out"
+    ]
+  },
+  "limits": {
+    "maxEdges": 400,
+    "maxIterations": 1000,
+    "maxRetrieve": 1000,
+    "maxSteps": 200
+  },
+  "patterns": {
+    "flowKey": "^[A-Za-z][A-Za-z0-9_]{0,62}$",
+    "stepId": "^[a-z][a-z0-9_]{0,30}$"
+  },
+  "serverSteps": [
+    "start",
+    "retrieve",
+    "create",
+    "change",
+    "delete",
+    "decision",
+    "loop",
+    "call_flow",
+    "raise_error",
+    "end"
+  ],
+  "stepTypes": [
+    "start",
+    "retrieve",
+    "create",
+    "change",
+    "delete",
+    "decision",
+    "loop",
+    "call_flow",
+    "raise_error",
+    "end"
+  ]
+}

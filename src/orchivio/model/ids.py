@@ -21,6 +21,8 @@ def iter_elements(model: AppModel) -> Iterator[tuple[tuple[str, ...], Element]]:
                 yield ("field", mod.key, ent.name, f.name), f
         for pg in mod.pages:
             yield ("page", mod.key, pg.key), pg
+        for fl in mod.flows:
+            yield ("flow", mod.key, fl.key), fl
     for rule in model.security.access:
         yield ("access", rule.entity, rule.role), rule
 

@@ -32,6 +32,45 @@ modules:
           - { name: created_at, type: datetime, generated: true }
         indexes:
           - { fields: [owner] }
+    flows:
+      - key: ReorderLowStock
+        kind: server
+        description: Mark products that fell below their reorder level and raise an error if none exist.
+        params:
+          - { name: min_gap, type: integer }
+        steps:
+          - { id: start, type: start, position: { x: 0, y: 0 } }
+          - id: find
+            type: retrieve
+            label: Find products
+            position: { x: 0, y: 120 }
+            config: { entity: Product, where: "quantity <= reorder_level - min_gap", into: low, many: true, limit: 100 }
+          - id: any
+            type: decision
+            label: Any found?
+            position: { x: 0, y: 240 }
+            config: { expr: "size(low) > 0" }
+          - id: each
+            type: loop
+            label: For each product
+            position: { x: -140, y: 380 }
+            config: { over: low, item: product, max_iterations: 100 }
+          - id: bump
+            type: change
+            position: { x: -280, y: 520 }
+            config: { target: product, values: { reorder_level: "product.reorder_level + 5" } }
+          - { id: done, type: end, label: Done, position: { x: -140, y: 660 } }
+          - id: none
+            type: raise_error
+            position: { x: 160, y: 380 }
+            config: { message: No product is below its reorder level }
+        edges:
+          - { id: e1, source: start, target: find }
+          - { id: e2, source: find, target: any }
+          - { id: e3, source: any, target: each, handle: "true" }
+          - { id: e4, source: any, target: none, handle: "false" }
+          - { id: e5, source: each, target: bump, handle: body }
+          - { id: e6, source: each, target: done, handle: done }
     pages:
       - key: product-list
         path: /products

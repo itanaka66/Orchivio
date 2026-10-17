@@ -35,6 +35,8 @@ service), **Schema** (data structures only), **Planned**.
 | FR-060..063 | Two-plane security, row constraints | Partial | Enforced by the preview data service on every operation; no end-user accounts yet (identity is simulated) |
 | FR-066 | Consistency checker | Done | 5 checks |
 | FR-090 | Branch-ready revision graph | Done | `parent_revision_ids`, `branches` |
+| FR-052 | Server Flows | Partial | Modelled, validated, versioned and editable visually (docs/FLOW-SPEC.md); **not executed**: no Logic Engine yet |
+| FR-053 | Client Flows | Partial | As above; restricted to decision/call/end steps |
 | FR-122 | Dependency graph | Done | Built and stored per revision; find-usages endpoint |
 | FR-120 | Model linter | Done | 21 rules, suppressions with justification, blocking errors, stored per revision |
 | FR-030 | CRUD API runtime | Partial | Preview environment only (docs/RUNTIME.md) |
@@ -67,6 +69,9 @@ Everything not listed is **Planned**.
 - The SQL predicate compiler is checked against SQLite only.
 
 ## Known limitations
+
+- The web Studio contains only the flow builder; mouse dragging, zoom and canvas rendering are untested in a browser, and no screen-reader testing was done (apps/web/README.md).
+- The CSRF token lives in `sessionStorage`; a new tab needs a new login.
 
 - Request-size limiting trusts `Content-Length`; enforce a body limit at the reverse proxy too.
 - The login throttle is per process; running several API replicas needs a shared store.

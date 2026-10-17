@@ -1,0 +1,91 @@
+:root {
+  --bg: #f6f7f9; --panel: #ffffff; --ink: #1c2330; --muted: #5a6577; --line: #d5dae3;
+  --accent: #2f5fd0; --accent-ink: #ffffff; --error: #b3261e; --error-bg: #fdeceb;
+  --warn: #8a5a00; --warn-bg: #fff4dc; --ok: #1e7a3c; --focus: #1a73e8;
+  --node: #ffffff; --node-line: #aab3c2; --edge: #7a8497;
+  color-scheme: light dark;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) {
+    --bg: #12161d; --panel: #1a202a; --ink: #e8ecf3; --muted: #9aa5b8; --line: #2d3646;
+    --accent: #7ba3ff; --accent-ink: #0d1424; --error: #ff8a80; --error-bg: #3a1c1a;
+    --warn: #ffcc66; --warn-bg: #3a2e14; --ok: #6fd08c; --focus: #8ab4ff;
+    --node: #212938; --node-line: #4a566b; --edge: #8591a8;
+  }
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--ink); font: 14px/1.45 system-ui, -apple-system, 'Segoe UI', sans-serif; }
+h1 { font-size: 1.4rem; margin: 0 0 1rem; } h2 { font-size: 1rem; margin: 0 0 .5rem; }
+code, .mono { font-family: ui-monospace, 'SF Mono', Consolas, monospace; font-size: .92em; }
+a, .link { color: var(--accent); background: none; border: 0; padding: 0; cursor: pointer; text-decoration: underline; font: inherit; }
+:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.hint { color: var(--muted); font-size: .9em; margin: .25rem 0; }
+.spacer { flex: 1; }
+
+button, select, input, textarea { font: inherit; color: inherit; }
+button { padding: .35rem .7rem; border: 1px solid var(--line); border-radius: 6px; background: var(--panel); cursor: pointer; }
+button:hover:not(:disabled) { border-color: var(--accent); }
+button:disabled { opacity: .5; cursor: not-allowed; }
+button.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+button.danger { color: var(--error); border-color: var(--error); margin-top: .75rem; }
+button.link { border: 0; background: none; padding: 0 .25rem; }
+input, select, textarea { width: 100%; padding: .35rem .5rem; border: 1px solid var(--line); border-radius: 6px; background: var(--panel); }
+input[type='checkbox'] { width: auto; }
+input[aria-invalid='true'], select[aria-invalid='true'] { border-color: var(--error); }
+
+.page { max-width: 760px; margin: 0 auto; padding: 24px 16px; }
+.card { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 16px; margin-bottom: 20px; }
+.list { list-style: none; padding: 0; display: grid; gap: .4rem; }
+.field { display: grid; gap: .2rem; margin: .6rem 0; }
+.field > span, .field > label, legend { font-weight: 600; font-size: .9em; }
+.field.check { display: flex; gap: .5rem; align-items: center; }
+fieldset { border: 1px solid var(--line); border-radius: 8px; margin: .6rem 0; padding: .5rem .75rem; }
+.kv-row { display: grid; grid-template-columns: 1fr 1.6fr auto; gap: .35rem; margin-bottom: .35rem; }
+.sev-error { color: var(--error); } .sev-warning { color: var(--warn); }
+
+.shell { display: flex; flex-direction: column; height: 100vh; }
+.topbar { display: flex; gap: 1rem; align-items: center; padding: .5rem 1rem; border-bottom: 1px solid var(--line); background: var(--panel); }
+.editor { display: flex; flex-direction: column; flex: 1; min-height: 0; }
+.toolbar { display: flex; flex-wrap: wrap; gap: .5rem; align-items: center; padding: .5rem 1rem; background: var(--panel); border-bottom: 1px solid var(--line); }
+.flow-name { margin-right: .75rem; }
+.validation { color: var(--muted); } .validation.has-errors { color: var(--error); font-weight: 600; }
+.editor-body { display: grid; grid-template-columns: 170px 1fr 330px; flex: 1; min-height: 0; }
+.palette, .side { background: var(--panel); padding: .75rem; overflow: auto; }
+.palette { border-right: 1px solid var(--line); } .side { border-left: 1px solid var(--line); }
+.palette ul { list-style: none; margin: 0; padding: 0; display: grid; gap: .35rem; }
+.palette button { width: 100%; text-align: left; }
+.canvas { min-height: 360px; position: relative; }
+.status { padding: .35rem 1rem; border-top: 1px solid var(--line); background: var(--panel); min-height: 2rem; }
+.problems { margin-top: 1.25rem; border-top: 1px solid var(--line); padding-top: .75rem; }
+.problems ul, .issues-inline { list-style: none; padding: 0; margin: .25rem 0; }
+.problems li, .issues-inline li { margin: .25rem 0; }
+.problems .sev { text-transform: uppercase; font-size: .75em; font-weight: 700; }
+.count { background: var(--line); border-radius: 10px; padding: 0 .45rem; font-size: .85em; }
+.inspector h2 code { color: var(--muted); font-weight: 400; }
+
+@media (max-width: 900px) {
+  .editor-body { grid-template-columns: 1fr; grid-template-rows: auto minmax(360px, 1fr) auto; }
+  .palette { border-right: 0; border-bottom: 1px solid var(--line); } .palette ul { grid-auto-flow: column; overflow-x: auto; }
+  .side { border-left: 0; border-top: 1px solid var(--line); }
+  .shell { height: auto; min-height: 100vh; }
+}
+
+/* React Flow nodes and edges */
+.step { background: var(--node); border: 2px solid var(--node-line); border-radius: 8px; padding: .4rem .6rem .9rem; min-width: 150px; max-width: 230px; }
+.step.is-selected { border-color: var(--accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 30%, transparent); }
+.step.has-error { border-color: var(--error); } .step.has-warning { border-color: var(--warn); }
+.step-start, .step-end { border-radius: 20px; text-align: center; }
+.step-raise_error { border-style: dashed; }
+.step-head { display: flex; gap: .4rem; align-items: center; font-weight: 600; }
+.step-glyph { width: 1.2em; text-align: center; }
+.step-summary { color: var(--muted); font-size: .85em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: ui-monospace, Consolas, monospace; }
+.badge { margin-left: auto; border-radius: 10px; padding: 0 .45rem; font-size: .8em; font-weight: 700; }
+.badge-error { background: var(--error); color: #fff; } .badge-warning { background: var(--warn); color: #fff; }
+.handle-label { position: absolute; top: 10px; left: 50%; transform: translateX(-50%); font-size: 10px; color: var(--muted); white-space: nowrap; pointer-events: none; }
+.react-flow { --xy-edge-stroke-default: var(--edge); --xy-background-color-default: var(--bg); }
+.react-flow__edge.edge-error .react-flow__edge-path { stroke: var(--error); stroke-width: 2; }
+.react-flow__node:focus-visible .step { outline: 3px solid var(--focus); }
+.react-flow__edge-textbg { fill: var(--panel); } .react-flow__edge-text { fill: var(--ink); font-size: 11px; }
+
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }

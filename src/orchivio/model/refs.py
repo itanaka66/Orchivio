@@ -72,6 +72,15 @@ def build_refs(model: AppModel) -> list[Ref]:
                         for src in (act.visible_expr, act.editable_expr):
                             if src:
                                 expr_refs(pg.element_id, src, target.split(".")[0], target)
+    flow_id = {f"{m.key}.{f.key}": f.element_id for m in model.modules for f in m.flows}
+    for mod in model.modules:
+        for fl in mod.flows:
+            for step in fl.steps:
+                cfg = step.config
+                if isinstance(cfg.get("entity"), str):
+                    add(fl.element_id, ent_id.get(index.resolve_entity(mod.key, cfg["entity"]) or ""), "flow-entity")
+                if step.type == "call_flow" and isinstance(cfg.get("flow"), str):
+                    add(fl.element_id, flow_id.get(qualify(mod.key, cfg["flow"])), "flow-call")
     for rule in model.security.access:
         add(rule.element_id, ent_id.get(rule.entity), "access-entity")
         found = index.entities.get(rule.entity)

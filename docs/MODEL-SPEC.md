@@ -13,6 +13,7 @@ modules:
     enumerations: [ { name, values } ]
     entities:     [ { name, display_name, transient, fields, indexes, hooks } ]
     pages:        [ { key, path, type, entity, mode, layout, columns, actions } ]
+    flows:        [ { key, kind, params, steps, edges } ]      # see FLOW-SPEC.md
 security:
   roles: [ ... ]
   access: [ { entity, role, operations, row_constraint } ]
@@ -70,6 +71,7 @@ Error-severity issues block creating a revision.
 | `missing-mode` | error | `form` page without `create`/`edit` |
 | `expression` | error | Expression fails to parse or type-check (message includes position) |
 | `computed-cycle` | error | Computed fields depend on each other (`a -> b -> a`) |
+| `duplicate-flow`, `flow-*`, `edge-*`, `step-not-allowed`, `missing-branch`, `unreachable-step`, `loop-*`, `duplicate-variable` | error | Flow structure and scoping rules (FLOW-SPEC.md) |
 | `unknown-role`, `unknown-page` | error | Security block references something undefined |
 | `no-access-rule` | error | Non-transient entity without any access rule (deny-by-default must be explicit) |
 | `hooks-not-supported` | warning | Entity hooks need Server Flows (not yet available) |

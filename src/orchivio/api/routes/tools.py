@@ -5,11 +5,22 @@ from __future__ import annotations
 from typing import Any
 
 from fastapi import APIRouter, Depends
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ValidationError
 
 from orchivio.expr import CheckEnv, ExprError, Type, check
 from orchivio.expr.ast import BOOL, DATETIME, DECIMAL, INT, STRING
-from orchivio.model import RULES, assign_element_ids, blocking, diff_models, has_errors, lint, model_hash, validate_model
+from orchivio.model import (
+    RULES,
+    assign_element_ids,
+    blocking,
+    diff_models,
+    has_errors,
+    lint,
+    model_hash,
+    validate_flow,
+    validate_model,
+)
+from orchivio.model.schema import FlowDef
 from orchivio.model.validate import ModelIndex
 from orchivio.security import check_consistency
 
@@ -63,6 +74,29 @@ def lint_model(body: ModelBody) -> dict[str, Any]:
     findings = lint(model)
     return {"blocking": len(blocking(findings)), "items": [f.as_dict() for f in findings],
             "rules": [{"id": r.id, "severity": r.severity, "category": r.category, "title": r.title} for r in RULES]}
+
+
+class FlowBody(BaseModel):
+    model: dict[str, Any]
+    module: str = Field(min_length=1, max_length=63)
+    flow: dict[str, Any]
+
+
+@router.post("/models/validate-flow")
+def validate_one_flow(body: FlowBody) -> dict[str, Any]:
+    """Validate one unsaved flow in the context of a model (live feedback for the flow editor).
+    Issue paths contain ``steps/<id>`` or ``edges/<id>`` so the editor can attach them to nodes."""
+    model = load_model(body.model)
+    try:
+        flow = FlowDef.model_validate(body.flow)
+    except ValidationError as e:
+        details = [{"loc": list(x["loc"]), "message": x["msg"]} for x in e.errors()[:50]]
+        raise api_error(422, "invalid_flow", "the flow failed schema validation", details) from e
+    try:
+        issues = validate_flow(model, body.module, flow)
+    except KeyError as e:
+        raise api_error(422, "unknown_module", "unknown module") from e
+    return {"valid": not has_errors(issues), "issues": [i.as_dict() for i in issues]}
 
 
 @router.post("/models/diff")

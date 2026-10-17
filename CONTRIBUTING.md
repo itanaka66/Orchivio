@@ -33,6 +33,14 @@ ruff check .
 7. ADRs, migrations and licence records updated.
 8. Known limitations written down.
 
+## Web Studio
+
+```bash
+cd apps/web && npm install && npm run typecheck && npm test
+```
+
+If you change the flow schema or validator, run `python scripts/export_web_contract.py`; `tests/unit/test_web_contract.py` fails when the generated files are stale.
+
 ## Code conventions
 
 - Package dependency rules are enforced by `tests/unit/test_architecture.py`; see

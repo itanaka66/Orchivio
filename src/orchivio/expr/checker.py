@@ -53,6 +53,8 @@ class CheckEnv:
     schema: SchemaTypes
     record_entity: str | None = None
     env_vars: Mapping[str, Type] = field(default_factory=dict)
+    # Flow variables (parameters and step outputs), visible as bare identifiers.
+    variables: Mapping[str, Type] = field(default_factory=dict)
     limits: Limits = DEFAULT_LIMITS
 
 
@@ -155,6 +157,9 @@ class _Checker:
             if ft is not None:
                 self.fields.add(name)
                 return ft
+        var = self.env.variables.get(name)
+        if var is not None:
+            return var
         if self.env.schema.enum_values(name) is not None:
             return Type("enumtype", name)
         raise self.fail(f"unknown identifier '{name}'", node)
@@ -171,7 +176,7 @@ class _Checker:
 
     def _member(self, node: Member) -> Type:
         ot = self.check(node.obj)
-        if ot.nullable and not node.safe and ot.kind not in ("entity", "enumtype", "envscope"):
+        if ot.nullable and not node.safe and ot.kind not in ("enumtype", "envscope"):
             raise self.fail(f"'{node.name}' accessed on a nullable value; use '?.'", node)
         if ot.kind == "entity":
             assert ot.name is not None

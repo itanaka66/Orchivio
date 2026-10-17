@@ -32,6 +32,9 @@ structures, APIs, business logic and tests. AI proposes changes; humans approve 
   consent and budget guards. See [docs/AI-BUILDER.md](docs/AI-BUILDER.md).
 - **Preview runtime**: tables and a CRUD service generated from the model, enforcing roles, row-level
   rules and validation; synthetic data; view-as-role. See [docs/RUNTIME.md](docs/RUNTIME.md).
+- **Flow builder** (`apps/web`): a React Flow editor for Server/Client Flows with a palette, inspector,
+  undo/redo, keyboard-operable connections and live server validation; saves as a proposal. Flows are
+  validated but **not executed yet** (docs/FLOW-SPEC.md).
 - **Generated tests**: access, row-constraint, CRUD and validation cases derived from the model, with
   coverage and run-to-run comparison.
 
@@ -64,6 +67,15 @@ see [docs/API-SPEC.md](docs/API-SPEC.md) for every endpoint.
 With Docker (untested in CI so far): `cp .env.example .env`, set `POSTGRES_PASSWORD`, then
 `docker compose up --build`.
 
+### Web Studio
+
+```bash
+cd apps/web
+npm install
+npm run dev      # http://localhost:5173, proxies /api to 127.0.0.1:8000
+npm test
+```
+
 ## Repository layout
 
 ```
@@ -87,6 +99,8 @@ docs/           specifications, ADRs, threat model
 | [docs/AI-BUILDER.md](docs/AI-BUILDER.md) | AI Builder, proposals, approval |
 | [docs/RUNTIME.md](docs/RUNTIME.md) | Preview runtime, synthetic data, generated tests |
 | [docs/LINT-RULES.md](docs/LINT-RULES.md) | Linter rule catalog (generated) |
+| [docs/FLOW-SPEC.md](docs/FLOW-SPEC.md) | Server/Client Flow model and validation rules |
+| [apps/web/README.md](apps/web/README.md) | Web Studio and flow builder |
 | [docs/DATABASE.md](docs/DATABASE.md) | Platform database schema |
 | [docs/INTERFACES.md](docs/INTERFACES.md) | Ports and extension points |
 | [docs/API-SPEC.md](docs/API-SPEC.md) | HTTP API conventions and endpoints |
