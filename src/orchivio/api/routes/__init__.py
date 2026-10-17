@@ -1,5 +1,5 @@
 """Route modules; each exposes ``router``."""
 
-from . import ai, auth, mcp, orgs, preview, projects, proposals, testruns, tokens, tools
+from . import ai, auth, jobs, mcp, orgs, preview, projects, proposals, testruns, tokens, tools
 
-ALL = (auth, orgs, projects, proposals, ai, preview, testruns, tokens, tools, mcp)
+ALL = (auth, orgs, projects, proposals, ai, preview, testruns, tokens, tools, mcp, jobs)

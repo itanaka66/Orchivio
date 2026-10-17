@@ -6,6 +6,7 @@
     orchivio import   model-dir/ | model.zip out.yaml
     orchivio diff     before after                            # exit 1 if they differ
     orchivio openapi  model.yaml [-o openapi.json]            # data API description
+    orchivio worker [--once] [--interval S]                   # scheduled jobs and the task queue
     orchivio backup | restore | verify-backup FILE            # see docs/OPERATIONS.md
 
 A model is a single YAML/JSON file, a directory of canonical files (docs/MODEL-SPEC.md) or a zip.
@@ -128,6 +129,8 @@ def run(args: argparse.Namespace, out: TextIO) -> int:
         return EXIT_OK
     if args.command in ("backup", "restore", "verify-backup"):
         return run_ops(args, out)
+    if args.command == "worker":
+        return run_worker(args, out)
     if args.command == "openapi":
         spec = json.dumps(build_openapi(load(args.path)), indent=2, sort_keys=True, ensure_ascii=False) + "\n"
         if args.out:
@@ -146,6 +149,33 @@ def run(args: argparse.Namespace, out: TextIO) -> int:
         print("no differences" if d.is_empty else f"highest approval level: {d.level.name}", file=out)
         return EXIT_OK if d.is_empty else EXIT_PROBLEMS
     raise CliError(f"unknown command {args.command}")
+
+
+def run_worker(args: argparse.Namespace, out: TextIO) -> int:
+    """Plan schedules and run queued jobs; any number of these can run side by side."""
+    import threading
+
+    from .api.audit_sink import DbAuditSink
+    from .api.settings import get_settings
+    from .db import make_engine, make_session_factory
+    from .jobs import Worker
+    from .runtime import PreviewStore
+
+    settings = get_settings()
+    sessions = make_session_factory(make_engine(settings.database_url))
+    worker = Worker(sessions, PreviewStore(make_engine(settings.preview_database_url)), audit=DbAuditSink(sessions),
+                    lease_seconds=settings.worker_lease_seconds, per_app_limit=settings.worker_per_app_limit)
+    if args.once:
+        t = worker.tick()
+        print(f"planned {t.planned}, ran {t.claimed}: {t.succeeded} succeeded, {t.retried} to retry, {t.dead} dead", file=out)
+        return EXIT_OK
+    print(f"worker {worker.id} polling every {args.interval:g}s (Ctrl-C to stop)", file=out)
+    stop = threading.Event()
+    try:
+        worker.run_forever(args.interval, stop)
+    except KeyboardInterrupt:
+        stop.set()
+    return EXIT_OK
 
 
 def run_ops(args: argparse.Namespace, out: TextIO) -> int:
@@ -203,6 +233,9 @@ def parser() -> argparse.ArgumentParser:
     r.add_argument("file")
     r.add_argument("--database-url")
     r.add_argument("--artifacts", help="directory to write artifacts into")
+    w = sub.add_parser("worker", help="plan scheduled jobs and run the background queue")
+    w.add_argument("--once", action="store_true", help="one pass, then exit")
+    w.add_argument("--interval", type=float, default=15.0)
     sub.add_parser("verify-backup").add_argument("file")
     d = sub.add_parser("diff")
     d.add_argument("before")

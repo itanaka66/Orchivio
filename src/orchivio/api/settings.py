@@ -37,6 +37,11 @@ class Settings(BaseSettings):
     login_window_seconds: int = 900
     log_json: bool = False
     mcp_rate_per_minute: int = 120  # tools/call requests per API token
+    # Background jobs: run the worker inside the API process (small installs) or use `orchivio worker`.
+    worker_enabled: bool = False
+    worker_interval_seconds: float = 15.0
+    worker_lease_seconds: int = 120
+    worker_per_app_limit: int = 2
 
     @field_validator("anthropic_api_key", "llm_model", "metrics_token", mode="before")
     @classmethod

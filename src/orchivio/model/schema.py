@@ -168,6 +168,18 @@ class FlowTestCase(_Strict):
     expect: FlowExpect = Field(default_factory=FlowExpect)
 
 
+class ScheduleDef(_Strict):
+    """Run a server flow on a cron schedule (UTC) as a system identity holding ``run_as_role`` (FR-055)."""
+
+    cron: str = Field(max_length=100)
+    run_as_role: KeyName
+    args: dict[str, str | int | float | bool | None] = Field(default_factory=dict, max_length=30)
+    enabled: bool = True
+    missed_runs: Literal["skip", "run_once"] = "skip"  # what to do for occurrences missed while nothing was running
+    max_attempts: int = Field(default=3, ge=1, le=10)
+    backoff_seconds: int = Field(default=60, ge=1, le=3600)  # doubled after every failed attempt
+
+
 class FlowDef(Element):
     """A Server or Client Flow as a directed acyclic graph of allowlisted steps (FLOW-SPEC.md)."""
 
@@ -178,6 +190,7 @@ class FlowDef(Element):
     steps: list[FlowStep] = Field(default_factory=list, max_length=200)
     edges: list[FlowEdge] = Field(default_factory=list, max_length=400)
     tests: list[FlowTestCase] = Field(default_factory=list, max_length=50)
+    schedule: ScheduleDef | None = None
 
 
 class ModuleDef(Element):

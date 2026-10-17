@@ -14,6 +14,7 @@ from typing import Literal
 from orchivio.expr import CheckEnv, ExprError, check
 from orchivio.expr.ast import BOOL, DATETIME, DECIMAL, INT, STRING, Type, enum_t, ref_t
 
+from .cron import CronError, parse_cron
 from .flows import FlowChecker, call_cycles
 from .hooks import HOOK_EVENTS
 from .ids import iter_elements
@@ -369,6 +370,36 @@ class _Validator:
             self.add(sev, code, path, msg, fl.element_id)  # type: ignore[arg-type]
 
         FlowChecker(self.index, mod, fl, flows, report, f"/modules/{mi}/flows/{fl.key}", implicit).run()
+        if fl.schedule is not None:
+            self.check_schedule(fl, f"/modules/{mi}/flows/{fl.key}/schedule", implicit is not None)
+
+    def check_schedule(self, fl: FlowDef, path: str, is_hook: bool) -> None:
+        s = fl.schedule
+        assert s is not None
+        eid = fl.element_id
+        if fl.kind != "server":
+            self.err("schedule-not-server", path, "only server flows can be scheduled", eid)
+        if is_hook:
+            self.err("schedule-hook", path, "an entity hook flow runs on its event and cannot also be scheduled", eid)
+        try:
+            parse_cron(s.cron)
+        except CronError as e:
+            self.err("bad-cron", f"{path}/cron", f"invalid cron expression: {e}", eid)
+        if s.run_as_role not in self.model.security.roles:
+            self.err("unknown-role", f"{path}/run_as_role", f"role '{s.run_as_role}' is not defined in security.roles", eid)
+        params = {p.name: p for p in fl.params}
+        for name in s.args:
+            if name not in params:
+                self.err("schedule-args", f"{path}/args/{name}", f"flow has no parameter '{name}'", eid)
+        for name, p in params.items():
+            if name not in s.args:
+                self.err("schedule-args", f"{path}/args", f"parameter '{name}' needs a value", eid)
+                continue
+            v = s.args[name]
+            ok = {"integer": isinstance(v, int) and not isinstance(v, bool), "boolean": isinstance(v, bool),
+                  "decimal": isinstance(v, (int, float)) and not isinstance(v, bool)}.get(p.type, v is None or isinstance(v, str))
+            if not ok:
+                self.err("schedule-args", f"{path}/args/{name}", f"value does not fit parameter type '{p.type}'", eid)
 
     # -- security
     def security(self) -> None:

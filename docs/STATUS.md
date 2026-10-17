@@ -43,6 +43,8 @@ service), **Schema** (data structures only), **Planned**.
 | FR-091 | Branches and semantic merge | Done (API) | Three-way merge by element id with typed conflicts and per-conflict resolution; no UI yet, no per-branch preview |
 | FR-052 | Server Flows | Done (preview) | Modelled, validated, edited visually and executed transactionally under the caller's security; no elevation, no production deployment |
 | FR-053 | Client Flows | Partial | Modelled and validated (decision/call/end only); no browser runtime |
+| FR-055 | Scheduled jobs | Partial | Cron schedules on server flows, planned once across workers, missed-run policy; runs in the preview runtime only (no environments) |
+| FR-056 | Background task queues | Done (preview) | Leases, retry with exponential backoff, dead-letter queue, per-app concurrency; at-least-once. PostgreSQL path untested |
 | FR-054 | Entity event hooks | Done (preview) | before/after create/update/delete bound to server flows, atomic, bounded recursion |
 | FR-057 | Flow debugger | Partial | Step trace with ids and an overlay in the editor; no breakpoints or stepping |
 | FR-058 | Flow unit tests | Done | Declarative tests in the model, run in generated test runs |
