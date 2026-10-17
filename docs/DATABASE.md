@@ -62,6 +62,12 @@ artifact store), `package_deployments` (status `pending_approval|deployed|reject
 `app_users` (per application, lower-case unique username, `must_change_password`), `app_user_roles`, `app_sessions`
 (token and CSRF stored as hashes, bound to the application). Unrelated to `users`/`sessions` of the Studio.
 
+### Webhooks
+`webhook_subscriptions` (URL, secret *reference*, event patterns, field allow-list, status, failure counter) and
+`webhook_deliveries` (one per subscription and event, unique together; payload, attempts, lease, response status).
+The outbox itself, `orchivio_outbox`, lives in the **runtime** database next to the application's data so that it is
+written in the same transaction (docs/INTEGRATIONS.md).
+
 ### Audit
 `audit_events` — append-only. `plane` (platform/application) and `channel`
 (studio/api/mcp) separate streams. **No foreign keys on purpose:** audit history must outlive

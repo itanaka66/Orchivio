@@ -17,6 +17,7 @@ from sqlalchemy import Column, DateTime, Engine, MetaData, String, Table, delete
 from orchivio.model import AppModel
 from orchivio.ports import AuditSink
 
+from . import outbox
 from .service import AppData, Hooks
 from .tables import RuntimeSchema, table_prefix
 
@@ -41,6 +42,7 @@ class PreviewStore:
     def __init__(self, engine: Engine) -> None:
         self.engine = engine
         _meta.create_all(engine)
+        outbox.ensure(engine)
 
     def status(self, application_id: uuid.UUID) -> dict[str, Any] | None:
         with self.engine.connect() as conn:
@@ -56,6 +58,7 @@ class PreviewStore:
             md.drop_all(self.engine)
         with self.engine.begin() as conn:
             conn.execute(delete(META).where(META.c.prefix == prefix))
+        outbox.purge(self.engine, application_id=application_id)  # events about data that no longer exists
 
     def reset(self, application_id: uuid.UUID, model: AppModel, model_hash: str, *,
               audit: AuditSink | None = None, organization_id: uuid.UUID | None = None,
