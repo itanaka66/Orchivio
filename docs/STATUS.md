@@ -39,6 +39,10 @@ service), **Schema** (data structures only), **Planned**.
 | FR-066 | Consistency checker | Done | 5 checks |
 | FR-086 | Studio MCP server | Partial | Read/search/usages/lint/validate/proposal/tests tools, proposal-only writes, audit, rate limit; no `model.explain`, no SSE; exercised only with a test client, not a real MCP agent |
 | FR-087 | MCP client for the AI Builder | Not started | |
+| FR-094 | Environments and promotion pipeline | Partial | Ordered stages, stage/test/migration/approval gates, separation of duties; records the deployment only, no executor |
+| FR-095 | Immutable deployment packages | Done (control plane) | Reproducible zip, expand/contract plan, SBOM of direct dependencies, Ed25519 signature; no transitive SBOM |
+| FR-096 | Environment constants and secret references | Partial | Stored and audited; references are not resolved anywhere yet |
+| FR-097 | Near-zero-downtime migrations | Not started | Plans only |
 | FR-090 | Branch-ready revision graph | Done | `parent_revision_ids`, `branches` |
 | FR-091 | Branches and semantic merge | Done (API) | Three-way merge by element id with typed conflicts and per-conflict resolution; no UI yet, no per-branch preview |
 | FR-052 | Server Flows | Done (preview) | Modelled, validated, edited visually and executed transactionally under the caller's security; no elevation, no production deployment |

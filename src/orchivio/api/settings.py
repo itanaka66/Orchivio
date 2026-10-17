@@ -42,8 +42,12 @@ class Settings(BaseSettings):
     worker_interval_seconds: float = 15.0
     worker_lease_seconds: int = 120
     worker_per_app_limit: int = 2
+    # Deployment packages are signed with Ed25519: base64 of the raw 32-byte seed (`orchivio keygen`). Extra
+    # trusted public keys (base64) may verify packages signed elsewhere, e.g. by another installation.
+    package_signing_key: SecretStr | None = None
+    package_trusted_public_keys: list[str] = []
 
-    @field_validator("anthropic_api_key", "llm_model", "metrics_token", mode="before")
+    @field_validator("anthropic_api_key", "llm_model", "metrics_token", "package_signing_key", mode="before")
     @classmethod
     def _blank_is_unset(cls, v: object) -> object:
         return None if v is None or (isinstance(v, str) and not v.strip()) else v

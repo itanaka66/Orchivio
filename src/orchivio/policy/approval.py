@@ -38,6 +38,10 @@ _MIN_ROLE: dict[str, PlatformRole] = {
     "project.export": PlatformRole.ADMIN,
     "member.manage": PlatformRole.ADMIN,
     "token.manage": PlatformRole.ADMIN,
+    "delivery.manage": PlatformRole.ADMIN,  # environments, constants, secret references
+    "package.build": PlatformRole.EDITOR,
+    "deployment.request": PlatformRole.EDITOR,
+    "deployment.approve": PlatformRole.ADMIN,
     "project.delete": PlatformRole.OWNER,
     "organization.delete": PlatformRole.OWNER,
 }
@@ -58,6 +62,10 @@ _ACTION_LEVEL: dict[str, ApprovalLevel] = {
     "model.rollback": ApprovalLevel.A2,
     "project.export": ApprovalLevel.A3,
     "project.delete": ApprovalLevel.A3,
+    "package.build": ApprovalLevel.A2,
+    "deployment.request": ApprovalLevel.A2,
+    "deployment.approve": ApprovalLevel.A4,
+    "delivery.manage": ApprovalLevel.A3,
     "deployment.production": ApprovalLevel.A4,
     "secret.change": ApprovalLevel.A4,
 }
