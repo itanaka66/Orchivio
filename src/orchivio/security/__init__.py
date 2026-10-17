@@ -6,6 +6,7 @@ from .access import (
     AccessDecision,
     record_allowed,
     resolve_access,
+    resolve_fields,
     row_predicate,
 )
 from .consistency import Finding, check_consistency
@@ -18,5 +19,6 @@ __all__ = [
     "check_consistency",
     "record_allowed",
     "resolve_access",
+    "resolve_fields",
     "row_predicate",
 ]

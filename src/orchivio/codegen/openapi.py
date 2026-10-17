@@ -15,7 +15,7 @@ from typing import Any
 
 from orchivio.model import AppModel, ModelIndex
 from orchivio.model.schema import FieldDef, parse_field_type, qualify
-from orchivio.security import resolve_access
+from orchivio.security import resolve_access, resolve_fields
 
 OPS = (("list", "read"), ("create", "create"), ("read", "read"), ("update", "update"), ("delete", "delete"))
 ERROR_REF = {"$ref": "#/components/schemas/Error"}
@@ -108,7 +108,7 @@ class _Gen:
             if f.required and f.default is None and not f.default_expr:
                 create_required.append(f.name)
         return {
-            name: {"type": "object", "properties": resp_props, "required": [f.name for f in ent.fields],
+            name: {"type": "object", "properties": resp_props, "required": self.always_present(q, ent),
                    "additionalProperties": False, **({"title": ent.display_name} if ent.display_name else {})},
             f"{name}Create": {"type": "object", "properties": create_props, "additionalProperties": False,
                               **({"required": create_required} if create_required else {})},
@@ -123,6 +123,19 @@ class _Gen:
 
     def roles_for(self, q: str, operation: str) -> list[str]:
         return [r for r in self.model.security.roles if resolve_access(self.model, [r], q, operation).allowed]
+
+    def always_present(self, q: str, ent) -> list[str]:
+        """Fields every role that can read the entity receives; field-level access removes the others."""
+        sets = [resolve_fields(self.model, [r], q, "read") for r in self.roles_for(q, "read")]
+        return [f.name for f in ent.fields if all(s is None or f.name in s or f.primary_key for s in sets)]
+
+    def field_access(self, q: str, access: str) -> dict[str, list[str]]:
+        key = "read" if access == "read" else "write"
+        out: dict[str, list[str]] = {}
+        for r in self.model.security.access:
+            if r.entity == q and access in r.operations and r.fields is not None and getattr(r.fields, key) is not None:
+                out[r.role] = sorted(getattr(r.fields, key))
+        return out
 
     def constraints(self, q: str, operation: str) -> dict[str, str]:
         return {r.role: r.row_constraint for r in self.model.security.access
@@ -142,6 +155,8 @@ class _Gen:
         }
         if (c := self.constraints(q, access)):
             op["x-orchivio-row-constraints"] = c
+        if (fa := self.field_access(q, access)):
+            op["x-orchivio-field-access"] = {"restricted_roles": fa, "applies_to": "response fields" if access == "read" else "writable fields"}
         r = op["responses"]
         err = lambda desc: {"description": desc, "content": {"application/json": {"schema": ERROR_REF}}}  # noqa: E731
         r["403"] = err("The caller's roles do not allow this operation.")

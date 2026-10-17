@@ -37,7 +37,7 @@ from orchivio.expr import (
 from orchivio.model import AppModel
 from orchivio.model.schema import FieldDef, parse_field_type, qualify
 from orchivio.ports import AuditRecord, AuditSink
-from orchivio.security import record_allowed, resolve_access, row_predicate
+from orchivio.security import record_allowed, resolve_access, resolve_fields, row_predicate
 
 from .tables import USER_REF_LENGTH, EntityInfo, RuntimeSchema
 
@@ -339,6 +339,32 @@ class AppData:
             raise Forbidden("access rule cannot be evaluated; denied") from e
         return decision, text(pred.sql).bindparams(**pred.params)
 
+    def readable_fields(self, entity: str, user: AppUser) -> frozenset[str] | None:
+        """Fields ``user`` may see on ``entity`` (``None`` = all). The primary key is always included so a
+        record can still be addressed."""
+        info = self._info(entity)
+        names = resolve_fields(self.model, user.roles, info.qualified, "read")
+        return None if names is None else names | {info.pk.name}
+
+    def writable_fields(self, entity: str, user: AppUser, op: str) -> frozenset[str] | None:
+        return resolve_fields(self.model, user.roles, self._info(entity).qualified, op)
+
+    def _check_writable(self, info: EntityInfo, user: AppUser, op: str, data: Mapping[str, Any]) -> None:
+        """Reject writes to fields the roles may not write. A field the user cannot even read is reported as
+        unknown, so the error does not reveal that it exists."""
+        writable = self.writable_fields(info.qualified, user, op)
+        if writable is None:
+            return
+        readable = self.readable_fields(info.qualified, user)
+        known = {f.name for f in info.entity.fields}
+        errors = []
+        for name in data:
+            if name in known and name not in writable:
+                hidden = readable is not None and name not in readable
+                errors.append({"field": name, "message": "unknown field" if hidden else "read-only for your roles"})
+        if errors:
+            raise Invalid("the record is invalid", errors)
+
     def _row_to_eval(self, info: EntityInfo, row: Mapping[str, Any]) -> dict[str, Any]:
         rec = {f.name: to_eval(row.get(f.name)) for f in info.stored_fields}
         return rec
@@ -364,8 +390,11 @@ class AppData:
 
     def _present(self, info: EntityInfo, row: Mapping[str, Any], user: AppUser | None) -> dict[str, Any]:
         rec = self._with_computed(info, user, self._row_to_eval(info, row))
+        visible = None if user is None else self.readable_fields(info.qualified, user)
         out = {}
         for f in info.entity.fields:
+            if visible is not None and f.name not in visible:
+                continue  # removed from the response, not blanked (FR-064)
             raw = row.get(f.name) if f in info.stored_fields else rec.get(f.name)
             out[f.name] = to_json(raw)
         return out
@@ -489,8 +518,9 @@ class AppData:
         _, pred = self._guard(info, user, "read")
         t = info.table
         where = [pred]
+        visible = self.readable_fields(entity, user)  # filtering or sorting by a hidden field would leak its values
         for name, raw in (filters or {}).items():
-            f = next((x for x in info.stored_fields if x.name == name), None)
+            f = next((x for x in info.stored_fields if x.name == name and (visible is None or x.name in visible)), None)
             if f is None:
                 raise Invalid("unknown filter field", [{"field": name, "message": "not a stored field"}])
             try:
@@ -499,7 +529,7 @@ class AppData:
                 raise Invalid("invalid filter", [{"field": name, "message": str(e)}]) from e
         order_col = t.c[info.pk.name]
         if order_by is not None:
-            if order_by not in t.c:
+            if order_by not in t.c or (visible is not None and order_by not in visible):
                 raise Invalid("cannot sort by that field", [{"field": order_by, "message": "not a stored field"}])
             order_col = t.c[order_by]
         limit = max(1, min(limit, MAX_PAGE))
@@ -521,7 +551,10 @@ class AppData:
         with self._conn() as conn:
             rows = conn.execute(select(info.table).where(*clauses).order_by(info.table.c[info.pk.name])
                                 .limit(max(1, min(limit, MAX_PAGE * 5)))).mappings().all()
-        return [dict(r) for r in rows]
+        visible = self.readable_fields(entity, user)
+        if visible is None:
+            return [dict(r) for r in rows]
+        return [{k: (v if k in visible else None) for k, v in r.items()} for r in rows]  # flows act as the caller
 
     def get(self, entity: str, user: AppUser, row_id: Any) -> dict[str, Any]:
         info = self._info(entity)
@@ -543,6 +576,7 @@ class AppData:
         info = self._info(entity)
         with self.transaction():
             decision, _ = self._guard(info, user, "create")
+            self._check_writable(info, user, "create", data)
             values, rec = self._build_new(info, user, data)
             if not record_allowed(decision, rec, self._eval_ctx(info, user, rec)):
                 raise Forbidden("the new record would not satisfy your row-level access rule")
@@ -575,6 +609,7 @@ class AppData:
                 current = conn.execute(select(t).where(t.c[info.pk.name] == pk, pred)).mappings().first()
             if current is None:
                 raise RowNotFound("record not found")
+            self._check_writable(info, user, "update", patch)
             changes = self._validate(info, patch, creating=False)
             merged = {f.name: current[f.name] for f in info.stored_fields}
             merged.update(changes)

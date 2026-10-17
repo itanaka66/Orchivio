@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Literal
 
+from orchivio.expr import CheckEnv, ExprError, check
 from orchivio.model import AppModel, ModelIndex
 from orchivio.model.schema import qualify
 
@@ -49,6 +50,41 @@ def check_consistency(model: AppModel) -> list[Finding]:
         if not ent.transient and not readers.get(q):
             out.append(Finding("warning", "entity-without-readers", "/security/access", f"no role can read {q}"))
 
+    for ai, rule in enumerate(sec.access):
+        out += _field_findings(index, rule, f"/security/access/{ai}")
+
     if sec.anonymous:
         out.append(Finding("warning", "anonymous-access", "/security/anonymous", "anonymous access is enabled; it requires A3 approval and exposes pages without authentication"))
+    return out
+
+
+def _field_findings(index: ModelIndex, rule, path: str) -> list[Finding]:
+    """Field-level traps (FR-064): a rule can be consistent on its own and still leak or block."""
+    found = index.entities.get(rule.entity)
+    if found is None or rule.fields is None:
+        return []
+    mod, ent = found
+    out: list[Finding] = []
+    read, write = rule.fields.read, rule.fields.write
+    if read is not None:
+        env = CheckEnv(index.types_for(mod.key), rule.entity)
+        for f in ent.fields:
+            if f.computed is None or f.name not in read:
+                continue
+            try:
+                deps = check(f.computed.expr, env).fields
+            except ExprError:
+                continue
+            hidden = sorted(d for d in deps if d not in read and d != f.name)
+            if hidden:
+                out.append(Finding("warning", "computed-field-leak", f"{path}/fields/read",
+                                   f"computed field '{f.name}' is readable by '{rule.role}' but is derived from "
+                                   f"{', '.join(hidden)}, which that role cannot read; its value reveals them"))
+    if write is not None and "create" in rule.operations:
+        for f in ent.fields:
+            if (f.required and not f.generated and f.computed is None and f.default is None and f.default_expr is None
+                    and f.name not in write):
+                out.append(Finding("warning", "required-field-not-writable", f"{path}/fields/write",
+                                   f"'{rule.role}' may create {rule.entity} but cannot write required field '{f.name}' "
+                                   "(no default), so creating always fails"))
     return out

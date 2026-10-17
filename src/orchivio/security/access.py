@@ -70,6 +70,27 @@ def resolve_access(
     )
 
 
+def resolve_fields(model: AppModel, roles: Iterable[str], entity: str, operation: str) -> frozenset[str] | None:
+    """The fields ``roles`` may read (operation ``read``) or write (``create``/``update``) on ``entity``.
+
+    ``None`` means every field. Otherwise the union of the allow-lists of the granting rules: a rule without
+    a field list grants everything, so one unrestricted rule makes the whole answer ``None``. Field lists are
+    combined across the user's rules regardless of row constraints. Callers must have established that the
+    operation itself is allowed (``resolve_access``); with no granting rule the answer is the empty set.
+    """
+    if operation not in ("read", "create", "update"):
+        return None
+    role_set = set(roles)
+    granting = [r for r in model.security.access if r.entity == entity and r.role in role_set and operation in r.operations]
+    allowed: set[str] = set()
+    for r in granting:
+        names = None if r.fields is None else (r.fields.read if operation == "read" else r.fields.write)
+        if names is None:
+            return None
+        allowed.update(names)
+    return frozenset(allowed)
+
+
 def row_predicate(decision: AccessDecision, ctx: SqlContext) -> SqlPredicate:
     """SQL predicate to AND into every query for this operation.
 

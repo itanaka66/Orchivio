@@ -420,6 +420,20 @@ class _Validator:
                 self.err("unknown-entity", path, f"unknown entity '{rule.entity}'", rule.element_id)
                 continue
             covered.add(rule.entity)
+            if rule.fields is not None:
+                known = {f.name for f in found[1].fields}
+                for kind in ("read", "write"):
+                    names = getattr(rule.fields, kind)
+                    if names is None:
+                        continue
+                    self.dupes(names, "duplicate-access-field", f"{path}/fields/{kind}", "field")
+                    for n in names:
+                        if n not in known:
+                            self.err("unknown-access-field", f"{path}/fields/{kind}", f"{rule.entity} has no field '{n}'", rule.element_id)
+                if rule.fields.read is not None and "read" not in rule.operations:
+                    self.err("access-field-unused", f"{path}/fields/read", "fields.read is set but the rule does not grant read", rule.element_id)
+                if rule.fields.write is not None and not {"create", "update"} & set(rule.operations):
+                    self.err("access-field-unused", f"{path}/fields/write", "fields.write is set but the rule grants neither create nor update", rule.element_id)
             if rule.row_constraint:
                 env = CheckEnv(self.index.types_for(found[0].key), rule.entity)
                 self.expr(rule.row_constraint, env, BOOL, f"{path}/row_constraint", rule.element_id)

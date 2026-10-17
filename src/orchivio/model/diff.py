@@ -85,7 +85,13 @@ def _widened(old: dict[str, Any], new: dict[str, Any]) -> bool:
     """Did an access rule grant more than before?"""
     if set(new["operations"]) - set(old["operations"]):
         return True
-    return old.get("row_constraint") is not None and new.get("row_constraint") is None
+    if old.get("row_constraint") is not None and new.get("row_constraint") is None:
+        return True
+    for kind in ("read", "write"):
+        before, after = (old.get("fields") or {}).get(kind), (new.get("fields") or {}).get(kind)
+        if before is not None and (after is None or set(after) - set(before)):
+            return True
+    return False
 
 
 def _risks(etype: str, old: dict[str, Any], new: dict[str, Any]) -> list[str]:

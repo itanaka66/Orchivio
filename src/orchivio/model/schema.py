@@ -201,11 +201,20 @@ class ModuleDef(Element):
     flows: list[FlowDef] = Field(default_factory=list)
 
 
+class FieldAccess(_Strict):
+    """Which fields a rule exposes (FR-064). ``None`` means every field; a list is an allow-list, so a field
+    added to the entity later stays hidden from restricted rules until someone lists it."""
+
+    read: list[FieldName] | None = None
+    write: list[FieldName] | None = None
+
+
 class AccessRule(Element):
     entity: str  # qualified: module.Entity
     role: KeyName
     operations: list[Literal["read", "create", "update", "delete"]] = Field(min_length=1)
     row_constraint: Expr | None = None
+    fields: FieldAccess | None = None
 
 
 class SecurityModel(_Strict):
