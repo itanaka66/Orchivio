@@ -12,6 +12,7 @@ from datetime import datetime
 from typing import Any
 
 from sqlalchemy import (
+    Boolean,
     JSON,
     BigInteger,
     CheckConstraint,
@@ -472,3 +473,84 @@ class ScheduleState(Base):
     )
     flow: Mapped[str] = mapped_column(String(130), nullable=False)
     last_planned_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+DEPLOYMENT_STATUS = ("pending_approval", "deployed", "rejected", "superseded")
+
+
+class Environment(Base):
+    """A delivery stage of an application (dev/test/prod...), ordered by ``stage_order``."""
+
+    __tablename__ = "environments"
+    __table_args__ = (
+        UniqueConstraint("application_id", "name", name="uq_environments_app_name"),
+        UniqueConstraint("application_id", "stage_order", name="uq_environments_app_stage"),
+    )
+
+    id: Mapped[uuid.UUID] = _id()
+    application_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("applications.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    name: Mapped[str] = mapped_column(String(40), nullable=False)
+    stage_order: Mapped[int] = mapped_column(Integer, nullable=False)
+    requires_approval: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    require_tests: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    created_at: Mapped[datetime] = _created()
+
+
+class EnvironmentConstant(Base):
+    """Per-environment configuration. A constant holds a value *or* a reference to a secret store, never a secret."""
+
+    __tablename__ = "environment_constants"
+    __table_args__ = (
+        UniqueConstraint("environment_id", "key", name="uq_environment_constants_key"),
+        CheckConstraint("(value IS NULL) <> (secret_ref IS NULL)", name="value_xor_secret_ref"),
+    )
+
+    id: Mapped[uuid.UUID] = _id()
+    environment_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("environments.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    key: Mapped[str] = mapped_column(String(64), nullable=False)
+    value: Mapped[str | None] = mapped_column(String(2000))
+    secret_ref: Mapped[str | None] = mapped_column(String(300))
+
+
+class DeploymentPackage(Base):
+    """Immutable, signed build of one revision (bytes live in the artifact store under ``artifact_key``)."""
+
+    __tablename__ = "deployment_packages"
+    __table_args__ = (UniqueConstraint("digest", name="uq_deployment_packages_digest"),)
+
+    id: Mapped[uuid.UUID] = _id()
+    application_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("applications.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    revision_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("app_revisions.id"), nullable=False, index=True)
+    runtime_version: Mapped[str] = mapped_column(String(40), nullable=False)
+    model_hash: Mapped[str] = mapped_column(String(80), nullable=False)
+    digest: Mapped[str] = mapped_column(String(64), nullable=False)
+    key_id: Mapped[str] = mapped_column(String(32), nullable=False)
+    signature: Mapped[str] = mapped_column(String(200), nullable=False)
+    artifact_key: Mapped[str] = mapped_column(String(200), nullable=False)
+    manifest: Mapped[dict[str, Any]] = mapped_column(PortableJSON, nullable=False, default=dict)
+    created_by: Mapped[uuid.UUID | None] = mapped_column(Uuid)
+    created_at: Mapped[datetime] = _created()
+
+
+class PackageDeployment(Base):
+    __tablename__ = "package_deployments"
+    __table_args__ = (_in("status", DEPLOYMENT_STATUS, "status"),)
+
+    id: Mapped[uuid.UUID] = _id()
+    environment_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("environments.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    package_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("deployment_packages.id"), nullable=False, index=True)
+    status: Mapped[str] = mapped_column(String(20), nullable=False)
+    requested_by: Mapped[uuid.UUID | None] = mapped_column(Uuid)
+    decided_by: Mapped[uuid.UUID | None] = mapped_column(Uuid)
+    comment: Mapped[str | None] = mapped_column(String(1000))
+    risks_acknowledged: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

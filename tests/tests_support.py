@@ -52,6 +52,9 @@ class Api:
     def patch(self, url, **kw):
         return self.request("PATCH", url, **kw)
 
+    def put(self, url, **kw):
+        return self.request("PUT", url, **kw)
+
     def delete(self, url, **kw):
         return self.request("DELETE", url, **kw)
 

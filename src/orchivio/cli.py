@@ -6,6 +6,7 @@
     orchivio import   model-dir/ | model.zip out.yaml
     orchivio diff     before after                            # exit 1 if they differ
     orchivio openapi  model.yaml [-o openapi.json]            # data API description
+    orchivio keygen | verify-package FILE --public-key K        # signed deployment packages (docs/DELIVERY.md)
     orchivio worker [--once] [--interval S]                   # scheduled jobs and the task queue
     orchivio backup | restore | verify-backup FILE            # see docs/OPERATIONS.md
 
@@ -131,6 +132,26 @@ def run(args: argparse.Namespace, out: TextIO) -> int:
         return run_ops(args, out)
     if args.command == "worker":
         return run_worker(args, out)
+    if args.command == "keygen":
+        from .delivery import generate_key
+
+        seed, pub = generate_key()
+        print(f"ORCHIVIO_PACKAGE_SIGNING_KEY={seed}", file=out)
+        print(f"public key (for verify-package and ORCHIVIO_PACKAGE_TRUSTED_PUBLIC_KEYS): {pub}", file=out)
+        print("keep the signing key secret; only the public key is needed to verify", file=sys.stderr)
+        return EXIT_OK
+    if args.command == "verify-package":
+        from .delivery import PackageError, verify_package
+
+        try:
+            v = verify_package(Path(args.file).read_bytes(), [args.public_key])
+        except PackageError as e:
+            print(f"error: {e}", file=sys.stderr)
+            return EXIT_PROBLEMS
+        steps = v.migration_plan.get("steps", [])
+        print(f"ok: signed by key {v.manifest['key_id']}, runtime {v.manifest['runtime_version']}, model {v.manifest['model_hash']}, "
+              f"{len(steps)} migration step(s), {sum(1 for s in steps if s['destructive'])} destructive", file=out)
+        return EXIT_OK
     if args.command == "openapi":
         spec = json.dumps(build_openapi(load(args.path)), indent=2, sort_keys=True, ensure_ascii=False) + "\n"
         if args.out:
@@ -233,6 +254,10 @@ def parser() -> argparse.ArgumentParser:
     r.add_argument("file")
     r.add_argument("--database-url")
     r.add_argument("--artifacts", help="directory to write artifacts into")
+    sub.add_parser("keygen", help="generate an Ed25519 key for signing deployment packages")
+    vp = sub.add_parser("verify-package", help="check a deployment package's hashes and signature")
+    vp.add_argument("file")
+    vp.add_argument("--public-key", required=True, help="base64 public key you trust")
     w = sub.add_parser("worker", help="plan scheduled jobs and run the background queue")
     w.add_argument("--once", action="store_true", help="one pass, then exit")
     w.add_argument("--interval", type=float, default=15.0)

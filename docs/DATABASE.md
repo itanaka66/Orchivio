@@ -53,6 +53,11 @@ own data in separate schemas/databases and never share these tables
 attempts, `scheduled_for`; unique `(application_id, flow, scheduled_for)` makes planning idempotent).
 `schedule_state` — where the planner stopped for each scheduled flow (advanced by compare-and-set).
 
+### Delivery
+`environments`, `environment_constants` (value XOR secret reference), `deployment_packages` (digest unique; bytes in the
+artifact store), `package_deployments` (status `pending_approval|deployed|rejected|superseded`). The older
+`deployments` table from 0001 is unused and kept to avoid rewriting history.
+
 ### Audit
 `audit_events` — append-only. `plane` (platform/application) and `channel`
 (studio/api/mcp) separate streams. **No foreign keys on purpose:** audit history must outlive

@@ -98,6 +98,14 @@ one owner (`409 last_owner`). Any member may leave an organization.
 | GET/POST | `/applications/{id}/jobs` | list (`status`) / queue a server flow now (`flow`, `args?`, `run_as_role?`; defaults from its schedule) |
 | GET | `/jobs/{id}` | run status, attempts, error, result |
 | POST | `/jobs/{id}/retry`, `/jobs/{id}/cancel` | dead → queued with fresh attempts (`409 not_dead`) / queued → cancelled (`409 not_queued`) |
+| GET/POST | `/applications/{id}/environments` | stages with their current deployment / create (admin) |
+| PATCH/DELETE | `/environments/{id}` | policy flags / delete (only without history) |
+| GET | `/environments/{id}/constants`; PUT/DELETE `/environments/{id}/constants/{KEY}` | `value` or `secret_ref` (admin to write) |
+| POST | `/revisions/{id}/packages` | build the signed package (`201` new, `200` identical existing; `503 signing_not_configured`) |
+| GET | `/applications/{id}/packages`, `/packages/{id}`, `/packages/{id}/verify`, `/packages/{id}/download` | list / metadata + plan + SBOM / verify / file (admin) |
+| POST | `/packages/{id}/promote` | request a deployment; gates in docs/DELIVERY.md |
+| POST | `/deployments/{id}/approval` | `{decision: approve or reject}` by another admin |
+| GET | `/applications/{id}/deployments` | history (`environment`, `status`) |
 | GET | `/healthz`, `/readyz` | liveness / readiness (unauthenticated; docs/OPERATIONS.md) |
 | GET | `/metrics` | Prometheus text; bearer `ORCHIVIO_METRICS_TOKEN`, disabled when unset |
 
