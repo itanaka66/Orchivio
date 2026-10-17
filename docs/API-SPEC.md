@@ -77,6 +77,9 @@ one owner (`409 last_owner`). Any member may leave an organization.
 | GET | `/applications/{id}` | includes `current_revision_no` |
 | GET/POST | `/applications/{id}/revisions` | list / create; see below |
 | GET | `/revisions/{id}` | includes `model_json` |
+| GET/POST | `/applications/{id}/branches` | list (always includes `main`) / create `{name, from_revision_id?}`; names `[a-z0-9][a-z0-9._/-]{0,60}` |
+| DELETE | `/branches/{id}` | abandon (`409 main_protected` for `main`) |
+| POST | `/branches/{id}/merge` | three-way merge into `into` (default `main`); see below |
 | GET | `/revisions/{id}/diff/{base_id}` | both must belong to the same application |
 | POST | `/applications/{id}/rollback` | restores an earlier model as a *new* revision |
 | GET/POST/DELETE | `/tokens`, `/tokens/{id}` | own tokens; the secret is returned once at creation |
@@ -110,6 +113,29 @@ one owner (`409 last_owner`). Any member may leave an organization.
 `acknowledge_risks` is the human confirmation step. Approval by a second person and the proposal
 workflow for AI and MCP changes (`/proposals`) are planned.
 
+### Branches and merging
+
+`POST /applications/{id}/revisions` takes an optional `branch` (default `main`). A revision on another branch
+extends that branch only; `current_revision_id` follows `main`. Risk gating (A3) is applied where a change
+reaches `main`: on a direct revision, or when a branch is merged.
+
+`POST /branches/{id}/merge` with `{into?, resolutions?, dry_run?, message?, acknowledge_risks?}` merges
+element by element (docs/MODEL-SPEC.md §11) against the best common ancestor:
+
+| Result | Response |
+|---|---|
+| nothing new on the branch, or the merge changes nothing | `200 {status: "up_to_date"}` |
+| `dry_run` and no conflicts | `200 {status: "clean", changes}`; nothing is written |
+| conflicts without a resolution | `409 merge_conflicts`, `details` = conflicts (`id`, `kind`, `element_id`, `property`, `base`, `ours`, `theirs`) |
+| merged model invalid (validation or blocking lint) | `422 merge_invalid` |
+| merge into `main` at A3 or above | `409 approval_required` unless `acknowledge_risks` |
+| merged | `201 {status: "merged", revision_id, revision_no, conflicts_resolved, level, changes}` |
+
+`resolutions` maps a conflict id to `ours`, `theirs` (or `keep`/`drop` for orphaned elements); any other value
+leaves the conflict unresolved. The merge revision has two parents (target head, then source head) and the
+source branch becomes `merged`. Further codes: `branch_exists`, `invalid_branch_name`, `branch_closed`,
+`same_branch`, `no_common_ancestor`.
+
 Further error codes: `approval_required` (409, also for proposals), `stale_proposal`, `not_pending`,
 `no_changes`, `ai_not_configured` (503), `external_ai_disabled` (403), `ai_budget_exceeded` (429),
 `ai_output_invalid` (422), `ai_provider_error` (502), `preview_not_built` / `preview_stale` (409),
@@ -117,7 +143,7 @@ Further error codes: `approval_required` (409, also for proposals), `stale_propo
 
 ## 5. Still planned
 
-DESIGN.md §10.3 inventory by phase: branches and merge, environments and packages, MCP endpoint,
+DESIGN.md §10.3 inventory by phase: environments and packages, MCP endpoint,
 integrations, end-user (application plane) authentication and a production runtime. Open points:
 `Idempotency-Key` for job-creating POSTs; per-token rate limits; cursor pagination if lists grow.
 

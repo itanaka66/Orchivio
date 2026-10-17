@@ -150,7 +150,27 @@ Properties (checked by property tests over generated models, including arbitrary
 
 `orchivio openapi model.yaml` and `GET /revisions/{id}/openapi.json` produce an OpenAPI 3.1 document of the data API: `/data/{module.Entity}` (list, create) and `/data/{module.Entity}/{id}` (read, update, delete), with `Entity`, `EntityCreate`, `EntityUpdate` and `EntityPage` schemas derived from the fields (types, `maxLength`, `minimum`/`maximum`, enums, references as their key type; generated and computed fields are `readOnly` and absent from inputs; unknown properties are rejected). Operations no role may perform are omitted; `x-orchivio-roles` and `x-orchivio-row-constraints` document who may do what. In the Studio preview the paths are served under `/api/v1/applications/{id}/preview`. Decimals are returned as strings to keep precision. A contract test validates real responses and the accept/reject behaviour of request bodies against these schemas.
 
-## 11. Planned
+## 11. Branches and merging
+
+Branches are named pointers to a head revision. `merge_branches` finds the best common ancestor (the common
+ancestor with the highest revision number that is not an ancestor of another), flattens the three models into
+nodes keyed by `element_id` (steps, edges, parameters and tests of a flow, lint suppressions and the
+application/security records are nodes too) and merges property by property (`orchivio.model.merge`):
+
+- One side changed, or both changed identically → that value. Layout (step positions) never conflicts.
+- Set-like properties (enum values, access operations, roles, locales) and dictionaries (hooks, page
+  permissions, step config) are merged by member, so only a member changed differently on both sides conflicts.
+- Conflict kinds: `property` (both changed the same property differently), `delete-edit` (one side deleted an
+  element the other changed), `orphan` (an element whose parent was deleted on the other side), `order` (both
+  moved an element to different places) and `invalid` (the combination violates the schema; nothing can be
+  chosen, someone has to edit the result).
+- Ordered lists keep our order and insert their additions after their predecessor.
+- The merged model is validated and linted like any other revision; an invalid merge writes nothing.
+
+Merge properties (idempotent, commutative when both sides agree, identity with an unchanged side) are checked
+with Hypothesis in `tests/unit/test_merge.py`.
+
+## 12. Planned
 
 Flows, processes, scheduled jobs, integrations, AI steps, themes, translations, field-level
 security, per-element canonical YAML files (DESIGN.md §8.9).
