@@ -24,10 +24,10 @@ Status: ✅ implemented and tested · 🟡 partly / not verified end-to-end · �
 
 | # | Threat | Control | Status |
 |---|---|---|---|
-| T1 | **Prompt injection / hallucinated output** alters the model or escalates privilege | AI output is data: strict schema (`extra=forbid`), `generate_validated`, static validation, diff with risk levels, approval before any revision | 🟡 validation, diff and levels done; no orchestrator or approval workflow yet |
+| T1 | **Prompt injection / hallucinated output** alters the model or escalates privilege | AI output is data: strict schema (`extra=forbid`), validate/lint/repair loop, diff with risk levels, role-gated approval (A3 needs an admin and acknowledgement), delimited untrusted input, output never executed | ✅ gate tested with a hostile model output; 🟡 injection resistance of real models not measured |
 | T2 | **Unsafe execution of generated logic** | No arbitrary code in runtime; expressions are interpreted, pure and bounded; limits on depth, nodes, steps, size | ✅ for expressions; ⬜ workers/sandbox |
 | T3 | **Injection via expressions/row constraints** | Values only as bind parameters; identifiers validated and quoted; non-compilable ⇒ deny; interpreter/SQL equivalence tests | ✅ SQLite · 🟡 PostgreSQL |
-| T4 | **Row-level rule bypass** through a new query path | Single data-access layer must apply `row_predicate` everywhere; generated negative tests; linter | ⬜ data layer, tests, linter not built |
+| T4 | **Row-level rule bypass** through a new query path | One data service applies the predicate to reads, counts, updates and deletes and re-checks the resulting record; non-compilable constraint means deny; generated access/row-constraint tests; mutation tests prove they fail on a broken runtime | ✅ preview runtime (SQLite); ⬜ other query paths (exports, aggregates, OData, MCP), PostgreSQL |
 | T5 | **Privilege escalation via permission expansion** | Diff flags grants/expansions/anonymous as A3; consistency checker | ✅ detection · ⬜ approval enforcement |
 | T6 | **Cross-tenant access** | Every resource resolved to its organization and authorized through membership; identical 404 for missing and hidden; cross-org tests | ✅ for the platform API (tests per resource); ⬜ application plane |
 | T7 | **Audit tampering** | Append-only table, no FKs, DB triggers, separate retention role | 🟡 migration written, never run on PostgreSQL |
@@ -41,7 +41,9 @@ Status: ✅ implemented and tested · 🟡 partly / not verified end-to-end · �
 | T13 | **SSRF / data exfiltration through integrations and webhooks** | Per-environment allowlists, private-network blocking | ⬜ (Phase 9) |
 | T14 | **Malicious MCP tool use / injection through tool output** | Scoped tokens, proposal-only writes, tool output treated as data | ⬜ (Phase 9) |
 | T15 | **Supply-chain compromise** | Dependency and secret scanning, SBOM in CI; pinned runtime versions | ⬜ |
-| T16 | **Cost exhaustion (LLM)** | Per-project budgets, usage recorded per job | ⬜ (usage fields exist) |
+| T16 | **Cost exhaustion (LLM)** | Per-project monthly budget, usage recorded per job, bounded retries and repairs, input size limit | 🟡 depends on adapter-reported cost |
+| T19 | **Data exfiltration to an external LLM** | Providers flagged `external` are refused until the project opts in; minimal context; input stored only as a hash | ✅ tested with a mock flagged external |
+| T20 | **Preview used to reach real data / Studio role abuse in preview** | Separate preview database; roles come from the model, never from Studio roles; unknown roles rejected | ✅ tested |
 
 ## 4. Assumptions
 

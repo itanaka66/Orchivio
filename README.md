@@ -24,7 +24,16 @@ structures, APIs, business logic and tests. AI proposes changes; humans approve 
   organizations with owner/admin/editor/viewer roles, members, projects, audit log.
 - **Applications and revisions over HTTP**: create, validate, diff, roll back; changes that
   expand permissions or remove data need explicit acknowledgement.
-- **Model tools**: authenticated `validate` / `diff` / `expression check` endpoints.
+- **Model tools**: authenticated `validate` / `lint` / `diff` / `expression check` endpoints.
+- **Linter and find-usages**: 21 rules (security, performance, maintainability, accessibility),
+  recorded suppressions, dependency graph per revision.
+- **Proposals and AI Builder**: every change, human or AI, is a proposal with a diff and an approval
+  level; analyze / propose / explain on a provider-neutral LLM layer (mock + Anthropic adapter), with
+  consent and budget guards. See [docs/AI-BUILDER.md](docs/AI-BUILDER.md).
+- **Preview runtime**: tables and a CRUD service generated from the model, enforcing roles, row-level
+  rules and validation; synthetic data; view-as-role. See [docs/RUNTIME.md](docs/RUNTIME.md).
+- **Generated tests**: access, row-constraint, CRUD and validation cases derived from the model, with
+  coverage and run-to-run comparison.
 
 ## Quick start
 
@@ -58,7 +67,7 @@ With Docker (untested in CI so far): `cp .env.example .env`, set `POSTGRES_PASSW
 ## Repository layout
 
 ```
-src/orchivio/   expr, model, security, policy, db, llm, ports, api   (see docs/ARCHITECTURE.md)
+src/orchivio/   expr, model, security, policy, auth, db, llm, ai, runtime, testgen, ports, api   (see docs/ARCHITECTURE.md)
 migrations/     Alembic migrations (PostgreSQL is the target; SQLite is used for tests)
 examples/       sample application models
 tests/          unit/ and integration/
@@ -75,6 +84,9 @@ docs/           specifications, ADRs, threat model
 | [docs/MODEL-SPEC.md](docs/MODEL-SPEC.md) | Application model format and validation rules |
 | [docs/EXPRESSION-SPEC.md](docs/EXPRESSION-SPEC.md) | Expression language |
 | [docs/APP-SECURITY.md](docs/APP-SECURITY.md) | Generated-app security model |
+| [docs/AI-BUILDER.md](docs/AI-BUILDER.md) | AI Builder, proposals, approval |
+| [docs/RUNTIME.md](docs/RUNTIME.md) | Preview runtime, synthetic data, generated tests |
+| [docs/LINT-RULES.md](docs/LINT-RULES.md) | Linter rule catalog (generated) |
 | [docs/DATABASE.md](docs/DATABASE.md) | Platform database schema |
 | [docs/INTERFACES.md](docs/INTERFACES.md) | Ports and extension points |
 | [docs/API-SPEC.md](docs/API-SPEC.md) | HTTP API conventions and endpoints |

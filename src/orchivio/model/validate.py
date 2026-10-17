@@ -206,8 +206,14 @@ class _Validator:
         kind, target = parsed
         if kind == "enum" and qualify(mod.key, target or "") not in self.index.enums:
             self.err("unknown-enum", path, f"unknown enumeration '{target}'", eid)
-        if kind == "ref" and self.index.resolve_entity(mod.key, target or "") is None:
-            self.err("unknown-entity", path, f"unknown entity '{target}'", eid)
+        if kind == "ref":
+            resolved = self.index.resolve_entity(mod.key, target or "")
+            if resolved is None:
+                self.err("unknown-entity", path, f"unknown entity '{target}'", eid)
+            elif resolved in self.index.entities and self.index.entities[resolved][1].transient:
+                self.err("ref-to-transient", path, f"'{target}' is transient and has no stored records to reference", eid)
+        if f.generated and not (kind == "scalar" and target in ("uuid", "datetime")):
+            self.err("bad-generated", path, "only uuid and datetime fields can be generated", eid)
         scalar = target if kind == "scalar" else None
         if f.max_length is not None and scalar not in ("string", "text"):
             self.err("bad-constraint", path, "max_length applies to string/text only", eid)

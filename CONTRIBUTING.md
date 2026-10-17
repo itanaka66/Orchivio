@@ -40,5 +40,10 @@ ruff check .
 - Model output and request data are untrusted: validate with Pydantic at the boundary, never
   `eval`/`exec`, never build SQL by string-formatting values.
 - Database changes need an Alembic migration; `tests/integration/test_migrations.py` must pass.
+- PostgreSQL-specific behaviour is tested in `tests/integration/test_postgres.py`, which runs only when
+  `ORCHIVIO_TEST_PG_URL` points at a disposable database (CI sets it). Run it before touching triggers,
+  SQL compilation or runtime column types.
+- Anything that decides access (roles, row constraints, validation) needs a test that fails when the
+  rule is broken on purpose (see `tests/unit/test_testgen.py` for the pattern).
 - New SQL-compiled expression constructs need an interpreter-vs-SQL equivalence test.
 - Don't add a dependency without checking its licence (SBOM/NOTICE are release requirements).

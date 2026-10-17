@@ -44,8 +44,7 @@ class LocalArtifactStore:
     """Filesystem adapter. S3-compatible adapters implement the same protocol."""
 
     def __init__(self, root: Path | str) -> None:
-        self.root = Path(root).resolve()
-        self.root.mkdir(parents=True, exist_ok=True)
+        self.root = Path(root).resolve()  # created on first write
 
     def _path(self, key: str) -> Path:
         path = (self.root / validate_key(key)).resolve()

@@ -105,8 +105,15 @@ def analyze(app_id: uuid.UUID, body: RequirementsIn, request: Request,
 def propose(app_id: uuid.UUID, body: ProposeIn, request: Request,
             principal: Principal = Depends(current_principal), db: Session = Depends(get_db)) -> ProposeOut:
     provider, app, project = _guard(request, db, principal, app_id, "model.propose")
-    job = start_ai_job(db, project_id=project.id, application_id=app.id, type="propose_model",
-                       created_by=principal.user_id, input_text=body.requirements, template="propose_model@1")
+    return run_proposal(db, provider, principal, app, project, body.requirements, body.title)
+
+
+def run_proposal(db: Session, provider: LLMProvider, principal: Principal, app: Application, project,
+                 requirements: str, title: str | None, job_type: str = "propose_model") -> ProposeOut:
+    """Ask the provider for a model, store it as a pending proposal and record the job."""
+    job = start_ai_job(db, project_id=project.id, application_id=app.id, type=job_type,
+                       created_by=principal.user_id, input_text=requirements, template="propose_model@1")
+    body = ProposeIn(requirements=requirements[:MAX_TEXT], title=title)
     try:
         r = AIBuilder(provider).propose_model(body.requirements, _current_model(db, app))
     except BuilderError as e:

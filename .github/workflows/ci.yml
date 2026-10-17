@@ -39,6 +39,7 @@ jobs:
           --health-timeout 3s --health-retries 10
     env:
       DATABASE_URL: postgresql+psycopg://orchivio:orchivio@localhost:5432/orchivio
+      ORCHIVIO_TEST_PG_URL: postgresql+psycopg://orchivio:orchivio@localhost:5432/orchivio
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -46,7 +47,8 @@ jobs:
           python-version: "3.12"
           cache: pip
       - run: pip install -e ".[dev,postgres]"
-      # Exercises the PostgreSQL-only parts (triggers, circular FKs) that SQLite cannot.
+      # PostgreSQL-only behaviour: triggers, circular FKs, SQL predicate dialect, runtime types.
+      - run: pytest tests/integration/test_postgres.py
       - run: alembic upgrade head
       - run: alembic downgrade base
       - run: alembic upgrade head

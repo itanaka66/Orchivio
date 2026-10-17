@@ -1,10 +1,19 @@
 from pathlib import Path
 
 import pytest
+from sqlalchemy import Engine, event
 
 from orchivio.model import AppModel, migrate_to_latest
 from tests_support import load_yaml
 
+
+
+@event.listens_for(Engine, "connect")
+def _fast_sqlite(dbapi_conn, _record):
+    """Durability is irrelevant for throwaway test databases and fsync dominates the run time."""
+    if dbapi_conn.__class__.__module__.startswith("sqlite3"):
+        dbapi_conn.execute("PRAGMA synchronous=OFF")
+        dbapi_conn.execute("PRAGMA journal_mode=MEMORY")
 
 
 @pytest.fixture
@@ -57,7 +66,11 @@ def app(db_url):
     def _fast(dbapi_conn, _):  # durability is irrelevant for throwaway test databases
         dbapi_conn.execute("PRAGMA synchronous=OFF")
 
-    return create_app(Settings(env="dev", database_url=db_url), engine=engine)
+    preview_url = db_url.replace("test.db", "preview.db")
+    artifacts = db_url.replace("sqlite:///", "").replace("test.db", "artifacts")
+    return create_app(Settings(env="dev", database_url=db_url, preview_database_url=preview_url,
+                               artifact_dir=artifacts), engine=engine,
+                      preview_engine=make_engine(preview_url))
 
 
 @pytest.fixture

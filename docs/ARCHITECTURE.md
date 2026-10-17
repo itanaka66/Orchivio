@@ -11,6 +11,8 @@ boundaries in a test** so packages can be split later without untangling imports
 
 | Package | Responsibility | May import |
 |---|---|---|
+| `orchivio.runtime` | Tables from a model, CRUD data service with access/row rules, synthetic data, preview store | expr, model, policy, ports, security |
+| `orchivio.testgen` | Test-case derivation and runner | expr, model, runtime, security |
 | `orchivio.ai` | AI Builder: prompts, analysis, model proposals, explanations | llm, model |
 | `orchivio.auth` | Password hashing (scrypt), opaque token generation/hashing | – |
 | `orchivio.expr` | Parse, type-check, evaluate, and SQL-compile expressions | – |

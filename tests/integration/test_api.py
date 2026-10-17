@@ -87,7 +87,7 @@ def test_expression_check(new_api, raw_model):
 
 
 def test_body_size_limit(db_url):
-    c = TestClient(create_app(Settings(env="dev", database_url=db_url, max_body_bytes=100)))
+    c = TestClient(create_app(Settings(env="dev", database_url=db_url, preview_database_url="sqlite:///:memory:", max_body_bytes=100)))
     assert c.post("/api/v1/auth/login", json={"email": "a@b.co", "password": "x" * 500}).status_code == 413
 
 

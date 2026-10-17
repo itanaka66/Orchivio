@@ -20,7 +20,10 @@ class LLMProvider(Protocol):
   block is accepted), validates against the schema and, on failure, re-prompts with the
   validation errors only. After `max_attempts` it raises `StructuredOutputError` holding every
   attempt. **Model output is data, never executed or trusted.**
-- `MockProvider`: scripted `str`/`Exception` items or a responder callable.
+- `MockProvider`: scripted `str`/`Exception` items or a responder callable (`external = False`).
+- `AnthropicProvider`: Messages API over HTTPS (`httpx`, `anthropic` extra), `external = True`.
+- `LLMProvider.external` tells callers that prompts leave the deployment; the API requires project
+  consent before using such a provider.
 
 Adding a provider: implement `complete`, honour `timeout_s`, map vendor errors to `LLMError`, put
 the adapter in its own module and keep the vendor SDK an *optional* dependency.
@@ -67,7 +70,14 @@ provides the production implementation.
 `is_allowed(role, action)` (deny by default) and `level_for_action(action)` (unknown actions
 default to A4). Pure functions; the same checks must guard REST, MCP and the AI orchestrator.
 
-## 8. Planned interfaces
+## 8. AI Builder, runtime, test generation
+
+- `orchivio.ai.AIBuilder(provider).analyze / propose_model / explain` (docs/AI-BUILDER.md).
+- `orchivio.runtime.AppData(engine, RuntimeSchema, audit=...)` with `list/get/create/update/delete`,
+  `PreviewStore.reset/open/drop`, and `generate()` for synthetic data (docs/RUNTIME.md).
+- `orchivio.testgen.generate_cases(model)` and `run_tests(model, hash, engine, seed, rows)`.
+
+## 9. Planned interfaces
 
 | Interface | Purpose | Phase |
 |---|---|---|

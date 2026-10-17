@@ -80,7 +80,12 @@ one owner (`409 last_owner`). Any member may leave an organization.
 | GET | `/revisions/{id}/diff/{base_id}` | both must belong to the same application |
 | POST | `/applications/{id}/rollback` | restores an earlier model as a *new* revision |
 | GET/POST/DELETE | `/tokens`, `/tokens/{id}` | own tokens; the secret is returned once at creation |
-| POST | `/models/validate`, `/models/diff`, `/expressions/check` | stateless tools (any authenticated caller) |
+| GET | `/revisions/{id}/lint`, `/revisions/{id}/elements/{element_id}/usages` | stored lint findings (`include_suppressed`) / find usages |
+| GET/POST | `/applications/{id}/proposals`, `/proposals/{id}`, `/proposals/{id}/approval` | change proposals and their decision (docs/AI-BUILDER.md) |
+| POST | `/applications/{id}/ai/analyze`, `/ai/propose`, `/ai/explain` | AI Builder (needs a configured provider) |
+| POST | `/applications/{id}/preview/reset`; GET `…/preview/status`; CRUD `…/preview/data/{entity}[/{id}]` | preview runtime (docs/RUNTIME.md) |
+| POST/GET | `/revisions/{id}/test-runs`, `/test-runs/{id}`, POST `/test-runs/{id}/ai/repair` | generated tests |
+| POST | `/models/validate`, `/models/lint`, `/models/diff`, `/expressions/check` | stateless tools (any authenticated caller) |
 | GET | `/healthz` | unauthenticated |
 
 ### Creating a revision
@@ -100,10 +105,15 @@ one owner (`409 last_owner`). Any member may leave an organization.
 `acknowledge_risks` is the human confirmation step. Approval by a second person and the proposal
 workflow for AI and MCP changes (`/proposals`) are planned.
 
+Further error codes: `approval_required` (409, also for proposals), `stale_proposal`, `not_pending`,
+`no_changes`, `ai_not_configured` (503), `external_ai_disabled` (403), `ai_budget_exceeded` (429),
+`ai_output_invalid` (422), `ai_provider_error` (502), `preview_not_built` / `preview_stale` (409),
+`unknown_role`, `invalid_record` (422), `conflict` (409), `stale_run`, `nothing_to_repair`.
+
 ## 5. Still planned
 
-DESIGN.md §10.3 inventory by phase: proposals and AI jobs (4), builds and tests (5), preview,
-branches and merge, environments and packages, MCP endpoint, integrations. Open points:
+DESIGN.md §10.3 inventory by phase: branches and merge, environments and packages, MCP endpoint,
+integrations, end-user (application plane) authentication and a production runtime. Open points:
 `Idempotency-Key` for job-creating POSTs; per-token rate limits; cursor pagination if lists grow.
 
 ## 6. Compatibility

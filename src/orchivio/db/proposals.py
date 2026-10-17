@@ -102,6 +102,7 @@ class ProposalRepository:
             approval_level=int(level),
             status="pending",
             created_by=created_by,
+            created_at=_now(),  # microseconds; listings are ordered by it
         )
         self.session.add(proposal)
         self.session.flush()
