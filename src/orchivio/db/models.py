@@ -268,7 +268,7 @@ class Proposal(Base):
         ForeignKey("applications.id", ondelete="CASCADE"), nullable=False, index=True
     )
     ai_job_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("ai_jobs.id"))
-    base_revision_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("app_revisions.id"), nullable=False)
+    base_revision_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("app_revisions.id"))  # None: first revision
     result_revision_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("app_revisions.id"))
     source: Mapped[str] = mapped_column(String(16), nullable=False)
     title: Mapped[str] = mapped_column(String(300), nullable=False, default="")

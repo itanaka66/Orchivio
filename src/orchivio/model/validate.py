@@ -14,6 +14,7 @@ from typing import Literal
 from orchivio.expr import CheckEnv, ExprError, check
 from orchivio.expr.ast import BOOL, DATETIME, DECIMAL, INT, STRING, Type, enum_t, ref_t
 
+from .ids import iter_elements
 from .schema import (
     BUILTIN_ENTITIES,
     AppModel,
@@ -165,6 +166,10 @@ class _Validator:
         self.dupes(all_page_keys, "duplicate-page", "/modules", "page key")
         self.dupes(all_routes, "duplicate-route", "/modules", "route")
         self.security()
+        known = {el.element_id for _, el in iter_elements(m) if el.element_id}
+        for si, sup in enumerate(m.lint_suppressions):
+            if sup.element_id not in known:
+                self.err("unknown-suppression-element", f"/lint_suppressions/{si}", "suppression targets an unknown element")
         return self.issues
 
     # -- entities and fields

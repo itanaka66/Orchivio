@@ -11,6 +11,7 @@ boundaries in a test** so packages can be split later without untangling imports
 
 | Package | Responsibility | May import |
 |---|---|---|
+| `orchivio.ai` | AI Builder: prompts, analysis, model proposals, explanations | llm, model |
 | `orchivio.auth` | Password hashing (scrypt), opaque token generation/hashing | – |
 | `orchivio.expr` | Parse, type-check, evaluate, and SQL-compile expressions | – |
 | `orchivio.policy` | Approval levels A0–A4, platform RBAC matrix | – |
@@ -18,7 +19,7 @@ boundaries in a test** so packages can be split later without untangling imports
 | `orchivio.ports` | Job queue, artifact store, audit sink interfaces + reference adapters | – |
 | `orchivio.model` | Model schema, validation, element IDs, diff, migration | expr, policy |
 | `orchivio.security` | Application-plane access resolution, consistency checker | expr, model, policy |
-| `orchivio.db` | ORM models, sessions, revision repository | model |
+| `orchivio.db` | ORM models, sessions, revision and proposal repositories | model, policy |
 | `orchivio.api` | FastAPI application, settings, auth, authorization, routes | everything above |
 
 `tests/unit/test_architecture.py` fails if a package imports outside its row. Add a new package
@@ -41,7 +42,8 @@ to that table *and* the test in the same change.
 - `policy` is pure functions so the same rules can guard the REST API, the future Studio MCP
   server and the AI orchestrator (DESIGN.md §6.2: one proposal/approval pipeline, no side
   channel).
-- `db` depends only on `model`: persistence never reaches into security or HTTP concerns.
+- `db` depends on `model` and the pure `policy` functions (approval levels); persistence never
+  reaches into security or HTTP concerns.
 - `llm` and `ports` are leaf interfaces. Nothing in the domain imports a vendor SDK.
 
 ## Request flow (today)

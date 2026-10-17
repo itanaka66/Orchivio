@@ -16,16 +16,20 @@ from sqlalchemy.orm import Session
 
 from orchivio.model import (
     AppModel,
+    Finding,
     Issue,
     ModelDiff,
     assign_element_ids,
+    blocking,
+    build_refs,
     diff_models,
     has_errors,
+    lint,
     model_hash,
     validate_model,
 )
 
-from .models import Application, AppRevision, AuditEvent, Branch
+from .models import Application, AppRevision, AuditEvent, Branch, ElementRef, LintFinding
 
 MAIN = "main"
 
@@ -35,8 +39,9 @@ class Plan:
     """What ``create`` would store: the identified model, its issues and the diff vs current."""
 
     model: AppModel
-    issues: list[Issue]
+    issues: list[Issue]  # validation errors/warnings plus unsuppressed lint errors
     diff: ModelDiff | None  # None for the first revision
+    lint: list[Finding]
 
     @property
     def valid(self) -> bool:
@@ -95,7 +100,12 @@ class RevisionRepository:
         previous = to_model(parent) if parent else None
         identified = assign_element_ids(model, previous=previous)
         diff = diff_models(previous, identified) if previous else None
-        return Plan(identified, validate_model(identified), diff)
+        issues = validate_model(identified)
+        findings = lint(identified) if not has_errors(issues) else []
+        issues += [
+            Issue("error", f"lint:{f.rule_id}", f.path, f.message, f.element_id) for f in blocking(findings)
+        ]
+        return Plan(identified, issues, diff, findings)
 
     # -- writes
     def _application(self, application_id: uuid.UUID) -> Application:
@@ -158,6 +168,7 @@ class RevisionRepository:
         )
         self.session.add(rev)
         self.session.flush()
+        self._store_analysis(rev, identified, plan.lint)
         app.current_revision_id = rev.id
         branch.head_revision_id = rev.id
         self._audit(
@@ -200,6 +211,26 @@ class RevisionRepository:
             {"restored_revision_no": target.revision_no},
         )
         return rev
+
+    def _store_analysis(self, rev: AppRevision, model: AppModel, findings: list[Finding]) -> None:
+        """Persist the dependency graph and lint results for this revision."""
+        for r in build_refs(model):
+            self.session.add(ElementRef(revision_id=rev.id, from_element_id=uuid.UUID(r.from_id),
+                                        to_element_id=uuid.UUID(r.to_id), ref_kind=r.kind))
+        for f in findings:
+            self.session.add(LintFinding(
+                revision_id=rev.id, rule_id=f.rule_id, severity=f.severity,
+                element_id=uuid.UUID(f.element_id) if f.element_id else None,
+                message=f.message, suppressed=f.suppressed, justification=f.justification))
+        self.session.flush()
+
+    def lint_findings(self, revision_id: uuid.UUID) -> list[LintFinding]:
+        return list(self.session.scalars(select(LintFinding).where(LintFinding.revision_id == revision_id)
+                                         .order_by(LintFinding.severity, LintFinding.rule_id)))
+
+    def usages(self, revision_id: uuid.UUID, element_id: uuid.UUID) -> list[ElementRef]:
+        return list(self.session.scalars(select(ElementRef).where(
+            ElementRef.revision_id == revision_id, ElementRef.to_element_id == element_id)))
 
     def _audit(
         self,

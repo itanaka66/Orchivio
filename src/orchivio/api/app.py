@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from orchivio import __version__
 from orchivio.db import make_engine, make_session_factory
+from orchivio.llm import AnthropicProvider, LLMProvider
 
 from .observability import configure_logging, logger, new_request_id, request_id_var
 from .routes import ALL
@@ -24,11 +25,21 @@ def error_body(code: str, message: str, details: Any = None) -> dict[str, Any]:
     return {"error": {"code": code, "message": message, "details": details}}
 
 
+def _provider_from_settings(settings: Settings) -> LLMProvider | None:
+    if settings.llm_provider == "anthropic":
+        if settings.anthropic_api_key is None:
+            raise RuntimeError("ORCHIVIO_ANTHROPIC_API_KEY is required when ORCHIVIO_LLM_PROVIDER=anthropic")
+        kwargs = {"model": settings.llm_model} if settings.llm_model else {}
+        return AnthropicProvider(settings.anthropic_api_key.get_secret_value(), **kwargs)
+    return None
+
+
 def create_app(
     settings: Settings | None = None,
     *,
     engine: Engine | None = None,
     session_factory: sessionmaker[Session] | None = None,
+    llm_provider: LLMProvider | None = None,
 ) -> FastAPI:
     settings = settings or get_settings()
     if settings.env == "prod" and not settings.secure_cookies:
@@ -41,6 +52,7 @@ def create_app(
     app = FastAPI(title="Orchivio API", version=__version__, docs_url="/api/docs", openapi_url="/api/openapi.json")
     app.state.settings = settings
     app.state.session_factory = session_factory
+    app.state.llm_provider = llm_provider or _provider_from_settings(settings)
     app.state.throttle = LoginThrottle(settings.login_max_failures, settings.login_window_seconds)
 
     @app.middleware("http")

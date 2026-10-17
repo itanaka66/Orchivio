@@ -9,7 +9,7 @@ from pydantic import BaseModel, Field
 
 from orchivio.expr import CheckEnv, ExprError, Type, check
 from orchivio.expr.ast import BOOL, DATETIME, DECIMAL, INT, STRING
-from orchivio.model import assign_element_ids, diff_models, has_errors, model_hash, validate_model
+from orchivio.model import RULES, assign_element_ids, blocking, diff_models, has_errors, lint, model_hash, validate_model
 from orchivio.model.validate import ModelIndex
 from orchivio.security import check_consistency
 
@@ -51,6 +51,18 @@ def validate(body: ModelBody) -> dict[str, Any]:
             for f in check_consistency(model)
         ],
     }
+
+
+@router.post("/models/lint")
+def lint_model(body: ModelBody) -> dict[str, Any]:
+    model = assign_element_ids(load_model(body.model))
+    issues = validate_model(model)
+    if has_errors(issues):
+        raise api_error(422, "model_invalid", "fix validation errors before linting",
+                        [i.as_dict() for i in issues if i.severity == "error"])
+    findings = lint(model)
+    return {"blocking": len(blocking(findings)), "items": [f.as_dict() for f in findings],
+            "rules": [{"id": r.id, "severity": r.severity, "category": r.category, "title": r.title} for r in RULES]}
 
 
 @router.post("/models/diff")

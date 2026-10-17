@@ -5,6 +5,7 @@ from __future__ import annotations
 from functools import lru_cache
 from typing import Literal
 
+from pydantic import SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -15,7 +16,11 @@ class Settings(BaseSettings):
     database_url: str = "sqlite:///./orchivio.db"
     artifact_dir: str = "./artifacts"
     max_body_bytes: int = 1_048_576
-    llm_provider: Literal["mock"] = "mock"
+    # "none" disables the AI endpoints. "anthropic" needs ORCHIVIO_ANTHROPIC_API_KEY and
+    # sends prompts to a hosted API; projects must opt in (settings.ai_allow_external).
+    llm_provider: Literal["none", "anthropic"] = "none"
+    llm_model: str | None = None
+    anthropic_api_key: SecretStr | None = None
 
     # Accounts and sessions
     allow_registration: bool = True
