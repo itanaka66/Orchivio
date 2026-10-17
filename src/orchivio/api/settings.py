@@ -46,6 +46,9 @@ class Settings(BaseSettings):
     # trusted public keys (base64) may verify packages signed elsewhere, e.g. by another installation.
     package_signing_key: SecretStr | None = None
     package_trusted_public_keys: list[str] = []
+    csv_max_bytes: int = 2 * 1024 * 1024
+    csv_max_rows: int = 5000
+    csv_max_export_rows: int = 10_000
     # Outbound webhooks (docs/INTEGRATIONS.md). The two `allow_*` switches are for local development only.
     webhook_allow_http: bool = False
     webhook_allow_private_networks: bool = False

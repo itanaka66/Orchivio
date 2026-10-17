@@ -19,7 +19,8 @@ SCHEMA_VERSION = "1.1"
 SCALAR_TYPES = frozenset(
     {"string", "text", "integer", "decimal", "boolean", "date", "datetime", "uuid", "json"}
 )
-OPERATIONS = ("read", "create", "update", "delete")
+OPERATIONS = ("read", "create", "update", "delete")  # the CRUD matrix that generated tests cover
+ALL_OPERATIONS = (*OPERATIONS, "export")  # export is granted separately from read (FR-074)
 BUILTIN_ENTITIES = frozenset({"system.User"})
 
 _UUID_RE = r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
@@ -212,7 +213,7 @@ class FieldAccess(_Strict):
 class AccessRule(Element):
     entity: str  # qualified: module.Entity
     role: KeyName
-    operations: list[Literal["read", "create", "update", "delete"]] = Field(min_length=1)
+    operations: list[Literal["read", "create", "update", "delete", "export"]] = Field(min_length=1)
     row_constraint: Expr | None = None
     fields: FieldAccess | None = None
 

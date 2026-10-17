@@ -47,6 +47,8 @@ service), **Schema** (data structures only), **Planned**.
 | FR-097 | Near-zero-downtime migrations | Not started | Plans only |
 | FR-082 | Inbound and outbound webhooks | Partial | Outbound: signed CloudEvents, retries, dead letters, circuit breaker, SSRF guard. Inbound not built |
 | FR-083 | Business events | Done (outbox) | Transactional outbox for record created/updated/deleted, relayed at-least-once; no brokers, no custom events |
+| FR-089 | Data import/export with mapping | Partial | CSV only: per-row errors, modes, dry run, column mapping, all through app security; no Excel, no upsert |
+| FR-074 | Data grid (export part) | Partial | Permissioned (`export` operation), audited, formula-safe CSV export; no grid UI |
 | FR-090 | Branch-ready revision graph | Done | `parent_revision_ids`, `branches` |
 | FR-091 | Branches and semantic merge | Done (API) | Three-way merge by element id with typed conflicts and per-conflict resolution; no UI yet, no per-branch preview |
 | FR-052 | Server Flows | Done (preview) | Modelled, validated, edited visually and executed transactionally under the caller's security; no elevation, no production deployment |

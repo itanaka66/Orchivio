@@ -114,7 +114,30 @@ separate from Studio accounts (FR-067).
   (`appauth.*`, `plane = application`); management is platform-plane (`appuser.*`). Passwords are never logged.
 * **Data lives in the preview runtime** until a production data plane exists, so these endpoints serve preview data.
 
-## 7. Not yet implemented
+## 7. CSV import and export (FR-089, FR-074)
+
+* **Import** (`POST /apps/{id}/import/{Entity}`, Studio: `/applications/{id}/preview/import/{Entity}`; body is the
+  CSV, `text/csv`). Every row goes through the ordinary create path as the calling user, so roles, row constraints,
+  field-level write access, validation, uniqueness, hooks, audit and business events all apply. Columns are matched to
+  field names (or display names) case-insensitively; `map.<header>=<field>` renames a column, `map.<header>=` ignores
+  it, `ignore_unknown=true` ignores unmatched ones. Columns the caller may not write are reported as unknown, and
+  system-set fields (generated, computed) are refused up front. Empty cells are "not supplied": defaults apply and
+  required fields report `is required`.
+  * `mode=all_or_nothing` (default): all rows are tried in one transaction; any failure keeps nothing and `422
+    import_rejected` lists every bad row (`row` among data rows, `line` in the file, per-field messages; first 100).
+  * `mode=skip_errors`: each row is its own transaction; good rows are kept, the report lists the rest.
+  * `dry_run=true`: do everything, then roll back. It predicts the real run for that mode, including duplicates
+    inside the file (later rows see earlier ones).
+  * Limits: UTF-8 (a BOM is fine), 2 MiB, 5 000 rows, 100 columns (`ORCHIVIO_CSV_MAX_BYTES`, `ORCHIVIO_CSV_MAX_ROWS`);
+    delimiters `,` `;` `|` `tab`; NUL bytes are refused. Existing records are never overwritten (no upsert).
+* **Export** (`GET /apps/{id}/export/{Entity}`) needs the separate access operation `export` *and* `read`; both row
+  constraints apply and only readable fields (plus the key) are written. Granting `export` is a permission expansion
+  (A3). Each export is audited with its row count (`export.completed`, `records.exported`) and limited to
+  10 000 rows (`ORCHIVIO_CSV_MAX_EXPORT_ROWS`). Cells beginning with `=`, `+`, `-`, `@`, tab or CR are prefixed with a
+  quote so spreadsheets do not execute them. The file is UTF-8 with a BOM for Excel.
+* Excel (`.xlsx`) files are not supported; save as CSV.
+
+## 8. Not yet implemented
 
 Page and action enforcement in a running app, OIDC and SAML sign-in, self-service
 registration and password reset by email, MFA, a shared (multi-replica) login throttle, "view as role" preview, generated positive/negative tests
