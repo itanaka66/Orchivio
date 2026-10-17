@@ -43,7 +43,7 @@ def _insert_ignoring_conflicts(session: Session, values: dict[str, Any]) -> bool
 
 def enqueue(session: Session, *, application_id: uuid.UUID, flow: str, args: dict[str, Any], run_as_role: str,
             trigger: str, scheduled_for: datetime | None = None, max_attempts: int = 3, backoff_seconds: int = 60,
-            created_by: uuid.UUID | None = None, at: datetime | None = None) -> uuid.UUID | None:
+            created_by: uuid.UUID | None = None, at: datetime | None = None, source_ref: str | None = None) -> uuid.UUID | None:
     """Add a queued run. Returns its id, or ``None`` when this cron occurrence was already planned."""
     now = at or utcnow()
     job_id = uuid.uuid4()
@@ -51,7 +51,7 @@ def enqueue(session: Session, *, application_id: uuid.UUID, flow: str, args: dic
         "id": job_id, "application_id": application_id, "flow": flow, "args": args, "run_as_role": run_as_role,
         "trigger": trigger, "scheduled_for": scheduled_for, "status": "queued", "attempt": 0,
         "max_attempts": max_attempts, "backoff_seconds": backoff_seconds, "available_at": now,
-        "created_by": created_by, "created_at": now})
+        "created_by": created_by, "source_ref": source_ref, "created_at": now})
     return job_id if inserted else None
 
 

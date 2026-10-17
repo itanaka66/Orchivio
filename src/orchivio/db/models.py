@@ -431,7 +431,7 @@ class JobRun(Base):
     __tablename__ = "job_runs"
     __table_args__ = (
         _in("status", JOB_RUN_STATUS, "status"),
-        _in("trigger", ("schedule", "manual"), "trigger"),
+        _in("trigger", ("schedule", "manual", "webhook"), "trigger"),
         UniqueConstraint("application_id", "flow", "scheduled_for", name="uq_job_runs_occurrence"),
         Index("ix_job_runs_due", "status", "available_at"),
     )
@@ -456,6 +456,7 @@ class JobRun(Base):
     error: Mapped[str | None] = mapped_column(Text)
     result: Mapped[dict[str, Any] | None] = mapped_column(PortableJSON)
     created_by: Mapped[uuid.UUID | None] = mapped_column(Uuid)
+    source_ref: Mapped[str | None] = mapped_column(String(200))  # e.g. the inbound webhook and event that caused it
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
@@ -661,3 +662,42 @@ class WebhookDelivery(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     last_attempt_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     delivered_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class InboundWebhook(Base):
+    """A signed HTTP endpoint that starts a server flow (FR-082, inbound). Authenticated by its signature alone."""
+
+    __tablename__ = "inbound_webhooks"
+    __table_args__ = (
+        UniqueConstraint("application_id", "key", name="uq_inbound_webhooks_key"),
+        _in("status", WEBHOOK_STATUS, "status"),
+    )
+
+    id: Mapped[uuid.UUID] = _id()
+    application_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("applications.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    key: Mapped[str] = mapped_column(String(63), nullable=False)  # path segment of the public URL
+    flow: Mapped[str] = mapped_column(String(130), nullable=False)  # module.flow
+    run_as_role: Mapped[str] = mapped_column(String(64), nullable=False)
+    secret_ref: Mapped[str] = mapped_column(String(300), nullable=False)
+    arg_map: Mapped[dict[str, Any]] = mapped_column(PortableJSON, nullable=False, default=dict)  # param -> JSON pointer
+    defaults: Mapped[dict[str, Any]] = mapped_column(PortableJSON, nullable=False, default=dict)  # param -> literal
+    status: Mapped[str] = mapped_column(String(10), nullable=False, default="active")
+    created_by: Mapped[uuid.UUID | None] = mapped_column(Uuid)
+    created_at: Mapped[datetime] = _created()
+
+
+class InboundDelivery(Base):
+    """Receipt of one accepted request; unique per (webhook, event) so a replay never runs a flow twice."""
+
+    __tablename__ = "inbound_deliveries"
+    __table_args__ = (UniqueConstraint("webhook_id", "event_id", name="uq_inbound_deliveries_event"),)
+
+    id: Mapped[uuid.UUID] = _id()
+    webhook_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("inbound_webhooks.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    event_id: Mapped[str] = mapped_column(String(128), nullable=False)
+    job_id: Mapped[uuid.UUID | None] = mapped_column(Uuid)
+    received_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)

@@ -104,6 +104,7 @@ def create_app(
     app.state.llm_provider = llm_provider or _provider_from_settings(settings)
     app.state.metrics = Metrics()
     app.state.mcp_limiter = RateLimiter(settings.mcp_rate_per_minute)
+    app.state.inbound_limiter = RateLimiter(settings.inbound_rate_per_minute)
     app.state.throttle = LoginThrottle(settings.login_max_failures, settings.login_window_seconds)
 
     @app.middleware("http")
