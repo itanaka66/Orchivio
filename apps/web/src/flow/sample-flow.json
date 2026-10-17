@@ -134,5 +134,95 @@
       },
       "type": "raise_error"
     }
+  ],
+  "tests": [
+    {
+      "args": {
+        "min_gap": 0
+      },
+      "expect": {
+        "not_visited": [
+          "none"
+        ],
+        "records": [
+          {
+            "count": 1,
+            "entity": "Product",
+            "where": "reorder_level == 10"
+          },
+          {
+            "count": 1,
+            "entity": "Product",
+            "where": "reorder_level == 5"
+          }
+        ],
+        "status": "succeeded",
+        "visited": [
+          "find",
+          "each",
+          "bump",
+          "done"
+        ]
+      },
+      "fixtures": {
+        "Product": [
+          {
+            "name": "Low",
+            "owner": "u1",
+            "quantity": 1,
+            "reorder_level": 5,
+            "sku": "L-1"
+          },
+          {
+            "name": "Fine",
+            "owner": "u1",
+            "quantity": 50,
+            "reorder_level": 5,
+            "sku": "F-1"
+          }
+        ]
+      },
+      "name": "raises the reorder level of low products only",
+      "user": {
+        "id": "test-user"
+      }
+    },
+    {
+      "args": {
+        "min_gap": 5
+      },
+      "expect": {
+        "error_contains": "reorder level",
+        "not_visited": [
+          "bump"
+        ],
+        "records": [
+          {
+            "count": 1,
+            "entity": "Product",
+            "where": "reorder_level == 5"
+          }
+        ],
+        "status": "failed",
+        "visited": [
+          "none"
+        ]
+      },
+      "fixtures": {
+        "Product": [
+          {
+            "name": "Fine",
+            "owner": "u1",
+            "quantity": 50,
+            "reorder_level": 5,
+            "sku": "F-1"
+          }
+        ]
+      },
+      "name": "fails and changes nothing when no product is low",
+      "user": {
+        "id": "test-user"
+      }
+    }
   ]
 }

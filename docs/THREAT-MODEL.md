@@ -44,6 +44,7 @@ Status: ✅ implemented and tested · 🟡 partly / not verified end-to-end · �
 | T16 | **Cost exhaustion (LLM)** | Per-project monthly budget, usage recorded per job, bounded retries and repairs, input size limit | 🟡 depends on adapter-reported cost |
 | T21 | **XSS in the Studio** steals the session or CSRF token | React escapes output and no raw HTML is rendered; `HttpOnly` session cookie; CSRF token only in per-tab `sessionStorage` | 🟡 no Content-Security-Policy header yet; token is script-readable by design |
 | T22 | **Malicious flow content** (labels, expressions) injected into the editor | Rendered as text only; all content validated server-side; flows are not executed | ✅ today; revisit when the Logic Engine exists |
+| T23 | **Runaway or abusive flows** (long loops, deep calls, hook recursion, privilege escalation) | Graph must be acyclic; loops need a maximum; step, time, call-depth and hook-depth limits; one transaction; runs as the caller, never elevated | ✅ tested; 🟡 limits are per run, not per user/time, and runs are synchronous in the request |
 | T19 | **Data exfiltration to an external LLM** | Providers flagged `external` are refused until the project opts in; minimal context; input stored only as a hash | ✅ tested with a mock flagged external |
 | T20 | **Preview used to reach real data / Studio role abuse in preview** | Separate preview database; roles come from the model, never from Studio roles; unknown roles rejected | ✅ tested |
 

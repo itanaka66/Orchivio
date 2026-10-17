@@ -1,5 +1,5 @@
 // Thin client for the Orchivio API (docs/API-SPEC.md). Cookie session + CSRF header.
-import type { Flow, Issue } from '../flow/types'
+import type { Flow, Issue, RunResult } from '../flow/types'
 
 export class ApiError extends Error {
   constructor(readonly status: number, readonly code: string, message: string, readonly details?: unknown) {
@@ -32,8 +32,8 @@ export class ApiClient {
 
   get signedIn(): boolean { return this.csrf !== null }
 
-  async request<T>(method: string, path: string, body?: unknown): Promise<T> {
-    const headers: Record<string, string> = { Accept: 'application/json' }
+  async request<T>(method: string, path: string, body?: unknown, extraHeaders: Record<string, string> = {}): Promise<T> {
+    const headers: Record<string, string> = { Accept: 'application/json', ...extraHeaders }
     if (body !== undefined) headers['Content-Type'] = 'application/json'
     // Cookie-authenticated unsafe requests must carry the CSRF token returned at login.
     if (method !== 'GET' && this.csrf) headers['X-CSRF-Token'] = this.csrf
@@ -78,6 +78,12 @@ export class ApiClient {
   async validateFlow(model: unknown, module: string, flow: Flow): Promise<Issue[]> {
     const r = await this.request<{ issues: Issue[] }>('POST', '/models/validate-flow', { model, module, flow })
     return r.issues
+  }
+
+  /** Run a saved flow in the application's preview as a simulated end user. */
+  runFlow(appId: string, flowKey: string, args: Record<string, unknown>, asUser: string, roles: string[]): Promise<RunResult> {
+    return this.request<RunResult>('POST', `/applications/${appId}/preview/flows/${encodeURIComponent(flowKey)}/run`,
+      { args }, { 'X-Preview-User': asUser, 'X-Preview-Roles': roles.join(',') })
   }
 
   createProposal(appId: string, model: unknown, title: string) {

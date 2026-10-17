@@ -15,6 +15,7 @@ import re
 from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import datetime
+from decimal import Decimal
 from typing import Any
 
 from .ast import (
@@ -50,11 +51,14 @@ class SqlContext:
     table_alias: str | None = None
     dialect: str = "postgresql"  # or "sqlite"
     param_prefix: str = "p"
+    # Values of flow variables (record variables are mappings, list variables are lists).
+    variables: Mapping[str, Any] | None = None
 
 
 class _Compiler:
     def __init__(self, result: CheckResult, ctx: SqlContext) -> None:
         self.types = result.types
+        self.vars = result.variables
         self.ctx = ctx
         self.params: dict[str, Any] = {}
 
@@ -62,6 +66,18 @@ class _Compiler:
         name = f"{self.ctx.param_prefix}{len(self.params)}"
         self.params[name] = value
         return f":{name}"
+
+    def var_value(self, name: str) -> Any:
+        if self.ctx.variables is None or name not in self.ctx.variables:
+            raise NotCompilable(f"variable '{name}' has no value in this context")
+        return self.ctx.variables[name]
+
+    def scalar_param(self, value: Any) -> str:
+        if isinstance(value, (Mapping, list, tuple, set)):
+            raise NotCompilable("only scalar values can be used as query parameters")
+        if isinstance(value, Decimal) and self.ctx.dialect == "sqlite":
+            value = float(value)  # sqlite3 cannot bind Decimal
+        return self.param(value)
 
     def nullable(self, node: Node) -> bool:
         return self.types[node].nullable
@@ -85,6 +101,8 @@ class _Compiler:
                     raise NotCompilable("$now unavailable")
                 return self.param(self.ctx.now)
             case Ident(name=n):
+                if n in self.vars:
+                    return self.scalar_param(self.var_value(n))
                 if self.types[node].kind == "enumtype" or n == "record":
                     raise NotCompilable(f"'{n}' is not a value")
                 return self.column(n)
@@ -105,6 +123,9 @@ class _Compiler:
     def _member(self, node: Member, obj: Node, name: str) -> str:
         ot = self.types[obj]
         if ot.kind == "entity":
+            if isinstance(obj, Ident) and obj.name in self.vars:  # a field of a record held in a variable
+                held = self.var_value(obj.name)
+                return self.scalar_param(None if held is None else held.get(name))
             return self.column(name)
         if ot.kind == "enumtype":
             return self.param(name)
@@ -119,6 +140,13 @@ class _Compiler:
     def _binary(self, node: Binary) -> str:  # noqa: C901 - one branch per operator
         op, left, right = node.op, node.left, node.right
         if op == "in":
+            if isinstance(right, Ident) and right.name in self.vars:  # membership in a list variable
+                items = self.var_value(right.name)
+                if not isinstance(items, (list, tuple)):
+                    raise NotCompilable("'in' needs a list")
+                if not items:
+                    return "(1 = 0)"
+                return f"({self.c(left)} IN ({', '.join(self.scalar_param(i) for i in items)}))"
             if not isinstance(right, ListLit):
                 raise NotCompilable("'in' requires a list literal")
             items = ", ".join(self.c(i) for i in right.items)

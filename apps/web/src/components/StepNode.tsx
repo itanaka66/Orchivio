@@ -28,14 +28,15 @@ function StepNodeView({ data, selected }: NodeProps<StepNodeType>) {
   const problems = errors ? `${errors} error${errors > 1 ? 's' : ''}` : warnings ? `${warnings} warning${warnings > 1 ? 's' : ''}` : ''
   return (
     <div
-      className={`step step-${step.type}${selected ? ' is-selected' : ''}${errors ? ' has-error' : warnings ? ' has-warning' : ''}`}
+      className={`step step-${step.type}${selected ? ' is-selected' : ''}${errors ? ' has-error' : warnings ? ' has-warning' : ''}${data.run ? (data.run.error ? ' ran-error' : ' ran') : ''}`}
       role="group"
-      aria-label={`${stepTitle(step)}, ${meta.label} step${problems ? `, ${problems}` : ''}`}
+      aria-label={`${stepTitle(step)}, ${meta.label} step${problems ? `, ${problems}` : ''}${data.run ? (data.run.error ? ', failed in the last run' : `, ran ${data.run.count} time${data.run.count > 1 ? 's' : ''} in the last run`) : ''}`}
     >
       {step.type !== 'start' && <Handle type="target" position={Position.Top} id="in" aria-label="Input" />}
       <div className="step-head">
         <span className="step-glyph" aria-hidden="true">{meta.glyph}</span>
         <span className="step-title">{stepTitle(step)}</span>
+        {data.run && <span className={`badge ${data.run.error ? 'badge-error' : 'badge-ok'}`} title="Last run">{data.run.error ? '✕' : `×${data.run.count}`}</span>}
         {problems && <span className={`badge ${errors ? 'badge-error' : 'badge-warning'}`} title={problems}>{issues.length}</span>}
       </div>
       {summary(step.type, step.config) && <div className="step-summary">{summary(step.type, step.config)}</div>}

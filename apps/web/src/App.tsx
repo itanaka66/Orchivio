@@ -41,6 +41,8 @@ export default function App({ client: injected }: { client?: ApiClient }) {
           model={view}
           readOnly={readOnly}
           validate={user ? (f) => client.validateFlow(model, module, f) : undefined}
+          run={user && application ? (args, asUser, roles) => client.runFlow(application.id, `${module}.${flow.key}`, args, asUser, roles) : undefined}
+          runnable={listFlows(model).some((f) => f.module === module && f.flow.key === flow.key)}
           onSave={application && user && !readOnly ? async (f) => {
             const p = await client.createProposal(application.id, withFlow(model, module, f), `Edit flow ${f.key}`)
             return `Proposal created (${p.approval_level}, ${p.diff.changes.length} change${p.diff.changes.length === 1 ? '' : 's'}). It takes effect when someone with the right role approves it.`

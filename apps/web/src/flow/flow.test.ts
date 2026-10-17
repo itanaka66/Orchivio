@@ -217,3 +217,15 @@ describe('conversion', () => {
     expect(again.find((n) => n.id === 'find')?.measured).toEqual({ width: 160, height: 60 })
   })
 })
+
+describe('run marks', () => {
+  it('counts how often each of this flow’s steps ran and flags failures', async () => {
+    const { runMarks } = await import('./convert')
+    const span = (step: string, status = 'ok', flow = 'core.ReorderLowStock') => ({ flow, step, status })
+    const marks = runMarks(sampleFlow, [span('find'), span('bump'), span('bump'), span('none', 'error'), span('find', 'ok', 'core.Other')])
+    expect(marks.get('bump')).toEqual({ count: 2, error: false })
+    expect(marks.get('none')).toEqual({ count: 1, error: true })
+    expect(marks.get('find')).toEqual({ count: 1, error: false }) // a step with the same id in another flow is ignored
+    expect(marks.has('done')).toBe(false)
+  })
+})

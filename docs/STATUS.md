@@ -35,8 +35,11 @@ service), **Schema** (data structures only), **Planned**.
 | FR-060..063 | Two-plane security, row constraints | Partial | Enforced by the preview data service on every operation; no end-user accounts yet (identity is simulated) |
 | FR-066 | Consistency checker | Done | 5 checks |
 | FR-090 | Branch-ready revision graph | Done | `parent_revision_ids`, `branches` |
-| FR-052 | Server Flows | Partial | Modelled, validated, versioned and editable visually (docs/FLOW-SPEC.md); **not executed**: no Logic Engine yet |
-| FR-053 | Client Flows | Partial | As above; restricted to decision/call/end steps |
+| FR-052 | Server Flows | Done (preview) | Modelled, validated, edited visually and executed transactionally under the caller's security; no elevation, no production deployment |
+| FR-053 | Client Flows | Partial | Modelled and validated (decision/call/end only); no browser runtime |
+| FR-054 | Entity event hooks | Done (preview) | before/after create/update/delete bound to server flows, atomic, bounded recursion |
+| FR-057 | Flow debugger | Partial | Step trace with ids and an overlay in the editor; no breakpoints or stepping |
+| FR-058 | Flow unit tests | Done | Declarative tests in the model, run in generated test runs |
 | FR-122 | Dependency graph | Done | Built and stored per revision; find-usages endpoint |
 | FR-120 | Model linter | Done | 21 rules, suppressions with justification, blocking errors, stored per revision |
 | FR-030 | CRUD API runtime | Partial | Preview environment only (docs/RUNTIME.md) |
@@ -69,6 +72,12 @@ Everything not listed is **Planned**.
 - The SQL predicate compiler is checked against SQLite only.
 
 ## Known limitations
+
+- Flow runs and hooks work in the preview only; `after_*` hooks and flows run synchronously in the request, there
+  are no scheduled jobs, task queues or retries (FR-055/056).
+- A `change` step refreshes its own variable, but copies of the same record held in lists are not refreshed.
+- Flow variable scoping is checked as "defined upstream on some path"; the engine fails at run time if a
+  variable is unset on the path actually taken.
 
 - The web Studio contains only the flow builder; mouse dragging, zoom and canvas rendering are untested in a browser, and no screen-reader testing was done (apps/web/README.md).
 - The CSRF token lives in `sessionStorage`; a new tab needs a new login.

@@ -29,6 +29,8 @@ export interface Flow {
   params: FlowParam[]
   steps: FlowStep[]
   edges: FlowEdge[]
+  /** Declarative tests live in the model; the editor carries them through untouched. */
+  tests?: unknown[]
 }
 
 export interface Issue {
@@ -41,6 +43,26 @@ export interface Issue {
 
 /** Minimal view of the application model that the editor needs for choices. */
 export interface ModelView {
+  roles: string[]
   entities: { qualified: string; name: string; fields: { name: string; type: string; editable: boolean }[] }[]
   flows: { key: string; kind: 'server' | 'client'; params: FlowParam[] }[]
+}
+
+export interface TraceSpan {
+  flow: string
+  step: string
+  type: string
+  status: 'ok' | 'error'
+  ms: number
+  iteration: number[]
+  detail: string
+}
+
+export interface RunResult {
+  flow: string
+  status: 'succeeded' | 'failed'
+  error: string | null
+  error_step: string | null
+  steps_executed: number
+  trace: TraceSpan[]
 }

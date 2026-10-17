@@ -5,16 +5,17 @@ import {
 import '@xyflow/react/dist/style.css'
 import { useCallback, useEffect, useMemo, useRef, useState, type DragEvent, type KeyboardEvent } from 'react'
 import { STEP_META, stepTitle } from '../flow/catalog'
-import { flowToEdges, flowToNodes, type StepNode } from '../flow/convert'
+import { flowToEdges, flowToNodes, runMarks, type StepNode } from '../flow/convert'
 import { canRedo, canUndo, commit, initial, push, redo, replace, undo, type History } from '../flow/history'
 import { errorCount, groupIssues } from '../flow/issues'
 import { layout, placeMissing } from '../flow/layout'
 import {
   addStep, connect, moveSteps, removeEdges, removeSteps, setConfig, setNext, updateMeta, updateStep,
 } from '../flow/ops'
-import type { Flow, FlowParam, Handle, Issue, ModelView, StepType } from '../flow/types'
+import type { Flow, FlowParam, Handle, Issue, ModelView, RunResult, StepType } from '../flow/types'
 import { FlowInspector, StepInspector } from './Inspector'
 import { DRAG_TYPE, Palette } from './Palette'
+import { RunPanel } from './RunPanel'
 import { StepNodeComponent } from './StepNode'
 
 const nodeTypes = { step: StepNodeComponent }
@@ -29,6 +30,10 @@ export interface FlowEditorProps {
   /** Called by the Save button. May return a message to show. */
   onSave?: (flow: Flow) => Promise<string | void> | string | void
   saveLabel?: string
+  /** Run the saved flow in the preview as a simulated user. Omit to hide the Run panel. */
+  run?: (args: Record<string, unknown>, asUser: string, roles: string[]) => Promise<RunResult>
+  /** False for a flow that does not exist in the saved model yet. */
+  runnable?: boolean
 }
 
 type Validation = 'off' | 'pending' | 'done' | 'unavailable'
@@ -43,7 +48,7 @@ export function FlowEditor(props: FlowEditorProps) {
 
 const semantic = (f: Flow) => JSON.stringify({ ...f, steps: f.steps.map(({ position: _p, ...s }) => s) })
 
-function Editor({ flow: initialFlow, model, readOnly, validate, onSave, saveLabel = 'Save as proposal' }: FlowEditorProps) {
+function Editor({ flow: initialFlow, model, readOnly, validate, onSave, saveLabel = 'Save as proposal', run, runnable = true }: FlowEditorProps) {
   const rf = useReactFlow<StepNode>()
   const [hist, setHist] = useState<History<Flow>>(() => initial(placeMissing(initialFlow)))
   const flow = hist.present
@@ -56,23 +61,26 @@ function Editor({ flow: initialFlow, model, readOnly, validate, onSave, saveLabe
   const [selectedEdges, setSelectedEdges] = useState<ReadonlySet<string>>(new Set())
   const [status, setStatus] = useState('')
   const [saving, setSaving] = useState(false)
+  const [runResult, setRunResult] = useState<RunResult | null>(null)
   const wrapper = useRef<HTMLDivElement>(null)
   const lastText = useRef<{ key: string; at: number } | null>(null)
   const dragBase = useRef<Flow | null>(null)
 
   const grouped = useMemo(() => groupIssues(issues), [issues])
   const edges = useMemo(() => flowToEdges(flow, grouped.byEdge, selectedEdges), [flow, grouped, selectedEdges])
+  const runs = useMemo(() => (runResult ? runMarks(flow, runResult.trace) : new Map()), [flow, runResult])
   const [nodes, setNodes] = useState<StepNode[]>(() => flowToNodes(flow, grouped.byStep))
 
   // The flow is the source of truth: re-derive nodes whenever it, the issues or the selection change,
   // keeping React Flow's own state (measurement) for nodes that already exist.
   useEffect(() => {
-    setNodes((prev) => flowToNodes(flow, grouped.byStep, prev).map((n) => ({ ...n, selected: selectedSteps.has(n.id) })))
-  }, [flow, grouped, selectedSteps])
+    setNodes((prev) => flowToNodes(flow, grouped.byStep, prev, runs).map((n) => ({ ...n, selected: selectedSteps.has(n.id) })))
+  }, [flow, grouped, selectedSteps, runs])
 
   // --- live validation -------------------------------------------------------------------------
   const seq = useRef(0)
   const key = useMemo(() => semantic(flow), [flow]) // layout changes do not need a server round-trip
+  useEffect(() => setRunResult(null), [key]) // a trace describes the flow as it was; editing makes it stale
   useEffect(() => {
     if (!validate) return
     const mine = ++seq.current
@@ -299,6 +307,23 @@ function Editor({ flow: initialFlow, model, readOnly, validate, onSave, saveLabe
               flow={flow} readOnly={readOnly}
               onDescription={(d) => typed('flow', 'description', (f) => updateMeta(f, { description: d }))}
               onParams={(p: FlowParam[]) => change(updateMeta(flow, { params: p }))}
+            />
+          )}
+
+          {run && flow.kind === 'server' && (
+            <RunPanel
+              flow={flow}
+              roles={model.roles}
+              result={runResult}
+              blockedReason={!runnable ? 'Save this flow and have it approved before running it.' : dirty ? 'Runs use the approved model. Save your changes and get them approved first.' : errors > 0 ? 'Fix the errors first.' : undefined}
+              onGoTo={goTo}
+              onRun={async (args, asUser, roles) => {
+                try {
+                  setRunResult(await run(args, asUser, roles))
+                } catch (e) {
+                  say(e instanceof Error ? `Could not run: ${e.message}` : 'Could not run.')
+                }
+              }}
             />
           )}
 

@@ -28,7 +28,7 @@ export function viewOf(model: Json, currentModule: string): ModelView {
       flows.push({ key: m.key === currentModule ? f.key : `${m.key}.${f.key}`, kind: f.kind ?? 'server', params: f.params ?? [] })
     }
   }
-  return { entities, flows }
+  return { roles: ((model.security as Json | undefined)?.roles ?? []) as string[], entities, flows }
 }
 
 /** A copy of ``model`` with ``flow`` stored in ``module`` (replacing the flow with the same key). */

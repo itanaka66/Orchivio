@@ -34,7 +34,8 @@ structures, APIs, business logic and tests. AI proposes changes; humans approve 
   rules and validation; synthetic data; view-as-role. See [docs/RUNTIME.md](docs/RUNTIME.md).
 - **Flow builder** (`apps/web`): a React Flow editor for Server/Client Flows with a palette, inspector,
   undo/redo, keyboard-operable connections and live server validation; saves as a proposal. Flows are
-  validated but **not executed yet** (docs/FLOW-SPEC.md).
+  validated, **executed** by the Logic Engine in the preview (transactional, under the caller's security),
+  traced, bound to entity events as hooks, and covered by declarative tests (docs/FLOW-SPEC.md).
 - **Generated tests**: access, row-constraint, CRUD and validation cases derived from the model, with
   coverage and run-to-run comparison.
 
