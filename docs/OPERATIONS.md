@@ -100,4 +100,5 @@ Run migrations explicitly (`alembic upgrade head`); the API does not migrate on 
 
 No retention jobs for sessions, audit events or conversations; no automatic scheduling of backups (use cron
 or your orchestrator); no log shipping or OpenTelemetry traces (planned, FR-123); no rate limiting beyond the
-login throttle; the login throttle is per process.
+login throttle; the login throttle is per process. Jobs have no UI, no per-environment schedule enablement and
+no queue metrics yet.
