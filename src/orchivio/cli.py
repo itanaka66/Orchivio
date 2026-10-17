@@ -5,6 +5,8 @@
     orchivio export   model.yaml out-dir/ | out.zip [--assign-ids]
     orchivio import   model-dir/ | model.zip out.yaml
     orchivio diff     before after                            # exit 1 if they differ
+    orchivio openapi  model.yaml [-o openapi.json]            # data API description
+    orchivio backup | restore | verify-backup FILE            # see docs/OPERATIONS.md
 
 A model is a single YAML/JSON file, a directory of canonical files (docs/MODEL-SPEC.md) or a zip.
 """
@@ -13,6 +15,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 from pathlib import Path
 from typing import TextIO
@@ -20,6 +23,8 @@ from typing import TextIO
 import yaml
 from pydantic import ValidationError
 
+from .codegen import build_openapi
+from .ops import BackupError, backup, read_backup, restore
 from .model import (
     AppModel,
     CanonicalError,
@@ -121,6 +126,16 @@ def run(args: argparse.Namespace, out: TextIO) -> int:
             encoding="utf-8")
         print(f"wrote {args.out}", file=out)
         return EXIT_OK
+    if args.command in ("backup", "restore", "verify-backup"):
+        return run_ops(args, out)
+    if args.command == "openapi":
+        spec = json.dumps(build_openapi(load(args.path)), indent=2, sort_keys=True, ensure_ascii=False) + "\n"
+        if args.out:
+            Path(args.out).write_text(spec, encoding="utf-8", newline="\n")
+            print(f"wrote {args.out}", file=out)
+        else:
+            out.write(spec)
+        return EXIT_OK
     if args.command == "diff":
         a, b = assign_element_ids(load(args.before)), None
         b = assign_element_ids(load(args.after), previous=a)
@@ -131,6 +146,37 @@ def run(args: argparse.Namespace, out: TextIO) -> int:
         print("no differences" if d.is_empty else f"highest approval level: {d.level.name}", file=out)
         return EXIT_OK if d.is_empty else EXIT_PROBLEMS
     raise CliError(f"unknown command {args.command}")
+
+
+def run_ops(args: argparse.Namespace, out: TextIO) -> int:
+    from .db import make_engine
+
+    def engine():
+        url = args.database_url or os.environ.get("ORCHIVIO_DATABASE_URL")
+        if not url:
+            raise CliError("give --database-url or set ORCHIVIO_DATABASE_URL")
+        return make_engine(url)
+
+    try:
+        if args.command == "verify-backup":
+            manifest, _ = read_backup(Path(args.file).read_bytes())
+            n = sum(t["rows"] for t in manifest["tables"].values())
+            print(f"ok: {len(manifest['tables'])} tables, {n} rows, {len(manifest['artifacts'])} artifacts, "
+                  f"schema revision {manifest['schema_revision']}, created {manifest['created_at']}", file=out)
+        elif args.command == "backup":
+            exclude = set() if args.include_sessions else {"sessions"}
+            Path(args.file).write_bytes(backup(engine(), artifacts_dir=args.artifacts, exclude=exclude))
+            os.chmod(args.file, 0o600)  # it contains password and token hashes
+            print(f"wrote {args.file} (confidential: encrypt it and restrict access)", file=out)
+        else:
+            report = restore(Path(args.file).read_bytes(), engine(), artifacts_dir=args.artifacts)
+            print(f"restored {sum(report.tables.values())} rows in {len(report.tables)} tables and {report.artifacts} artifacts", file=out)
+    except BackupError as e:
+        print(f"error: {e}", file=sys.stderr)
+        return EXIT_PROBLEMS
+    except FileNotFoundError as e:
+        raise CliError(f"{e.filename}: no such file or directory") from e
+    return EXIT_OK
 
 
 def parser() -> argparse.ArgumentParser:
@@ -145,6 +191,19 @@ def parser() -> argparse.ArgumentParser:
     i = sub.add_parser("import")
     i.add_argument("path")
     i.add_argument("out")
+    o = sub.add_parser("openapi", help="OpenAPI 3.1 document of the application's data API")
+    o.add_argument("path")
+    o.add_argument("-o", "--out")
+    b = sub.add_parser("backup", help="logical backup of the platform database and artifacts")
+    b.add_argument("file")
+    b.add_argument("--database-url")
+    b.add_argument("--artifacts", help="artifact directory to include")
+    b.add_argument("--include-sessions", action="store_true")
+    r = sub.add_parser("restore", help="restore a backup into an empty, migrated database")
+    r.add_argument("file")
+    r.add_argument("--database-url")
+    r.add_argument("--artifacts", help="directory to write artifacts into")
+    sub.add_parser("verify-backup").add_argument("file")
     d = sub.add_parser("diff")
     d.add_argument("before")
     d.add_argument("after")

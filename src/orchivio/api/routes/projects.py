@@ -12,6 +12,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from orchivio.db import ModelInvalid, ProposalRepository, RevisionRepository, to_model
+from orchivio.codegen import build_openapi
 from orchivio.db.models import Application, AppRevision, Project
 from orchivio.db.proposals import NoChanges
 from orchivio.model import CanonicalError, ModelDiff, build_archive, read_archive
@@ -277,6 +278,16 @@ async def import_archive(app_id: uuid.UUID, request: Request, title: str = Query
         return proposal_detail(p)
 
     return await run_in_threadpool(work)
+
+
+@router.get("/revisions/{revision_id}/openapi.json")
+def revision_openapi(revision_id: uuid.UUID, principal: Principal = Depends(current_principal),
+                     db: Session = Depends(get_db)) -> dict[str, Any]:
+    """OpenAPI 3.1 document of the application's data API as defined by this revision."""
+    rev, app, _ = load_revision(db, principal, revision_id, "model.read")
+    spec = build_openapi(to_model(rev), version=f"{to_model(rev).application.version}+r{rev.revision_no}")
+    spec["info"]["x-orchivio-model-hash"] = rev.model_hash
+    return spec
 
 
 @router.get("/revisions/{revision_id}/lint")

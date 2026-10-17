@@ -43,6 +43,15 @@ orchivio diff before/ after/     # exit code 1 when they differ; prints risk and
 
 Commit the exported directory to Git to review model changes as ordinary pull requests.
 
+## Operations
+
+```bash
+orchivio backup backup.zip --database-url …     # confidential: contains password hashes and every model
+orchivio verify-backup backup.zip
+orchivio restore backup.zip --database-url …   # into an empty database at the same schema revision
+orchivio openapi model.yaml -o openapi.json
+```
+
 ## Web Studio
 
 ```bash

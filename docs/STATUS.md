@@ -30,6 +30,8 @@ service), **Schema** (data structures only), **Planned**.
 | FR-027 | Static model checks | Done | See MODEL-SPEC.md rule table |
 | FR-028 | Enumerations | Done | Removal of a value is flagged risky |
 | FR-029 | Modules | Schema | Multiple modules validate; cross-module enum use in expressions is limited |
+| FR-044 | Backup and restore | Done (platform data) | Verified logical backup/restore, atomic, tested on SQLite; PostgreSQL test written but unrun; no scheduling or retention (docs/OPERATIONS.md) |
+| FR-045 | Metrics and health checks | Done | liveness, readiness, token-protected Prometheus metrics; no worker status (no workers yet) |
 | FR-043 | Audit logs | Partial | Auth, membership, project, token and revision events recorded and queryable; append-only trigger is PostgreSQL-only and untested |
 | FR-050 | Typed expression language | Done | Parser, checker, interpreter, limits |
 | FR-051 | Computed fields | Done | Type-checked, cycle detection; virtual (read) and stored (write) in the preview runtime |
@@ -44,7 +46,8 @@ service), **Schema** (data structures only), **Planned**.
 | FR-122 | Dependency graph | Done | Built and stored per revision; find-usages endpoint |
 | FR-120 | Model linter | Done | 21 rules, suppressions with justification, blocking errors, stored per revision |
 | FR-030 | CRUD API runtime | Partial | Preview environment only (docs/RUNTIME.md) |
-| FR-031/032/033/034/036 | UI renderer, OpenAPI for apps, typed clients, migrations, build export | Planned | |
+| FR-032 | OpenAPI for generated apps | Done | `build_openapi`, endpoint and CLI; schemas validated against live responses and request validation in tests |
+| FR-031/033/034/036 | UI renderer, typed clients, data migrations, build export | Planned | |
 | FR-035 | Preview isolated from production data | Done | Separate database, per-app table prefix; prod requires a different preview URL |
 | FR-040 | Test generation and execution | Done (preview scope) | Access, row-constraint, CRUD, validation cases; reports persisted; run comparison |
 | FR-127 | Explain mode | Done | Read-only; citations are checked against the model |

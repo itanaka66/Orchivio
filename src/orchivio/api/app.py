@@ -2,22 +2,25 @@
 
 from __future__ import annotations
 
+import secrets
 import time
 from typing import Any
 
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, Header, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
-from fastapi.responses import JSONResponse
-from sqlalchemy import Engine
+from fastapi.responses import JSONResponse, PlainTextResponse
+from sqlalchemy import Engine, text
 from sqlalchemy.orm import Session, sessionmaker
 
 from orchivio import __version__
 from orchivio.db import make_engine, make_session_factory
+from orchivio.db.schema_revision import SCHEMA_REVISION
 from orchivio.llm import AnthropicProvider, LLMProvider
 from orchivio.ports import LocalArtifactStore
 from orchivio.runtime import PreviewStore
 
 from .audit_sink import DbAuditSink
+from .metrics import Metrics
 from .observability import configure_logging, logger, new_request_id, request_id_var
 from .routes import ALL
 from .settings import Settings, get_settings
@@ -35,6 +38,17 @@ def _provider_from_settings(settings: Settings) -> LLMProvider | None:
         kwargs = {"model": settings.llm_model} if settings.llm_model else {}
         return AnthropicProvider(settings.anthropic_api_key.get_secret_value(), **kwargs)
     return None
+
+
+def route_template(request: Request) -> str:
+    """The matched route with its path parameters in braces, e.g. ``/api/v1/projects/{project_id}``.
+    Unmatched requests share one label so scanners cannot create unbounded series."""
+    if request.scope.get("route") is None:
+        return "unmatched"
+    path = request.url.path
+    for name, value in sorted(request.scope.get("path_params", {}).items(), key=lambda kv: -len(str(kv[1]))):
+        path = path.replace(str(value), "{" + name + "}", 1)
+    return path
 
 
 def create_app(
@@ -62,6 +76,7 @@ def create_app(
     app.state.audit_sink = DbAuditSink(session_factory)
     app.state.artifacts = LocalArtifactStore(settings.artifact_dir)
     app.state.llm_provider = llm_provider or _provider_from_settings(settings)
+    app.state.metrics = Metrics()
     app.state.throttle = LoginThrottle(settings.login_max_failures, settings.login_window_seconds)
 
     @app.middleware("http")
@@ -76,6 +91,8 @@ def create_app(
                 response = JSONResponse(error_body("payload_too_large", "request body too large"), status_code=413)
             else:
                 response = await call_next(request)
+            app.state.metrics.observe(request.method, route_template(request), response.status_code,
+                                      time.perf_counter() - started)
             response.headers["X-Request-ID"] = rid
             response.headers.setdefault("X-Content-Type-Options", "nosniff")
             response.headers.setdefault("Cache-Control", "no-store")
@@ -103,7 +120,49 @@ def create_app(
 
     @app.get("/healthz", tags=["ops"])
     def healthz() -> dict[str, str]:
+        """Liveness: the process is up. Does not touch the database."""
         return {"status": "ok", "version": __version__}
+
+    def _database_checks() -> dict[str, str]:
+        checks: dict[str, str] = {}
+        try:
+            with session_factory() as s:
+                s.execute(text("SELECT 1"))
+                try:
+                    current = s.execute(text("SELECT version_num FROM alembic_version")).scalar()
+                    checks["migrations"] = "ok" if current == SCHEMA_REVISION else "behind"
+                except Exception:  # noqa: BLE001 - the table is missing: never migrated
+                    checks["migrations"] = "missing"
+            checks["database"] = "ok"
+        except Exception:  # noqa: BLE001 - details go to the log, not to the caller
+            logger.exception("readiness: database check failed")
+            checks["database"] = "unavailable"
+        try:
+            with app.state.preview_store.engine.connect() as c:
+                c.execute(text("SELECT 1"))
+            checks["preview_database"] = "ok"
+        except Exception:  # noqa: BLE001
+            logger.exception("readiness: preview database check failed")
+            checks["preview_database"] = "unavailable"
+        return checks
+
+    @app.get("/readyz", tags=["ops"])
+    def readyz() -> JSONResponse:
+        """Readiness: the databases answer and the schema is at the revision this code expects."""
+        checks = _database_checks()
+        ready = all(v == "ok" for v in checks.values())
+        return JSONResponse({"status": "ready" if ready else "not_ready", "checks": checks}, status_code=200 if ready else 503)
+
+    @app.get("/metrics", tags=["ops"], include_in_schema=False)
+    def metrics(authorization: str | None = Header(default=None)) -> PlainTextResponse:
+        token = settings.metrics_token
+        if token is None:
+            raise HTTPException(404, error_body("not_found", "not found"))  # disabled unless configured
+        if authorization is None or not secrets.compare_digest(authorization.encode(), f"Bearer {token.get_secret_value()}".encode()):
+            raise HTTPException(401, error_body("unauthorized", "invalid credentials"))
+        db_ok = _database_checks().get("database") == "ok"
+        return PlainTextResponse(app.state.metrics.render(__version__, {"orchivio_database_up": 1.0 if db_ok else 0.0}),
+                                 media_type="text/plain; version=0.0.4")
 
     for module in ALL:
         app.include_router(module.router, prefix="/api/v1")
