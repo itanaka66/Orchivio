@@ -1,0 +1,68 @@
+# Sample application model (schema 1.1). Validated by tests/unit/test_model.py.
+schema_version: "1.1"
+application:
+  key: inventory
+  name: Inventory Manager
+  version: "0.1.0"
+  default_locale: ja-JP
+  locales: [ja-JP, en-US]
+
+modules:
+  - key: core
+    enumerations:
+      - name: StockStatus
+        values: [in_stock, low, out_of_stock]
+    entities:
+      - name: Product
+        display_name: Product
+        fields:
+          - { name: id, type: uuid, primary_key: true, generated: true }
+          - { name: name, type: string, required: true, max_length: 200 }
+          - { name: sku, type: string, required: true, unique: true }
+          - { name: quantity, type: integer, required: true, minimum: 0 }
+          - { name: reorder_level, type: integer, required: true, minimum: 0 }
+          - name: status
+            type: enum:StockStatus
+            computed:
+              mode: virtual
+              expr: >
+                quantity == 0 ? StockStatus.out_of_stock
+                : (quantity <= reorder_level ? StockStatus.low : StockStatus.in_stock)
+          - { name: owner, type: "ref:system.User", required: true, default_expr: "$currentUser" }
+          - { name: created_at, type: datetime, generated: true }
+        indexes:
+          - { fields: [owner] }
+    pages:
+      - key: product-list
+        path: /products
+        type: list
+        entity: Product
+        layout: main
+        columns: [name, sku, quantity, status]
+        actions:
+          - key: edit
+            visible_expr: "$currentUser.hasRole('editor')"
+          - view
+          - create
+      - key: product-create
+        path: /products/new
+        type: form
+        entity: Product
+        mode: create
+
+security:
+  roles: [viewer, editor, admin]
+  access:
+    - entity: core.Product
+      role: viewer
+      operations: [read]
+    - entity: core.Product
+      role: editor
+      operations: [read, create, update]
+      row_constraint: "record.owner == $currentUser"
+    - entity: core.Product
+      role: admin
+      operations: [read, create, update, delete]
+  pages:
+    product-list: [viewer, editor, admin]
+    product-create: [editor, admin]
