@@ -38,6 +38,7 @@ _MIN_ROLE: dict[str, PlatformRole] = {
     "project.export": PlatformRole.ADMIN,
     "member.manage": PlatformRole.ADMIN,
     "token.manage": PlatformRole.ADMIN,
+    "appuser.manage": PlatformRole.ADMIN,  # end users of generated applications
     "delivery.manage": PlatformRole.ADMIN,  # environments, constants, secret references
     "package.build": PlatformRole.EDITOR,
     "deployment.request": PlatformRole.EDITOR,

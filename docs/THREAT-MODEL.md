@@ -50,6 +50,16 @@ Status: ✅ implemented and tested · 🟡 partly / not verified end-to-end · �
 | T19 | **Data exfiltration to an external LLM** | Providers flagged `external` are refused until the project opts in; minimal context; input stored only as a hash | ✅ tested with a mock flagged external |
 | T20 | **Preview used to reach real data / Studio role abuse in preview** | Separate preview database; roles come from the model, never from Studio roles; unknown roles rejected | ✅ tested |
 
+### Application plane (end-user authentication)
+
+| # | Threat | Control | Status |
+|---|---|---|---|
+| T20 | A Studio credential is used to reach end-user data, or an end user's session is used in the Studio | Different cookies, token prefixes and endpoints; `/apps/...` rejects Studio cookies and `orv_` tokens; Studio endpoints do not know application sessions | ✅ tested both ways |
+| T21 | Session theft from one application is replayed against another | Cookie path-scoped per application and the session row records its application | ✅ tested |
+| T22 | Credential stuffing / user enumeration at app login | Per-user and per-IP throttle (per process), uniform error and constant-time dummy verification | ✅ · 🟡 throttle not shared across replicas |
+| T23 | Stale privileges after a role change or disablement | Roles read on every request; disabling or resetting ends sessions | ✅ tested |
+| T24 | Anonymous over-exposure | Opt-in flag classified A3; only the `anonymous` role applies; consistency checker warning | ✅ |
+
 ## 4. Assumptions
 
 - PostgreSQL, the host OS and the TLS terminator are operated securely.

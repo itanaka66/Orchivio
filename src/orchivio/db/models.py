@@ -554,3 +554,51 @@ class PackageDeployment(Base):
     risks_acknowledged: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class AppUser(Base):
+    """An end user of a generated application (application plane). Unrelated to Studio ``users``."""
+
+    __tablename__ = "app_users"
+    __table_args__ = (
+        UniqueConstraint("application_id", "username", name="uq_app_users_username"),
+        _in("status", USER_STATUS, "status"),
+    )
+
+    id: Mapped[uuid.UUID] = _id()
+    application_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("applications.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    username: Mapped[str] = mapped_column(String(100), nullable=False)  # stored lower-case
+    display_name: Mapped[str | None] = mapped_column(String(200))
+    password_hash: Mapped[str | None] = mapped_column(String(255))  # null for federated users (OIDC, later)
+    status: Mapped[str] = mapped_column(String(16), nullable=False, default="active")
+    must_change_password: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    created_at: Mapped[datetime] = _created()
+    last_login_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class AppUserRole(Base):
+    __tablename__ = "app_user_roles"
+
+    app_user_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("app_users.id", ondelete="CASCADE"), primary_key=True
+    )
+    role_key: Mapped[str] = mapped_column(String(64), primary_key=True)
+
+
+class AppSession(Base):
+    """Login session of an application end user; the cookie holds an opaque token, only its hash is stored."""
+
+    __tablename__ = "app_sessions"
+
+    id: Mapped[uuid.UUID] = _id()
+    app_user_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("app_users.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    application_id: Mapped[uuid.UUID] = mapped_column(Uuid, nullable=False)
+    token_hash: Mapped[str] = mapped_column(String(128), nullable=False, unique=True)
+    csrf_hash: Mapped[str] = mapped_column(String(128), nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = _created()

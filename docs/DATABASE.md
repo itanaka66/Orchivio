@@ -58,6 +58,10 @@ attempts, `scheduled_for`; unique `(application_id, flow, scheduled_for)` makes 
 artifact store), `package_deployments` (status `pending_approval|deployed|rejected|superseded`). The older
 `deployments` table from 0001 is unused and kept to avoid rewriting history.
 
+### Application end users
+`app_users` (per application, lower-case unique username, `must_change_password`), `app_user_roles`, `app_sessions`
+(token and CSRF stored as hashes, bound to the application). Unrelated to `users`/`sessions` of the Studio.
+
 ### Audit
 `audit_events` — append-only. `plane` (platform/application) and `channel`
 (studio/api/mcp) separate streams. **No foreign keys on purpose:** audit history must outlive
