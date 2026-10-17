@@ -6,13 +6,15 @@ import uuid
 from typing import Any
 
 from fastapi import APIRouter, Depends, Query, Request, Response
+from fastapi.concurrency import run_in_threadpool
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from orchivio.db import ModelInvalid, RevisionRepository, to_model
+from orchivio.db import ModelInvalid, ProposalRepository, RevisionRepository, to_model
 from orchivio.db.models import Application, AppRevision, Project
-from orchivio.model import ModelDiff
+from orchivio.db.proposals import NoChanges
+from orchivio.model import CanonicalError, ModelDiff, build_archive, read_archive
 from orchivio.policy import ApprovalLevel
 
 from ..deps import (
@@ -28,6 +30,7 @@ from ..deps import (
     not_found,
 )
 from ..modelio import load_model
+from .proposals import proposal_detail
 from ..schemas import (
     AppIn,
     AppOut,
@@ -227,6 +230,53 @@ def diff_revisions(revision_id: uuid.UUID, base_revision_id: uuid.UUID,
     d = RevisionRepository(db).diff(rev.id, base.id)
     return {"level": d.level.name, "security_changed": d.security_changed,
             "changes": [c.as_dict() for c in d.changes]}
+
+
+@router.get("/revisions/{revision_id}/export")
+def export_revision(revision_id: uuid.UUID, request: Request, principal: Principal = Depends(current_principal),
+                    db: Session = Depends(get_db)) -> Response:
+    """Download the revision as a reproducible archive of canonical per-element files. Admin only:
+    a model describes the application's data and rules, so exporting it is a distinct permission."""
+    rev, app, project = load_revision(db, principal, revision_id, "project.export")
+    data = build_archive(to_model(rev))
+    audit(db, request, "revision.exported", actor_id=principal.user_id, org_id=project.organization_id,
+          target_type="app_revision", target_id=rev.id, meta={"revision_no": rev.revision_no, "bytes": len(data)})
+    db.commit()
+    name = f"{app.key}-r{rev.revision_no}.orchivio.zip"
+    return Response(data, media_type="application/zip", headers={"Content-Disposition": f'attachment; filename="{name}"'})
+
+
+@router.post("/applications/{app_id}/import", status_code=201)
+async def import_archive(app_id: uuid.UUID, request: Request, title: str = Query("Import from archive", max_length=300),
+                         principal: Principal = Depends(current_principal), db: Session = Depends(get_db)) -> Any:
+    """Upload an archive (raw ``application/zip`` body). It is verified and becomes a *proposal*; an import
+    never changes the model directly."""
+    limit = request.app.state.settings.max_import_bytes
+    chunks, size = [], 0
+    async for chunk in request.stream():
+        size += len(chunk)
+        if size > limit:
+            raise api_error(413, "payload_too_large", "archive too large")
+        chunks.append(chunk)
+    body = b"".join(chunks)
+
+    def work() -> Any:
+        app, project = load_application(db, principal, app_id, "model.propose")
+        try:
+            model = read_archive(body)
+        except CanonicalError as e:
+            raise api_error(422, "invalid_archive", e.message, {"path": e.path}) from e
+        try:
+            p = ProposalRepository(db).create(app.id, model, source="human", title=title, created_by=principal.user_id,
+                                              organization_id=project.organization_id)
+        except ModelInvalid as e:
+            raise _model_invalid(e) from e
+        except NoChanges as e:
+            raise api_error(409, "no_changes", str(e)) from e
+        db.commit()
+        return proposal_detail(p)
+
+    return await run_in_threadpool(work)
 
 
 @router.get("/revisions/{revision_id}/lint")

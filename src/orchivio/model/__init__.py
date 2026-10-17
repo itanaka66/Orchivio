@@ -1,5 +1,6 @@
 """Application model: schema, validation, diff, migration (see docs/MODEL-SPEC.md)."""
 
+from .canonical import CanonicalError, build_archive, from_files, read_archive, to_files
 from .diff import Change, MissingElementId, ModelDiff, diff_models
 from .ids import assign_element_ids, iter_elements
 from .lint import RULES, Finding, Rule, blocking, catalog_markdown, lint
@@ -12,6 +13,7 @@ __all__ = [
     "RULES",
     "SCHEMA_VERSION",
     "AppModel",
+    "CanonicalError",
     "Change",
     "Finding",
     "Issue",
@@ -23,15 +25,19 @@ __all__ = [
     "UnsupportedSchemaVersion",
     "assign_element_ids",
     "blocking",
+    "build_archive",
     "build_refs",
     "catalog_markdown",
     "canonical_json",
     "diff_models",
+    "from_files",
     "has_errors",
     "iter_elements",
     "lint",
     "migrate_to_latest",
     "model_hash",
+    "read_archive",
+    "to_files",
     "usages",
     "validate_flow",
     "validate_model",
