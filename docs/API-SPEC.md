@@ -2,67 +2,112 @@
 
 Base path `/api/v1`. The running service publishes its own OpenAPI document at
 `/api/openapi.json` and interactive docs at `/api/docs`; that document is authoritative for
-implemented endpoints. This file records conventions and the plan.
+request and response shapes. This file records conventions, behaviour and the plan.
 
 ## 1. Conventions
 
-- JSON requests and responses; UTF-8.
-- **Errors** use one envelope and never include stack traces or internals, and do not echo submitted model contents:
+- JSON in and out; UTF-8. Every response carries `X-Request-ID` (an inbound id is reused only if
+  it matches `[A-Za-z0-9._-]{8,64}`), `X-Content-Type-Options: nosniff` and `Cache-Control: no-store`.
+- **Errors** use one envelope. They never include stack traces or internals and do not echo
+  submitted model contents:
   ```json
-  { "error": { "code": "invalid_model", "message": "model failed schema validation",
-               "details": [ { "loc": ["application", "name"], "message": "String should have at least 1 character" } ] } }
+  { "error": { "code": "approval_required", "message": "…", "details": { } } }
   ```
-  Codes in use: `invalid_request`, `invalid_model`, `unsupported_schema_version`,
-  `unknown_entity`, `unauthorized`, `payload_too_large` (413), `internal_error` (500).
-- **Authentication**: `Authorization: Bearer <token>`. Today a single static token
-  (`ORCHIVIO_API_TOKEN`) protects `/api/v1/*`; `ORCHIVIO_ENV=prod` refuses to start without one.
-  `/healthz` is always open. Real sessions, CSRF protection and API tokens arrive in Phase 1.
-- **Limits**: request bodies over `ORCHIVIO_MAX_BODY_BYTES` (1 MiB) are rejected when the client
+- **Pagination**: `limit` (1–200, default 50) and `offset` (≥ 0); lists return
+  `{items, limit, offset, total}`. Out-of-range values are rejected with 422.
+- **IDs** are UUIDs. A malformed id is 422.
+- **404 vs 403**: if the caller is not a member of the owning organization the response is
+  `404 not_found` with a body identical to a genuinely missing resource, so existence is not
+  revealed. Members who lack the role get `403 forbidden`.
+- Request bodies over `ORCHIVIO_MAX_BODY_BYTES` (1 MiB) are rejected with 413 when the client
   declares a length; also enforce a limit at the reverse proxy.
-- **Pagination** (planned resources): `limit` (default 50, max 200) and `offset`; bounded
-  server-side.
-- **Idempotency**: destructive or job-creating POSTs accept an `Idempotency-Key` header
-  (planned).
-- **Authorization** is checked per resource, not per route: every id is resolved through the
-  caller's organization membership before use.
+- Unknown properties in request bodies are rejected (422).
 
-## 2. Implemented endpoints
+## 2. Authentication
 
-### `GET /healthz`
-`{"status": "ok", "version": "0.1.0.dev0"}`
+Two mechanisms; every `/api/v1` route except `register` and `login` requires one.
 
-### `POST /api/v1/models/validate`
-Body `{"model": {...}}` (schema 1.0 or 1.1; 1.0 is migrated). Returns
-`{valid, schema_version, model_hash, issues[], security_findings[]}`. Schema violations return
-422 `invalid_model`; semantic problems are returned as `issues` with `valid: false`.
+| | Session (browsers) | API token (automation) |
+|---|---|---|
+| Credential | `orchivio_session` cookie: `HttpOnly`, `SameSite=Lax`, `Secure` in prod | `Authorization: Bearer orv_…` |
+| CSRF | Unsafe methods need `X-CSRF-Token` (value returned by login) → else `403 csrf_failed` | Not needed (no ambient credential) |
+| Lifetime | `ORCHIVIO_SESSION_TTL_HOURS` (12), revocable (logout) | 1–365 days, revocable |
+| Storage | Only SHA-256 hashes are stored | same |
 
-### `POST /api/v1/models/diff`
-Body `{"base": {...}, "new": {...}}`. Element ids are assigned (the new model inherits ids by
-name) and the diff is returned as `{level, security_changed, changes[]}`, each change with
-`kind`, `element_type`, `element_id`, `name`, `properties`, `risks`, `level` (A0–A4).
+Details: passwords are hashed with scrypt (12–128 characters required). Login failures return one
+generic `401 invalid_credentials` for unknown users, wrong passwords and disabled accounts; five
+failures per email or per client address within 15 minutes give `429` with `Retry-After`
+(per-process counter). A bad `Authorization` header never falls back to the cookie. Disabled users
+lose access immediately. `ORCHIVIO_ENV=prod` refuses to start with insecure cookies.
 
-### `POST /api/v1/expressions/check`
-Body `{model, entity?, expression, expected?}` (`expected` ∈ bool/int/decimal/string/datetime).
-Returns `{valid: true, type, fields}` or `{valid: false, error: {message, position}}`.
+**API tokens** are bound to one organization and optionally one project, carry `scopes` (`["*"]`
+or action names such as `project.read`, `model.apply`) and can never exceed the owner's role. They
+cannot create organizations or other tokens (`403 session_required`).
 
-## 3. Planned resources
+## 3. Roles and actions
 
-DESIGN.md §10.2/10.3 lists the intended inventory. Proposed refinements, because §10.2 mixes
-nested and flat paths and asks for a naming review:
+Platform roles: `owner > admin > editor > viewer` (`orchivio.policy`).
 
-| Rule | Example |
-|---|---|
-| Collections nest only under their parent *for create and list* | `GET/POST /projects/{pid}/applications` |
-| Items are addressed flat by id, authorized through their ancestors | `GET /applications/{id}`, `GET /revisions/{id}` |
-| Actions are sub-resources with a verb that is a noun or past participle where possible | `POST /proposals/{id}/approval`, `POST /branches/{id}/merge` |
-| Long operations return a job | `POST /revisions/{id}/builds` → `202` + `GET /builds/{id}` |
-| AI approval goes through proposals, not jobs | `POST /proposals/{id}/approval` (replaces `/ai-jobs/{id}/approve`) so that AI, MCP and human changes share one endpoint |
+| Action | Minimum role | Used by |
+|---|---|---|
+| `project.read`, `model.read` | viewer | reads, listing members |
+| `application.create`, `model.apply`, `model.rollback` | editor | create applications, revisions, rollback |
+| `project.create`, `project.update`, `member.manage`, `audit.read` | admin | |
+| `project.delete`, `organization.delete` | owner | project deletion needs `?confirm=<slug>` |
 
-Phase mapping follows DESIGN.md §15 (auth/orgs/projects in Phase 1, revisions/diff in Phase 2,
-proposals/AI jobs in Phase 4, builds/tests in Phase 5, …).
+Only an owner may grant, change or remove the `owner` role; an organization always keeps at least
+one owner (`409 last_owner`). Any member may leave an organization.
 
-## 4. Compatibility
+## 4. Endpoints
 
-The API is versioned by path. Within a major version, fields are added but not removed or
-repurposed; deprecations are announced one minor release ahead (DESIGN.md §5.1). OpenAPI changes
-are checked in CI once the schema is committed (planned).
+| Method | Path | Notes |
+|---|---|---|
+| POST | `/auth/register` | `201` user; `409 email_taken`; `422 weak_password`; `403 registration_disabled` |
+| POST | `/auth/login` | sets cookie; returns `{user, csrf_token, expires_at}` |
+| POST | `/auth/logout` | revokes the session server-side |
+| GET | `/me` | user and organization memberships |
+| GET/POST | `/organizations` | list mine / create (creator becomes owner) |
+| GET | `/organizations/{id}` | |
+| GET/POST | `/organizations/{id}/members` | add by email of an existing user |
+| PATCH/DELETE | `/organizations/{id}/members/{user_id}` | change role / remove |
+| GET | `/organizations/{id}/audit-events` | `action_prefix`, pagination; newest first |
+| GET/POST | `/organizations/{id}/projects` | |
+| GET/PATCH/DELETE | `/projects/{id}` | |
+| GET/POST | `/projects/{id}/applications` | `POST` may include an initial `model` |
+| GET | `/applications/{id}` | includes `current_revision_no` |
+| GET/POST | `/applications/{id}/revisions` | list / create; see below |
+| GET | `/revisions/{id}` | includes `model_json` |
+| GET | `/revisions/{id}/diff/{base_id}` | both must belong to the same application |
+| POST | `/applications/{id}/rollback` | restores an earlier model as a *new* revision |
+| GET/POST/DELETE | `/tokens`, `/tokens/{id}` | own tokens; the secret is returned once at creation |
+| POST | `/models/validate`, `/models/diff`, `/expressions/check` | stateless tools (any authenticated caller) |
+| GET | `/healthz` | unauthenticated |
+
+### Creating a revision
+
+`POST /applications/{id}/revisions` with `{model, message?, acknowledge_risks?}`:
+
+1. The model (schema 1.0 or 1.1) is migrated and validated: structural problems → `422
+   invalid_model` (locations only); semantic errors → `422 model_invalid` with `details` = issues.
+2. Identical to the current revision → `409 no_changes`.
+3. The diff against the current revision is classified (docs/MODEL-SPEC.md §6). A change at **A3 or
+   above** (destructive removal, type change, permission expansion, anonymous access…) is refused
+   with `409 approval_required` and the risky changes in `details` unless the request repeats
+   with `acknowledge_risks: true`. Rollback applies the same rule to the diff it would cause.
+4. Otherwise a new immutable revision is stored with the previous one as parent, and an audit
+   event is written.
+
+`acknowledge_risks` is the human confirmation step. Approval by a second person and the proposal
+workflow for AI and MCP changes (`/proposals`) are planned.
+
+## 5. Still planned
+
+DESIGN.md §10.3 inventory by phase: proposals and AI jobs (4), builds and tests (5), preview,
+branches and merge, environments and packages, MCP endpoint, integrations. Open points:
+`Idempotency-Key` for job-creating POSTs; per-token rate limits; cursor pagination if lists grow.
+
+## 6. Compatibility
+
+Versioned by path. Within a major version fields are added, not removed or repurposed;
+deprecations are announced one minor release ahead (DESIGN.md §5.1). OpenAPI diffing in CI is
+planned.

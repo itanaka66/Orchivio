@@ -1,16 +1,10 @@
 from pathlib import Path
 
 import pytest
-import yaml
 
 from orchivio.model import AppModel, migrate_to_latest
+from tests_support import load_yaml
 
-ROOT = Path(__file__).resolve().parents[1]
-EXAMPLES = ROOT / "examples" / "inventory-app"
-
-
-def load_yaml(name: str) -> dict:
-    return yaml.safe_load((EXAMPLES / name).read_text(encoding="utf-8"))
 
 
 @pytest.fixture
@@ -46,3 +40,34 @@ def db_url(migrated_template, tmp_path) -> str:
     dest = tmp_path / "test.db"
     shutil.copy(migrated_template, dest)
     return f"sqlite:///{dest}"
+
+
+@pytest.fixture
+def app(db_url):
+    from orchivio.api import create_app
+    from orchivio.api.settings import Settings
+
+    from sqlalchemy import event
+
+    from orchivio.db import make_engine
+
+    engine = make_engine(db_url)
+
+    @event.listens_for(engine, "connect")
+    def _fast(dbapi_conn, _):  # durability is irrelevant for throwaway test databases
+        dbapi_conn.execute("PRAGMA synchronous=OFF")
+
+    return create_app(Settings(env="dev", database_url=db_url), engine=engine)
+
+
+@pytest.fixture
+def new_api(app):
+    """Factory for independent logged-in clients (separate cookie jars) on one app."""
+    from tests_support import Api
+
+    counter = iter(range(1000))
+
+    def make(email: str | None = None) -> "Api":
+        return Api(app).signup(email or f"user{next(counter)}@example.com")
+
+    return make

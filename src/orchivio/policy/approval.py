@@ -32,6 +32,8 @@ _MIN_ROLE: dict[str, PlatformRole] = {
     "model.propose": PlatformRole.EDITOR,
     "model.apply": PlatformRole.EDITOR,
     "model.rollback": PlatformRole.EDITOR,
+    "project.create": PlatformRole.ADMIN,
+    "application.create": PlatformRole.EDITOR,
     "project.update": PlatformRole.ADMIN,
     "project.export": PlatformRole.ADMIN,
     "member.manage": PlatformRole.ADMIN,
@@ -39,6 +41,8 @@ _MIN_ROLE: dict[str, PlatformRole] = {
     "project.delete": PlatformRole.OWNER,
     "organization.delete": PlatformRole.OWNER,
 }
+KNOWN_ACTIONS = frozenset(_MIN_ROLE)
+
 _RANK = {
     PlatformRole.VIEWER: 0,
     PlatformRole.EDITOR: 1,

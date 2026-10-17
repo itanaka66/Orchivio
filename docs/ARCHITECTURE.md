@@ -11,6 +11,7 @@ boundaries in a test** so packages can be split later without untangling imports
 
 | Package | Responsibility | May import |
 |---|---|---|
+| `orchivio.auth` | Password hashing (scrypt), opaque token generation/hashing | – |
 | `orchivio.expr` | Parse, type-check, evaluate, and SQL-compile expressions | – |
 | `orchivio.policy` | Approval levels A0–A4, platform RBAC matrix | – |
 | `orchivio.llm` | Provider-neutral LLM interface, mock, validated generation | – |
@@ -18,7 +19,7 @@ boundaries in a test** so packages can be split later without untangling imports
 | `orchivio.model` | Model schema, validation, element IDs, diff, migration | expr, policy |
 | `orchivio.security` | Application-plane access resolution, consistency checker | expr, model, policy |
 | `orchivio.db` | ORM models, sessions, revision repository | model |
-| `orchivio.api` | FastAPI application, settings | everything above |
+| `orchivio.api` | FastAPI application, settings, auth, authorization, routes | everything above |
 
 `tests/unit/test_architecture.py` fails if a package imports outside its row. Add a new package
 to that table *and* the test in the same change.
@@ -46,12 +47,15 @@ to that table *and* the test in the same change.
 ## Request flow (today)
 
 ```
-HTTP ─▶ api (size limit, bearer token, error envelope)
-          ├─ migrate_to_latest ─▶ AppModel.model_validate     (schema errors → 422, values not echoed)
-          ├─ validate_model ─▶ expr.check for every expression
-          ├─ check_consistency
-          └─ diff_models (after assign_element_ids)
+HTTP ─▶ middleware (request id, size limit, security headers, access log)
+     ─▶ current_principal   (bearer token OR session cookie + CSRF; disabled users rejected)
+     ─▶ authorize(org, action)   404 if not a member, 403 if role/scope insufficient
+     ─▶ load_*: resource → owning organization (every id is resolved through its tenant)
+     ─▶ handler ─▶ db repositories / model library ─▶ audit event ─▶ commit
 ```
+
+Handlers commit explicitly, together with their audit event, so an action and its audit record
+are one transaction.
 
 ## Revision write path (library)
 
@@ -66,8 +70,9 @@ RevisionRepository.create
 ```
 
 Authorization (`policy.is_allowed`) is the **caller's** job; the repository enforces model
-integrity only. This will be wrapped by service functions in Phase 1 that take a verified
-principal.
+integrity only. The API layer authorizes first (`api/deps.py`), then calls the repository. Its
+`plan()` dry run (ids, validation, diff) is what lets the API refuse risky changes before
+anything is written.
 
 ## Not built yet (from DESIGN.md §6)
 
