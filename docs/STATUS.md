@@ -35,7 +35,8 @@ service), **Schema** (data structures only), **Planned**.
 | FR-043 | Audit logs | Partial | Auth, membership, project, token and revision events recorded and queryable; append-only trigger is PostgreSQL-only and untested |
 | FR-050 | Typed expression language | Done | Parser, checker, interpreter, limits |
 | FR-051 | Computed fields | Done | Type-checked, cycle detection; virtual (read) and stored (write) in the preview runtime |
-| FR-060..063 | Two-plane security, row constraints | Partial | Enforced by the preview data service on every operation; no end-user accounts yet (identity is simulated) |
+| FR-060..063 | Two-plane security, row constraints | Partial | Enforced by the preview data service on every operation, for simulated identities and for real end users |
+| FR-067 | End-user authentication for generated apps | Partial | Local accounts, sessions, forced first-login password change, anonymous opt-in; no OIDC/SAML, MFA, self-registration or email reset; serves preview data only |
 | FR-066 | Consistency checker | Done | 5 checks |
 | FR-086 | Studio MCP server | Partial | Read/search/usages/lint/validate/proposal/tests tools, proposal-only writes, audit, rate limit; no `model.explain`, no SSE; exercised only with a test client, not a real MCP agent |
 | FR-087 | MCP client for the AI Builder | Not started | |

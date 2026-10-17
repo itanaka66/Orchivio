@@ -65,9 +65,33 @@ rows = session.execute(text(f"UPDATE product SET ... WHERE id = :id AND {pred.sq
 `DENY_ALL` / `ALLOW_ALL` predicates are returned for the denied and unrestricted cases, so the
 caller always has a predicate to apply.
 
-## 6. Not yet implemented
+## 6. End-user authentication (local)
 
-Field-level read/write (FR-064), page and action enforcement in a running app, end-user
-authentication (local, then OIDC), "view as role" preview, generated positive/negative tests
+Generated applications have their own identity store (`app_users`, `app_user_roles`, `app_sessions`),
+separate from Studio accounts (FR-067).
+
+* **Management** (Studio, admin-only `appuser.manage`): `/applications/{id}/app-users`, `/app-users/{id}`,
+  `.../reset-password`. Roles must be defined by the model. The admin sets a temporary password; the user must
+  change it at first sign-in (`password_change_required` until then). Disabling a user or resetting the password
+  ends all their sessions.
+* **Sign-in** (`/apps/{app_id}/auth/login|logout|me|change-password`): same password hashing, throttle and
+  uniform error as the Studio. The session cookie is `<session cookie>_app`, `HttpOnly`, scoped by path to
+  `/api/v1/apps/{app_id}`, with a per-session CSRF token required on unsafe requests. A session is bound to its
+  application, so a stolen cookie is useless for another one.
+* **Plane separation (FR-060).** The `/apps/...` endpoints accept only application sessions; Studio cookies and
+  `orv_` tokens get `401`. Application sessions and `oas_` tokens are unknown to every Studio endpoint.
+* **Authorization.** The caller's roles are read from the database on each request, intersected with the roles of
+  the current model, and passed to the same data service as in the preview (`/apps/{id}/data/{entity}`,
+  `/apps/{id}/flows/{flow}/run`). A role change applies immediately; a user with no roles can do nothing.
+* **Anonymous access** is off unless `security.anonymous` is true (an A3 change). Anonymous callers get only the
+  role named `anonymous`, if the model defines it, and can never sign out or change a password.
+* **Audit.** Sign-ins, failures, logouts and password changes are application-plane events
+  (`appauth.*`, `plane = application`); management is platform-plane (`appuser.*`). Passwords are never logged.
+* **Data lives in the preview runtime** until a production data plane exists, so these endpoints serve preview data.
+
+## 7. Not yet implemented
+
+Field-level read/write (FR-064), page and action enforcement in a running app, OIDC and SAML sign-in, self-service
+registration and password reset by email, MFA, a shared (multi-replica) login throttle, "view as role" preview, generated positive/negative tests
 per rule (FR-063 acceptance), PostgreSQL row-level security as defence in depth
 ([ADR-0003](adr/0003-app-security-enforcement.md)).

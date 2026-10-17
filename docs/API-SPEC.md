@@ -106,6 +106,10 @@ one owner (`409 last_owner`). Any member may leave an organization.
 | POST | `/packages/{id}/promote` | request a deployment; gates in docs/DELIVERY.md |
 | POST | `/deployments/{id}/approval` | `{decision: approve or reject}` by another admin |
 | GET | `/applications/{id}/deployments` | history (`environment`, `status`) |
+| GET/POST | `/applications/{id}/app-users` | end users of the generated app (admin): list / create with temporary password and roles |
+| GET/PATCH/DELETE | `/app-users/{id}`; POST `/app-users/{id}/reset-password` | roles, status, display name / new temporary password (ends sessions) |
+| POST | `/apps/{app_id}/auth/login`, `/auth/logout`, `/auth/change-password`; GET `/auth/me` | application-plane sign-in (docs/APP-SECURITY.md §6) |
+| ANY | `/apps/{app_id}/data/{entity}[/{id}]`, POST `/apps/{app_id}/flows/{flow}/run` | the generated app's data and flows as the signed-in end user |
 | GET | `/healthz`, `/readyz` | liveness / readiness (unauthenticated; docs/OPERATIONS.md) |
 | GET | `/metrics` | Prometheus text; bearer `ORCHIVIO_METRICS_TOKEN`, disabled when unset |
 
