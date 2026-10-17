@@ -75,8 +75,8 @@ class _Skip(Exception):
 
 
 class Runner:
-    def __init__(self, model: AppModel, data: AppData, seed: int) -> None:
-        self.model, self.data, self.seed = model, data, seed
+    def __init__(self, model: AppModel, data: AppData, seed: int, model_hash: str = "") -> None:
+        self.model, self.data, self.seed, self.model_hash = model, data, seed, model_hash
         self.schema = data.schema
         self.rng = random.Random(f"tests:{seed}")
         self.ids: dict[str, list[Any]] = {}
@@ -288,6 +288,17 @@ class Runner:
             return ""
         raise AssertionError("record still readable after delete")
 
+    def _flow(self, c: Case) -> str:
+        from orchivio.logic import run_flow_test, tests_of
+
+        found = next(((fq, f, i, t) for fq, f, i, t in tests_of(self.model) if fq == c.entity and str(i) == c.rule), None)
+        if found is None:
+            raise _Skip("the test no longer exists")
+        out = run_flow_test(self.model, self.model_hash, self.data.engine, c.entity, found[3])
+        if not out.passed:
+            raise AssertionError("; ".join(out.messages))
+        return f"{len(out.result.trace) if out.result else 0} step(s) traced"
+
     def _creator(self, q: str) -> AppUser:
         for role in self.model.security.roles:
             u = AppUser("t-validate", frozenset({role}))
@@ -355,7 +366,7 @@ def run_tests(model: AppModel, model_hash: str, engine: Engine, *, seed: int = 0
     schema, data = store.reset(app_id, model, model_hash)
     report = Report(model_hash, seed)
     try:
-        runner = Runner(model, data, seed)
+        runner = Runner(model, data, seed, model_hash)
         runner.populate(max(1, min(rows, 100)))
         cases = generate_cases(model)
         report.results = [runner.run(c) for c in cases]
@@ -368,13 +379,17 @@ def run_tests(model: AppModel, model_hash: str, engine: Engine, *, seed: int = 0
 def _coverage(model: AppModel, cases: list[Case], results: list[Result]) -> dict[str, Any]:
     by_id = {c.id: c for c in cases}
     ran = [by_id[r.id] for r in results if r.status in ("passed", "failed")]
-    entities = {c.entity for c in ran}
-    persistent = {q for q in {c.entity for c in cases}}
-    rules = {(c.entity, c.role) for c in ran if c.role}
+    data_cases = [c for c in ran if c.kind != "flow"]  # flow cases carry a flow key, not an entity
+    entities = {c.entity for c in data_cases}
+    persistent = {c.entity for c in cases if c.kind != "flow"}
+    rules = {(c.entity, c.role) for c in data_cases if c.role}
     all_rules = {(r.entity, r.role) for r in model.security.access}
     constrained = [r for r in model.security.access if r.row_constraint]
     tested_constraints = {c.rule for c in ran if c.kind == "row-constraint"}
+    flows = {f"{m.key}.{f.key}" for m in model.modules for f in m.flows}
+    tested = {c.entity for c in ran if c.kind == "flow"}
     return {
+        "flows": {"covered": len(tested & flows), "total": len(flows)},
         "entities": {"covered": len(entities), "total": len(persistent)},
         "access_rules": {"covered": len(rules & all_rules), "total": len(all_rules)},
         "row_constraints": {"covered": sum(1 for r in constrained if r.element_id in tested_constraints),

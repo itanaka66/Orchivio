@@ -31,6 +31,8 @@ there. "Open the demo flow" works without a server, without live validation.
 - **No drift.** `src/flow/contract.json` (step types, outputs, limits, id patterns) and the sample
   flow/model are generated from the backend by `scripts/export_web_contract.py`; a backend test fails
   when they are stale.
+- **Running.** The Run panel posts to the preview run endpoint and overlays the returned trace on the canvas (how often each
+  step ran, where it failed). Runs use the *approved* model, so Run is disabled while there are unsaved edits.
 - **Saving is a proposal.** The edited flow is merged into the revision's model and posted to
   `/applications/{id}/proposals`; nothing changes until it is approved (docs/AI-BUILDER.md).
 - **Session.** Cookie session; the CSRF token returned at login is kept in `sessionStorage` (per tab).

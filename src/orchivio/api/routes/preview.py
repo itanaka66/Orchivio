@@ -16,6 +16,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.orm import Session
 
 from orchivio.db import to_model
+from orchivio.logic import FlowError, FlowHooks, FlowRunner
 from orchivio.db.models import Application, AppRevision
 from orchivio.runtime import (
     AppData,
@@ -59,7 +60,8 @@ def reset(app_id: uuid.UUID, body: ResetIn, request: Request, principal: Princip
     model = to_model(rev)
     store = request.app.state.preview_store
     sink = request.app.state.audit_sink
-    schema, data = store.reset(app.id, model, rev.model_hash, audit=sink, organization_id=project.organization_id)
+    schema, data = store.reset(app.id, model, rev.model_hash, audit=sink, organization_id=project.organization_id,
+                               hooks=FlowHooks(model))
     seeded = None
     if body.seed is not None:
         users = tuple(u for u in body.seed.users if 1 <= len(u) <= 64)
@@ -82,6 +84,42 @@ def status(app_id: uuid.UUID, request: Request, principal: Principal = Depends(c
     return {"built": True, "stale": rev is None or st["model_hash"] != rev.model_hash, "built_at": st["built_at"].isoformat()}
 
 
+# --- flows ---------------------------------------------------------------------------------
+
+
+class RunFlowIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    args: dict[str, Any] = Field(default_factory=dict)
+
+
+@router.post("/applications/{app_id}/preview/flows/{flow}/run")
+def run_flow(app_id: uuid.UUID, flow: str, body: RunFlowIn, request: Request,
+             x_preview_user: str | None = Header(default=None, alias="X-Preview-User"),
+             x_preview_roles: str | None = Header(default=None, alias="X-Preview-Roles"),
+             principal: Principal = Depends(current_principal), db: Session = Depends(get_db)) -> dict[str, Any]:
+    """Run a Server Flow in the preview as the simulated user. The run is one transaction under that
+    user's application security; the response carries the step-by-step trace."""
+    data, user = _open(request, db, principal, app_id, "model.propose", x_preview_user, x_preview_roles)
+    q = flow if "." in flow else f"{data.model.modules[0].key}.{flow}"
+    target = next(((m, f) for m in data.model.modules for f in m.flows if f"{m.key}.{f.key}" == q), None)
+    if target is None:
+        raise api_error(404, "unknown_flow", "unknown flow")
+    mod, fl = target
+    if fl.kind != "server":
+        raise api_error(422, "not_runnable", "client flows run in the browser, not in the preview server")
+    if any(q == f"{m.key}.{h}" for m in data.model.modules for e in m.entities for h in e.hooks.values()):
+        raise api_error(422, "not_runnable", "this flow is an entity hook; it runs when its event happens")
+    try:
+        result = FlowRunner(data.model, data).run(q, body.args, user)
+    except FlowError as e:  # e.g. an unknown flow referenced inside the run
+        raise api_error(422, "flow_error", e.message) from e
+    _, project = load_application(db, principal, app_id, "model.read")
+    audit(db, request, "flow.run", actor_id=principal.user_id, org_id=project.organization_id, target_type="flow",
+          target_id=q, meta={"status": result.status, "steps": result.steps_executed, "as_user": user.id})
+    db.commit()
+    return result.as_dict()
+
+
 # --- data ----------------------------------------------------------------------------------
 
 
@@ -100,7 +138,7 @@ def _open(request: Request, db: Session, principal: Principal, app_id: uuid.UUID
         raise api_error(422, "invalid_request", "X-Preview-User must be 1-64 characters")
     try:
         data = request.app.state.preview_store.open(app.id, model, rev.model_hash, audit=request.app.state.audit_sink,
-                                                   organization_id=project.organization_id)
+                                                   organization_id=project.organization_id, hooks=FlowHooks(model))
     except PreviewNotBuilt as e:
         raise api_error(409, "preview_not_built", "reset the preview first") from e
     except PreviewStale as e:

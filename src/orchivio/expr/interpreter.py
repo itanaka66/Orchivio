@@ -115,10 +115,10 @@ class _Evaluator:
 
     def _ident(self, name: str, node: Node) -> Any:
         rec = self.ctx.record
-        if name == "record":
-            if rec is None:
-                raise self.err("no record in this context", node)
+        if name == "record" and rec is not None:
             return rec
+        if name == "record" and name not in self.ctx.variables:
+            raise self.err("no record in this context", node)
         if rec is not None and name in rec:
             return _norm(rec[name])
         if name in self.ctx.variables:

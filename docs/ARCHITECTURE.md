@@ -12,7 +12,8 @@ boundaries in a test** so packages can be split later without untangling imports
 | Package | Responsibility | May import |
 |---|---|---|
 | `orchivio.runtime` | Tables from a model, CRUD data service with access/row rules, synthetic data, preview store | expr, model, policy, ports, security |
-| `orchivio.testgen` | Test-case derivation and runner | expr, model, runtime, security |
+| `orchivio.logic` | Logic Engine: runs flows, entity hooks, flow tests | expr, model, runtime |
+| `orchivio.testgen` | Test-case derivation and runner | expr, logic, model, runtime, security |
 | `orchivio.ai` | AI Builder: prompts, analysis, model proposals, explanations | llm, model |
 | `orchivio.auth` | Password hashing (scrypt), opaque token generation/hashing | – |
 | `orchivio.expr` | Parse, type-check, evaluate, and SQL-compile expressions | – |
@@ -23,6 +24,8 @@ boundaries in a test** so packages can be split later without untangling imports
 | `orchivio.security` | Application-plane access resolution, consistency checker | expr, model, policy |
 | `orchivio.db` | ORM models, sessions, revision and proposal repositories | model, policy |
 | `orchivio.api` | FastAPI application, settings, auth, authorization, routes | everything above |
+
+`runtime` defines the `Hooks` protocol and `logic` implements it, so the data service can call flows without importing the engine.
 
 `tests/unit/test_architecture.py` fails if a package imports outside its row. Add a new package
 to that table *and* the test in the same change.

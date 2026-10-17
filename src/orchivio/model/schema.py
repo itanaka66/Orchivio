@@ -139,6 +139,35 @@ class FlowEdge(_Strict):
     handle: Handle = "out"
 
 
+class FlowTestUser(_Strict):
+    id: str = Field(default="test-user", min_length=1, max_length=64)
+    roles: list[KeyName] | None = None  # None: every role the model defines
+
+
+class RecordExpectation(_Strict):
+    entity: str
+    where: Expr | None = None  # boolean over the record's fields; omitted: all records
+    count: int = Field(ge=0, le=100_000)
+
+
+class FlowExpect(_Strict):
+    status: Literal["succeeded", "failed"] = "succeeded"
+    error_contains: str | None = Field(default=None, max_length=200)
+    visited: list[StepId] = Field(default_factory=list, max_length=200)
+    not_visited: list[StepId] = Field(default_factory=list, max_length=200)
+    records: list[RecordExpectation] = Field(default_factory=list, max_length=20)
+
+
+class FlowTestCase(_Strict):
+    """A declarative flow test: fixtures in, run, assertions out (FR-058)."""
+
+    name: str = Field(min_length=1, max_length=100)
+    args: dict[str, Any] = Field(default_factory=dict)
+    user: FlowTestUser = Field(default_factory=FlowTestUser)
+    fixtures: dict[str, list[dict[str, Any]]] = Field(default_factory=dict)
+    expect: FlowExpect = Field(default_factory=FlowExpect)
+
+
 class FlowDef(Element):
     """A Server or Client Flow as a directed acyclic graph of allowlisted steps (FLOW-SPEC.md)."""
 
@@ -148,6 +177,7 @@ class FlowDef(Element):
     params: list[FlowParam] = Field(default_factory=list, max_length=30)
     steps: list[FlowStep] = Field(default_factory=list, max_length=200)
     edges: list[FlowEdge] = Field(default_factory=list, max_length=400)
+    tests: list[FlowTestCase] = Field(default_factory=list, max_length=50)
 
 
 class ModuleDef(Element):

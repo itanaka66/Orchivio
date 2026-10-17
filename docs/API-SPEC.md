@@ -84,6 +84,7 @@ one owner (`409 last_owner`). Any member may leave an organization.
 | GET/POST | `/applications/{id}/proposals`, `/proposals/{id}`, `/proposals/{id}/approval` | change proposals and their decision (docs/AI-BUILDER.md) |
 | POST | `/applications/{id}/ai/analyze`, `/ai/propose`, `/ai/explain` | AI Builder (needs a configured provider) |
 | POST | `/applications/{id}/preview/reset`; GET `…/preview/status`; CRUD `…/preview/data/{entity}[/{id}]` | preview runtime (docs/RUNTIME.md) |
+| POST | `/applications/{id}/preview/flows/{flow}/run` | run a server flow in the preview as the simulated user; returns status, error and the step trace |
 | POST/GET | `/revisions/{id}/test-runs`, `/test-runs/{id}`, POST `/test-runs/{id}/ai/repair` | generated tests |
 | POST | `/models/validate`, `/models/validate-flow`, `/models/lint`, `/models/diff`, `/expressions/check` | stateless tools (any authenticated caller); `validate-flow` checks one unsaved flow in a model's context and returns issue paths ending in `steps/<id>…` |
 | GET | `/healthz` | unauthenticated |
@@ -108,7 +109,7 @@ workflow for AI and MCP changes (`/proposals`) are planned.
 Further error codes: `approval_required` (409, also for proposals), `stale_proposal`, `not_pending`,
 `no_changes`, `ai_not_configured` (503), `external_ai_disabled` (403), `ai_budget_exceeded` (429),
 `ai_output_invalid` (422), `ai_provider_error` (502), `preview_not_built` / `preview_stale` (409),
-`unknown_role`, `invalid_record` (422), `conflict` (409), `stale_run`, `nothing_to_repair`.
+`unknown_role`, `invalid_record` (422), `conflict` (409), `stale_run`, `nothing_to_repair`, `unknown_flow`, `not_runnable`, `flow_error`, `hook_failed` (409).
 
 ## 5. Still planned
 

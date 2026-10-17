@@ -36,8 +36,10 @@ def handles_for(step_type: str) -> set[str]:
 class FlowChecker:
     """Validates one flow. ``index`` is a ``ModelIndex``; ``flows`` maps qualified key -> FlowDef."""
 
-    def __init__(self, index, mod: ModuleDef, flow: FlowDef, flows: dict[str, FlowDef], report: Report, base: str) -> None:
+    def __init__(self, index, mod: ModuleDef, flow: FlowDef, flows: dict[str, FlowDef], report: Report, base: str,
+                 implicit: dict[str, Type] | None = None) -> None:
         self.index, self.mod, self.flow, self.flows = index, mod, flow, flows
+        self.implicit = implicit or {}  # variables supplied by the caller, e.g. `record` in a hook flow
         self.report, self.base = report, base
         self.steps = {s.id: s for s in flow.steps}
         self.types = index.types_for(mod.key)
@@ -69,6 +71,7 @@ class FlowChecker:
         if self._cycles():
             return  # variable scoping needs an acyclic graph
         self._variables_and_config()
+        self._tests()
 
     def _unique(self, items: list[str], code: str, where: str, what: str) -> None:
         seen: set[str] = set()
@@ -173,8 +176,11 @@ class FlowChecker:
 
     def _variables_and_config(self) -> None:
         f = self.flow
-        params: dict[str, Type] = {}
+        params: dict[str, Type] = dict(self.implicit)
         for p in f.params:
+            if p.name in self.implicit:
+                self.err("duplicate-variable", f"params/{p.name}", f"'{p.name}' is provided automatically to hook flows")
+                continue
             t = self._type_of(p.type)
             if t is None:
                 self.err("bad-type", f"params/{p.name}", f"invalid parameter type '{p.type}'")
@@ -206,6 +212,44 @@ class FlowChecker:
 
         # a step may only use variables defined upstream; checked above through ``env``
 
+    def _tests(self) -> None:
+        roles = set(self.index.model.security.roles)
+        names: set[str] = set()
+        params = {p.name for p in self.flow.params}
+        for i, t in enumerate(self.flow.tests):
+            w = f"tests/{i}"
+            if t.name in names:
+                self.err("duplicate-test", w, f"duplicate test name '{t.name}'")
+            names.add(t.name)
+            for extra in set(t.args) - params:
+                self.err("test-config", f"{w}/args/{extra}", f"the flow has no parameter '{extra}'")
+            for missing in params - set(t.args):
+                self.err("test-config", f"{w}/args", f"missing argument '{missing}'")
+            for r in (t.user.roles or []):
+                if r not in roles:
+                    self.err("test-config", f"{w}/user", f"unknown role '{r}'")
+            for ent, rows in t.fixtures.items():
+                q = self.index.resolve_entity(self.mod.key, ent)
+                if q is None or q in BUILTIN_ENTITIES or self.index.entities[q][1].transient:
+                    self.err("test-config", f"{w}/fixtures/{ent}", f"unknown or non-persistent entity '{ent}'")
+                    continue
+                known = {f.name for f in self.index.entities[q][1].fields}
+                for row in rows:
+                    for field_name in set(row) - known:
+                        self.err("test-config", f"{w}/fixtures/{ent}", f"entity has no field '{field_name}'")
+            step_ids = set(self.steps)
+            for sid in [*t.expect.visited, *t.expect.not_visited]:
+                if sid not in step_ids:
+                    self.err("test-config", f"{w}/expect", f"unknown step '{sid}'")
+            if t.expect.error_contains and t.expect.status != "failed":
+                self.err("test-config", f"{w}/expect", "error_contains only makes sense with status: failed")
+            for j, r in enumerate(t.expect.records):
+                q = self.index.resolve_entity(self.mod.key, r.entity)
+                if q is None or q in BUILTIN_ENTITIES or self.index.entities[q][1].transient:
+                    self.err("test-config", f"{w}/expect/records/{j}", f"unknown or non-persistent entity '{r.entity}'")
+                elif r.where:
+                    self._expr(r.where, f"{w}/expect/records/{j}/where", {}, BOOL, record_entity=q)
+
     def _ancestors(self, sid: str) -> set[str]:
         seen, q = set(), deque([sid])
         while q:
@@ -228,15 +272,19 @@ class FlowChecker:
                     q.append(m)
         return out
 
-    def _expr(self, src: Any, where: str, env: dict[str, Type], expected: Type | None, record_entity: str | None = None) -> Type | None:
+    def _expr_result(self, src: Any, where: str, env: dict[str, Type], expected: Type | None, record_entity: str | None = None):
         if not isinstance(src, str) or not src.strip():
             self.err("expression", where, "an expression is required")
             return None
         try:
-            return check(src, CheckEnv(self.types, record_entity, variables=env), expected).type
+            return check(src, CheckEnv(self.types, record_entity, variables=env), expected)
         except ExprError as e:
             self.err("expression", where, f"{e.message} (at {e.pos}) in: {src[:120]}")
             return None
+
+    def _expr(self, src: Any, where: str, env: dict[str, Type], expected: Type | None, record_entity: str | None = None) -> Type | None:
+        res = self._expr_result(src, where, env, expected, record_entity)
+        return None if res is None else res.type
 
     def _values(self, step: FlowStep, qname: str, values: Any, env: dict[str, Type], *, require_all: bool) -> None:
         where = f"steps/{step.id}/config/values"
@@ -276,7 +324,12 @@ class FlowChecker:
             if ent:
                 q, et = ent
                 if cfg.get("where") is not None:
-                    self._expr(cfg["where"], f"{w}/where", env, BOOL, record_entity=q)
+                    res = self._expr_result(cfg["where"], f"{w}/where", env, BOOL, record_entity=q)
+                    if res is not None:  # the condition runs as a query, so it can only use stored columns
+                        ent_def = self.index.entities[q][1]
+                        virtual = sorted(f.name for f in ent_def.fields if f.computed and f.computed.mode == "virtual" and f.name in res.fields)
+                        if virtual:
+                            self.err("expression", f"{w}/where", f"cannot filter on computed field(s): {', '.join(virtual)}")
                 many = bool(cfg.get("many", False))
                 if many:
                     lim = cfg.get("limit", 100)

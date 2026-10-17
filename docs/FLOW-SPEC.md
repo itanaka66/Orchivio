@@ -4,9 +4,9 @@ Implementation: schema `src/orchivio/model/schema.py` (`FlowDef`), validator
 `src/orchivio/model/flows.py`, editor `apps/web/src/flow/`. Requirements: DESIGN.md §4.6 (FR-052,
 FR-053), §8.6.
 
-> **Status.** Flows can be modelled, validated, versioned, diffed and edited visually. **They are not
-> executed yet**: the Logic Engine that interprets them is a later phase (DESIGN.md Phase 8). Today a
-> flow is a checked specification, not behaviour.
+> **Status.** Server flows can be modelled, validated, versioned, diffed, edited visually and **run** by the
+> Logic Engine (§5) in the preview environment, as entity event hooks (§6), and from declarative tests
+> (§7). Client flows are modelled and validated only; the browser runtime does not exist yet.
 
 ## 1. Model
 
@@ -85,8 +85,66 @@ and `flow-call` edges, so find-usages and the linter's unused-entity rule see fl
 field-level references from step expressions, and flow-specific lint rules (commit inside a loop,
 missing error handling) are not implemented.
 
-## 5. Not specified yet
+## 5. Execution (Logic Engine)
 
-Client-side actions (navigation, messages), `commit`, AI steps, call to an integration, transactions and
-the error-handling model, event hooks binding flows to entities, scheduled jobs, flow unit tests, the
-debugger. Entity `hooks` still produce a warning.
+`orchivio.logic.FlowRunner` interprets the validated graph; it never runs generated code.
+
+- **One transaction.** A run is a single database transaction. `raise_error`, any failed step, a failed
+  hook or a limit rolls back everything the flow wrote, including writes made by flows it called, and the
+  audit events of those writes are discarded (events are written only after commit).
+- **The caller's security.** Every data step goes through the same data service as the API: roles, row
+  constraints, validation, uniqueness, computed fields and entity hooks all apply, as the simulated user.
+  A flow cannot do more than the user who runs it (elevated, system-context flows are not implemented).
+- **Steps.** `retrieve` compiles its `where` into a parameterised query (flow variables become bind
+  parameters; computed fields cannot be filtered on) and applies the user's row constraints; `create` /
+  `change` / `delete` call the data service; `change` refreshes the variable with the stored record;
+  `loop` fails (rather than truncating) if the list is longer than `max_iterations`; `call_flow` passes
+  coerced arguments and gives the callee its own variable scope; `end` finishes the whole flow, including
+  from inside a loop body.
+- **Limits.** 10 000 steps, 30 seconds, call depth 10, hook nesting depth 3 (configurable `Limits`).
+- **Trace.** Every executed step yields a span `{flow, step, type, status, ms, iteration, detail}` with the
+  step ids of the model, so the editor can overlay the run and a debugger can be built on it. Single-step
+  debugging and breakpoints are not implemented.
+- **API.** `POST /applications/{id}/preview/flows/{flow}/run` with `{args}` and the `X-Preview-User` /
+  `X-Preview-Roles` headers runs the *approved* flow in the preview. Hook flows and client flows cannot be run
+  directly.
+
+## 6. Entity event hooks
+
+`entities[].hooks` maps an event (`before_create`, `after_create`, `before_update`, `after_update`,
+`before_delete`, `after_delete`) to a flow key. A hook flow must be a **server flow without parameters**,
+serves exactly one entity, and receives two implicit variables: `record` (the new or changed record) and
+`previous` (the stored record before an update or delete; it may be null, so use `?.`). `before_*` hooks run
+before the write and can veto it with `raise_error`; `after_*` hooks run after the write, in the same
+transaction. Hooks that write can trigger further hooks up to a depth of 3. A failing hook makes the
+operation fail with `409 hook_failed` and nothing is changed. Hooks run as the same user, so a role that may
+not create the records a hook creates cannot trigger it successfully.
+
+## 7. Flow tests
+
+`flows[].tests` holds declarative tests (FR-058):
+
+```yaml
+tests:
+  - name: fails and changes nothing when no product is low
+    args: { min_gap: 5 }
+    user: { id: u1, roles: [admin] }            # optional; default: every role the model defines
+    fixtures: { Product: [ { name: Fine, sku: F-1, quantity: 50, reorder_level: 5, owner: u1 } ] }
+    expect:
+      status: failed
+      error_contains: reorder level
+      visited: [none]
+      not_visited: [bump]
+      records: [ { entity: Product, where: "reorder_level == 5", count: 1 } ]
+```
+
+Each test runs in its own throw-away runtime (fixtures are inserted directly, the flow runs under the test
+user's security). Tests are validated statically (arguments, fixture fields, step ids, expressions) and run as
+`flow` cases in every generated test run, with a flows coverage figure. A mutation test breaks the engine on
+purpose to prove they can fail.
+
+## 8. Not specified yet
+
+Client-side actions (navigation, messages) and a client runtime, `commit` and savepoints, AI steps, calls
+to an integration, error-handling branches, scheduled jobs and the task queue, elevated (system-context)
+flows, per-step breakpoints.

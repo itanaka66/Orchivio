@@ -12,11 +12,12 @@ import json
 import logging
 import math
 import uuid
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Iterator, Mapping
+from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, time
 from decimal import Decimal, InvalidOperation
-from typing import Any
+from typing import Any, Protocol
 
 from sqlalchemy import Engine, delete, func, insert, select, text, update
 from sqlalchemy.exc import IntegrityError
@@ -73,6 +74,23 @@ class Invalid(DataError):
 
 class Conflict(DataError):
     status, code = 409, "conflict"
+
+
+class HookFailed(DataError):
+    """An entity event hook (a flow) refused or failed; the whole operation is rolled back."""
+
+    status, code = 409, "hook_failed"
+
+
+MAX_HOOK_DEPTH = 3  # hooks that write can trigger further hooks; bounded recursion (FR-054)
+
+
+class Hooks(Protocol):
+    """Runs the flow bound to an entity event. Implemented by ``orchivio.logic`` (inverted so that
+    the runtime does not depend on the engine)."""
+
+    def run(self, data: "AppData", flow: str, event: str, entity: str, user: "AppUser | None",
+            record: dict[str, Any], previous: dict[str, Any] | None) -> None: ...
 
 
 @dataclass(frozen=True)
@@ -203,7 +221,7 @@ def to_json(value: Any) -> Any:
 class AppData:
     def __init__(self, engine: Engine, schema: RuntimeSchema, *, audit: AuditSink | None = None,
                  application_id: uuid.UUID | None = None, organization_id: uuid.UUID | None = None,
-                 clock: Callable[[], datetime] = lambda: datetime.now(UTC)) -> None:
+                 clock: Callable[[], datetime] = lambda: datetime.now(UTC), hooks: Hooks | None = None) -> None:
         self.engine = engine
         self.schema = schema
         self.model: AppModel = schema.model
@@ -211,6 +229,11 @@ class AppData:
         self.application_id = application_id
         self.organization_id = organization_id
         self.clock = clock
+        self.hooks = hooks
+        # Not thread-safe by design: an AppData is created per request / per run.
+        self._bound = None
+        self._pending_audit: list[AuditRecord] = []
+        self._hook_depth = 0
         self._computed: dict[str, list[tuple[FieldDef, CheckResult]]] = {}
         self._defaults: dict[tuple[str, str], CheckResult] = {}
         self._prepare_expressions()
@@ -240,6 +263,56 @@ class AppData:
             for name in sorted(computed):
                 visit(name)
             self._computed[q] = [computed[n] for n in order]
+
+    # -- connections and transactions -----------------------------------------------------
+
+    @contextmanager
+    def _conn(self, write: bool = False) -> Iterator[Any]:
+        if self._bound is not None:
+            yield self._bound
+        elif write:
+            with self.engine.begin() as conn:
+                yield conn
+        else:
+            with self.engine.connect() as conn:
+                yield conn
+
+    @contextmanager
+    def transaction(self) -> Iterator[AppData]:
+        """Run several operations atomically. Re-entrant: nested use joins the outer transaction.
+
+        Audit events are held back and written only if the transaction commits, so a rolled-back
+        flow leaves no trace of writes that never happened.
+        """
+        if self._bound is not None:
+            yield self
+            return
+        with self.engine.begin() as conn:
+            self._bound, self._pending_audit = conn, []
+            try:
+                yield self
+            except BaseException:
+                self._pending_audit = []
+                raise
+            finally:
+                self._bound = None
+        pending, self._pending_audit = self._pending_audit, []
+        for event in pending:
+            if self.audit is not None:
+                self.audit.record(event)
+
+    def _hook(self, event: str, info: EntityInfo, user: AppUser | None, record: dict[str, Any],
+              previous: dict[str, Any] | None = None) -> None:
+        flow = info.entity.hooks.get(event)
+        if not flow or self.hooks is None:
+            return
+        if self._hook_depth >= MAX_HOOK_DEPTH:
+            raise HookFailed(f"hooks are nested more than {MAX_HOOK_DEPTH} levels deep")
+        self._hook_depth += 1
+        try:
+            self.hooks.run(self, flow, event, info.qualified, user, record, previous)
+        finally:
+            self._hook_depth -= 1
 
     # -- helpers --------------------------------------------------------------------------
 
@@ -300,11 +373,15 @@ class AppData:
     def _audit(self, action: str, info: EntityInfo, user: AppUser, row_id: Any) -> None:
         if self.audit is None:
             return
-        self.audit.record(AuditRecord(
+        record = (AuditRecord(
             action=action, plane="application", channel="api", organization_id=self.organization_id,
             target_type=info.qualified, target_id=str(row_id),
             metadata={"application_id": str(self.application_id) if self.application_id else None,
                       "app_user": user.id, "roles": sorted(user.roles)}))
+        if self._bound is not None:
+            self._pending_audit.append(record)
+        else:
+            self.audit.record(record)
 
     def _coerce_pk(self, info: EntityInfo, raw: Any) -> Any:
         try:
@@ -347,7 +424,7 @@ class AppData:
             raise Invalid("the record is invalid", errors)
 
     def _check_references_and_unique(self, info: EntityInfo, values: Mapping[str, Any], exclude_pk: Any = None) -> None:
-        with self.engine.connect() as conn:
+        with self._conn() as conn:
             for f in info.stored_fields:
                 v = values.get(f.name)
                 kind, target = parse_field_type(f.type) or ("", None)
@@ -426,17 +503,31 @@ class AppData:
                 raise Invalid("cannot sort by that field", [{"field": order_by, "message": "not a stored field"}])
             order_col = t.c[order_by]
         limit = max(1, min(limit, MAX_PAGE))
-        with self.engine.connect() as conn:
+        with self._conn() as conn:
             total = conn.execute(select(func.count()).select_from(t).where(*where)).scalar_one()
             rows = conn.execute(select(t).where(*where).order_by(order_col.desc() if descending else order_col,
                                                                  t.c[info.pk.name]).limit(limit).offset(max(0, offset))).mappings().all()
         return {"items": [self._present(info, dict(r), user) for r in rows], "total": total, "limit": limit, "offset": offset}
 
+    def select_rows(self, entity: str, user: AppUser, *, where: tuple[str, Mapping[str, Any]] | None = None,
+                    limit: int = 100) -> list[dict[str, Any]]:
+        """Raw stored rows the user may read, optionally narrowed by a parameterised SQL predicate
+        (used by flows). The role/row-constraint predicate is always applied."""
+        info = self._info(entity)
+        _, pred = self._guard(info, user, "read")
+        clauses = [pred]
+        if where is not None:
+            clauses.append(text(where[0]).bindparams(**where[1]))
+        with self._conn() as conn:
+            rows = conn.execute(select(info.table).where(*clauses).order_by(info.table.c[info.pk.name])
+                                .limit(max(1, min(limit, MAX_PAGE * 5)))).mappings().all()
+        return [dict(r) for r in rows]
+
     def get(self, entity: str, user: AppUser, row_id: Any) -> dict[str, Any]:
         info = self._info(entity)
         _, pred = self._guard(info, user, "read")
         pk = self._coerce_pk(info, row_id)
-        with self.engine.connect() as conn:
+        with self._conn() as conn:
             row = conn.execute(select(info.table).where(info.table.c[info.pk.name] == pk, pred)).mappings().first()
         if row is None:
             raise RowNotFound("record not found")
@@ -444,74 +535,100 @@ class AppData:
 
     def create(self, entity: str, user: AppUser, data: Mapping[str, Any]) -> dict[str, Any]:
         info = self._info(entity)
-        decision, _ = self._guard(info, user, "create")
-        values, rec = self._build_new(info, user, data)
-        if not record_allowed(decision, rec, self._eval_ctx(info, user, rec)):
-            raise Forbidden("the new record would not satisfy your row-level access rule")
-        self._check_references_and_unique(info, values)
-        try:
-            with self.engine.begin() as conn:
-                conn.execute(insert(info.table).values(**values))
-        except IntegrityError as e:
-            raise Conflict("the record violates a database constraint") from e
-        pk = values[info.pk.name]
-        self._audit("record.created", info, user, pk)
-        with self.engine.connect() as conn:
-            row = conn.execute(select(info.table).where(info.table.c[info.pk.name] == pk)).mappings().one()
-        return self._present(info, dict(row), user)
+        row = self.create_record(entity, user, data)
+        return self._present(info, row, user)
+
+    def create_record(self, entity: str, user: AppUser, data: Mapping[str, Any]) -> dict[str, Any]:
+        """Create and return the stored row (atomic with its hooks)."""
+        info = self._info(entity)
+        with self.transaction():
+            decision, _ = self._guard(info, user, "create")
+            values, rec = self._build_new(info, user, data)
+            if not record_allowed(decision, rec, self._eval_ctx(info, user, rec)):
+                raise Forbidden("the new record would not satisfy your row-level access rule")
+            self._check_references_and_unique(info, values)
+            self._hook("before_create", info, user, rec)
+            try:
+                with self._conn(write=True) as conn:
+                    conn.execute(insert(info.table).values(**values))
+            except IntegrityError as e:
+                raise Conflict("the record violates a database constraint") from e
+            pk = values[info.pk.name]
+            with self._conn() as conn:
+                row = dict(conn.execute(select(info.table).where(info.table.c[info.pk.name] == pk)).mappings().one())
+            self._audit("record.created", info, user, pk)
+            self._hook("after_create", info, user, self.eval_record(entity, row, user))
+            return row
 
     def update(self, entity: str, user: AppUser, row_id: Any, patch: Mapping[str, Any]) -> dict[str, Any]:
         info = self._info(entity)
-        decision, pred = self._guard(info, user, "update")
-        pk = self._coerce_pk(info, row_id)
-        t = info.table
-        with self.engine.connect() as conn:
-            current = conn.execute(select(t).where(t.c[info.pk.name] == pk, pred)).mappings().first()
-        if current is None:
-            raise RowNotFound("record not found")
-        changes = self._validate(info, patch, creating=False)
-        merged = {f.name: current[f.name] for f in info.stored_fields}
-        merged.update(changes)
-        self._check_required(info, merged)
-        rec = self._with_computed(info, user, {k: to_eval(v) for k, v in merged.items()})
-        for f, _ in self._computed.get(info.qualified, []):
-            if f.computed and f.computed.mode == "stored":
-                merged[f.name] = changes[f.name] = _restore(f, rec.get(f.name))
-        if not record_allowed(decision, rec, self._eval_ctx(info, user, rec)):
-            raise Forbidden("the updated record would not satisfy your row-level access rule")
-        self._check_references_and_unique(info, merged, exclude_pk=pk)
-        try:
-            with self.engine.begin() as conn:
-                if changes:
-                    res = conn.execute(update(t).where(t.c[info.pk.name] == pk, pred).values(**changes))
-                    if res.rowcount == 0:  # row vanished or stopped matching concurrently
-                        raise RowNotFound("record not found")
-        except IntegrityError as e:
-            raise Conflict("the record violates a database constraint") from e
-        self._audit("record.updated", info, user, pk)
-        with self.engine.connect() as conn:  # the caller was allowed to update it; no read predicate here
-            row = conn.execute(select(t).where(t.c[info.pk.name] == pk)).mappings().one()
-        return self._present(info, dict(row), user)
+        return self._present(info, self.update_record(entity, user, row_id, patch), user)
+
+    def update_record(self, entity: str, user: AppUser, row_id: Any, patch: Mapping[str, Any]) -> dict[str, Any]:
+        """Update and return the stored row (atomic with its hooks)."""
+        info = self._info(entity)
+        with self.transaction():
+            decision, pred = self._guard(info, user, "update")
+            pk = self._coerce_pk(info, row_id)
+            t = info.table
+            with self._conn() as conn:
+                current = conn.execute(select(t).where(t.c[info.pk.name] == pk, pred)).mappings().first()
+            if current is None:
+                raise RowNotFound("record not found")
+            changes = self._validate(info, patch, creating=False)
+            merged = {f.name: current[f.name] for f in info.stored_fields}
+            merged.update(changes)
+            self._check_required(info, merged)
+            rec = self._with_computed(info, user, {k: to_eval(v) for k, v in merged.items()})
+            for f, _ in self._computed.get(info.qualified, []):
+                if f.computed and f.computed.mode == "stored":
+                    merged[f.name] = changes[f.name] = _restore(f, rec.get(f.name))
+            if not record_allowed(decision, rec, self._eval_ctx(info, user, rec)):
+                raise Forbidden("the updated record would not satisfy your row-level access rule")
+            self._check_references_and_unique(info, merged, exclude_pk=pk)
+            self._hook("before_update", info, user, rec, self.eval_record(entity, dict(current), user))
+            try:
+                with self._conn(write=True) as conn:
+                    if changes:
+                        res = conn.execute(update(t).where(t.c[info.pk.name] == pk, pred).values(**changes))
+                        if res.rowcount == 0:  # row vanished or stopped matching concurrently
+                            raise RowNotFound("record not found")
+            except IntegrityError as e:
+                raise Conflict("the record violates a database constraint") from e
+            with self._conn() as conn:  # the caller was allowed to update it; no read predicate here
+                row = dict(conn.execute(select(t).where(t.c[info.pk.name] == pk)).mappings().one())
+            self._audit("record.updated", info, user, pk)
+            self._hook("after_update", info, user, self.eval_record(entity, row, user),
+                       self.eval_record(entity, dict(current), user))
+            return row
 
     def delete(self, entity: str, user: AppUser, row_id: Any) -> None:
         info = self._info(entity)
-        _, pred = self._guard(info, user, "delete")
-        pk = self._coerce_pk(info, row_id)
-        try:
-            with self.engine.begin() as conn:
-                res = conn.execute(delete(info.table).where(info.table.c[info.pk.name] == pk, pred))
-        except IntegrityError as e:
-            raise Conflict("other records still reference this one") from e
-        if res.rowcount == 0:
-            raise RowNotFound("record not found")
-        self._audit("record.deleted", info, user, pk)
+        with self.transaction():
+            _, pred = self._guard(info, user, "delete")
+            pk = self._coerce_pk(info, row_id)
+            with self._conn() as conn:
+                current = conn.execute(select(info.table).where(info.table.c[info.pk.name] == pk, pred)).mappings().first()
+            if current is None:
+                raise RowNotFound("record not found")
+            before = self.eval_record(entity, dict(current), user)
+            self._hook("before_delete", info, user, before)
+            try:
+                with self._conn(write=True) as conn:
+                    res = conn.execute(delete(info.table).where(info.table.c[info.pk.name] == pk, pred))
+            except IntegrityError as e:
+                raise Conflict("other records still reference this one") from e
+            if res.rowcount == 0:
+                raise RowNotFound("record not found")
+            self._audit("record.deleted", info, user, pk)
+            self._hook("after_delete", info, user, before)
 
     def seed(self, entity: str, data: Mapping[str, Any]) -> dict[str, Any]:
         """Insert a validated row without access checks. For synthetic preview data only."""
         info = self._info(entity)
         values, _ = self._build_new(info, None, data)
         self._check_references_and_unique(info, values)
-        with self.engine.begin() as conn:
+        with self._conn(write=True) as conn:
             conn.execute(insert(info.table).values(**values))
         return values
 

@@ -43,7 +43,7 @@ def test_sample_model_passes_with_full_coverage(tmp_path, raw_model):
     report = run(tmp_path, raw_model)
     assert report.ok and report.counts["failed"] == 0 and report.counts["passed"] >= 20
     assert report.counts["skipped"] == 0, [r for r in report.results if r.status == "skipped"]
-    assert report.coverage == {"entities": {"covered": 1, "total": 1},
+    assert report.coverage == {"flows": {"covered": 1, "total": 1}, "entities": {"covered": 1, "total": 1},
                                "access_rules": {"covered": 3, "total": 3},
                                "row_constraints": {"covered": 1, "total": 1}}
 

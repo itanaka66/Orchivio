@@ -173,3 +173,61 @@ describe('FlowEditor', () => {
     expect(options).not.toContain('id') // system-managed fields are not suggested
   })
 })
+
+describe('FlowEditor run panel', () => {
+  const result = {
+    flow: 'core.ReorderLowStock', status: 'succeeded' as const, error: null, error_step: null, steps_executed: 4,
+    trace: [
+      { flow: 'core.ReorderLowStock', step: 'start', type: 'start', status: 'ok' as const, ms: 0, iteration: [], detail: '' },
+      { flow: 'core.ReorderLowStock', step: 'find', type: 'retrieve', status: 'ok' as const, ms: 1, iteration: [], detail: '2 record(s)' },
+      { flow: 'core.ReorderLowStock', step: 'bump', type: 'change', status: 'ok' as const, ms: 1, iteration: [0], detail: 'updated core.Product' },
+      { flow: 'core.ReorderLowStock', step: 'bump', type: 'change', status: 'ok' as const, ms: 1, iteration: [1], detail: 'updated core.Product' },
+    ],
+  }
+
+  it('runs the saved flow with parsed arguments and shows the trace on the canvas', async () => {
+    const run = vi.fn().mockResolvedValue(result)
+    const { user } = setup({ run })
+    const panel = screen.getByRole('region', { name: 'Run' })
+    await user.type(within(panel).getByLabelText(/min_gap/), '3')
+    await user.click(within(panel).getByRole('button', { name: 'Run' }))
+    await waitFor(() => expect(within(panel).getByText(/Succeeded after 4 steps/)).toBeInTheDocument())
+    expect(run).toHaveBeenCalledWith({ min_gap: 3 }, 'preview-user', ['viewer', 'editor', 'admin'])
+    expect(within(panel).getByRole('list', { name: 'Steps that ran' }).children).toHaveLength(4)
+    await waitFor(() => expect(nodeNamed(/^Change, Change step, ran 2 times in the last run/)).toBeInTheDocument())
+    expect(nodeNamed(/^Done, End step$/)).toBeInTheDocument() // did not run
+  })
+
+  it('shows a failure and where it happened', async () => {
+    const failed = { ...result, status: 'failed' as const, error: 'No product is below its reorder level', error_step: 'find',
+      trace: [{ ...result.trace[1]!, status: 'error' as const }] }
+    const { user } = setup({ run: vi.fn().mockResolvedValue(failed) })
+    await user.click(screen.getByRole('button', { name: 'Run' }))
+    expect((await screen.findAllByText(/No product is below its reorder level/)).length).toBeGreaterThan(0)
+    await waitFor(() => expect(nodeNamed(/^Find products, Retrieve step, failed in the last run/)).toBeInTheDocument())
+  })
+
+  it('refuses to run unsaved edits, because runs use the approved model', async () => {
+    const { user } = setup({ run: vi.fn(), onSave: vi.fn() })
+    expect(screen.getByRole('button', { name: 'Run' })).toBeEnabled()
+    await user.click(screen.getByRole('button', { name: /^Add Decision step/ }))
+    expect(screen.getByRole('button', { name: 'Run' })).toBeDisabled()
+    expect(screen.getByRole('note')).toHaveTextContent(/approved model/)
+  })
+
+  it('is hidden for client flows and blocked for flows that are not saved yet', () => {
+    const { unmount } = setup({ run: vi.fn(), runnable: false })
+    expect(screen.getByRole('button', { name: 'Run' })).toBeDisabled()
+    unmount()
+    setup({ run: vi.fn(), flow: { ...flow, kind: 'client', steps: flow.steps.slice(0, 1), edges: [] } })
+    expect(screen.queryByRole('region', { name: 'Run' })).toBeNull()
+  })
+
+  it('clears the trace when the flow is edited', async () => {
+    const { user } = setup({ run: vi.fn().mockResolvedValue(result) })
+    await user.click(screen.getByRole('button', { name: 'Run' }))
+    await screen.findByText(/Succeeded after 4 steps/)
+    await user.click(screen.getByRole('button', { name: /^Add Decision step/ }))
+    expect(screen.queryByText(/Succeeded after 4 steps/)).toBeNull()
+  })
+})

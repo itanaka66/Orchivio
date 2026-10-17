@@ -65,6 +65,7 @@ class CheckResult:
     type: Type
     fields: frozenset[str]
     types: Mapping[Node, Type] = field(repr=False, default_factory=dict)
+    variables: frozenset[str] = frozenset()  # identifiers that resolved to flow variables
 
 
 def compatible(a: Type, b: Type) -> bool:
@@ -89,6 +90,7 @@ class _Checker:
     def __init__(self, env: CheckEnv) -> None:
         self.env = env
         self.fields: set[str] = set()
+        self.variables: set[str] = set()
         self.types: dict[Node, Type] = {}
 
     def fail(self, msg: str, node: Node) -> TypeCheckError:
@@ -148,10 +150,10 @@ class _Checker:
 
     def _ident(self, name: str, node: Node) -> Type:
         rec = self.env.record_entity
-        if name == "record":
-            if rec is None:
-                raise self.fail("'record' is not available in this context", node)
+        if name == "record" and rec is not None:
             return Type("entity", rec)
+        if name == "record" and name not in self.env.variables:
+            raise self.fail("'record' is not available in this context", node)
         if rec is not None:
             ft = self.env.schema.field_type(rec, name)
             if ft is not None:
@@ -159,6 +161,7 @@ class _Checker:
                 return ft
         var = self.env.variables.get(name)
         if var is not None:
+            self.variables.add(name)
             return var
         if self.env.schema.enum_values(name) is not None:
             return Type("enumtype", name)
@@ -185,7 +188,7 @@ class _Checker:
                 raise self.fail(f"entity {ot.name} has no usable field '{node.name}'", node)
             if isinstance(node.obj, Ident) and node.obj.name == "record":
                 self.fields.add(node.name)
-            return ft
+            return ft.as_nullable() if node.safe and ot.nullable else ft  # `?.` on a null record gives null
         if ot.kind == "enumtype":
             assert ot.name is not None
             values = self.env.schema.enum_values(ot.name) or ()
@@ -300,4 +303,4 @@ def check(source: str, env: CheckEnv, expected: Type | None = None) -> CheckResu
         raise TypeCheckError(f"expression must evaluate to a value, not {t.kind}", ast.pos)
     if expected is not None and not assignable(t, expected):
         raise TypeCheckError(f"expected {expected}, got {t}", ast.pos)
-    return CheckResult(source, ast, t, frozenset(c.fields), c.types)
+    return CheckResult(source, ast, t, frozenset(c.fields), c.types, frozenset(c.variables))

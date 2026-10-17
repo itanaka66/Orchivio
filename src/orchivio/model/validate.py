@@ -15,6 +15,7 @@ from orchivio.expr import CheckEnv, ExprError, check
 from orchivio.expr.ast import BOOL, DATETIME, DECIMAL, INT, STRING, Type, enum_t, ref_t
 
 from .flows import FlowChecker, call_cycles
+from .hooks import HOOK_EVENTS
 from .ids import iter_elements
 from .schema import (
     BUILTIN_ENTITIES,
@@ -136,7 +137,8 @@ def validate_flow(model: AppModel, module_key: str, flow: FlowDef) -> list[Issue
     flows = {f"{m.key}.{f.key}": f for m in model.modules for f in m.flows}
     module_of = {f"{m.key}.{f.key}": m for m in model.modules for f in m.flows}
     flows[f"{module_key}.{flow.key}"], module_of[f"{module_key}.{flow.key}"] = flow, model.modules[mi]
-    v.check_flow(model.modules[mi], mi, flow, flows)
+    bound = v.hook_bindings(flows)
+    v.check_flow(model.modules[mi], mi, flow, flows, v.implicit_for(bound, f"{module_key}.{flow.key}"))
     for cycle in call_cycles(flows, module_of):
         if f"{module_key}.{flow.key}" in cycle:
             v.err("flow-call-cycle", f"/modules/{mi}/flows/{flow.key}", "flows call each other in a cycle: " + " -> ".join(cycle), flow.element_id)
@@ -204,8 +206,6 @@ class _Validator:
             for fname in idx.fields:
                 if fname not in names:
                     self.err("unknown-index-field", f"{path}/indexes/{ix}", f"unknown field '{fname}'")
-        if ent.hooks:
-            self.add("warning", "hooks-not-supported", path, "entity hooks need Server Flows (not yet available)")
         qualified = f"{mod.key}.{ent.name}"
         types = self.index.types_for(mod.key)
         computed: dict[str, set[str]] = {}
@@ -329,20 +329,46 @@ class _Validator:
                     self.expr(src, env, BOOL, f"{path}/actions/{ai}/{attr}", pg.element_id)
 
     # -- flows
+    def hook_bindings(self, flows: dict[str, FlowDef]) -> dict[str, str]:
+        """flow (qualified) -> entity (qualified) for flows bound as entity event hooks; reports misuse."""
+        bound: dict[str, str] = {}
+        for q, (mod, ent) in self.index.entities.items():
+            for event, key in ent.hooks.items():
+                path = f"/modules/{self.model.modules.index(mod)}/entities/{mod.entities.index(ent)}/hooks/{event}"
+                fq = qualify(mod.key, key)
+                fl = flows.get(fq)
+                if event not in HOOK_EVENTS:
+                    self.err("bad-hook", path, f"unknown hook event '{event}' (valid: {', '.join(HOOK_EVENTS)})", ent.element_id)
+                elif fl is None:
+                    self.err("bad-hook", path, f"hook flow '{key}' does not exist", ent.element_id)
+                elif fl.kind != "server" or fl.params:
+                    self.err("bad-hook", path, f"hook flow '{key}' must be a server flow without parameters", ent.element_id)
+                elif bound.setdefault(fq, q) != q:
+                    self.err("bad-hook", path, f"flow '{key}' is already the hook of {bound[fq]}; a hook flow serves one entity", ent.element_id)
+        return bound
+
+    def implicit_for(self, bound: dict[str, str], fq: str) -> dict[str, Type] | None:
+        q = bound.get(fq)
+        if q is None:
+            return None
+        return {"record": Type("entity", q), "previous": Type("entity", q, nullable=True)}
+
     def flows(self) -> None:
         flows = {f"{m.key}.{f.key}": f for m in self.model.modules for f in m.flows}
         module_of = {f"{m.key}.{f.key}": m for m in self.model.modules for f in m.flows}
+        bound = self.hook_bindings(flows)
         for mi, mod in enumerate(self.model.modules):
             for fl in mod.flows:
-                self.check_flow(mod, mi, fl, flows)
+                self.check_flow(mod, mi, fl, flows, self.implicit_for(bound, f"{mod.key}.{fl.key}"))
         for cycle in call_cycles(flows, module_of):
             self.err("flow-call-cycle", "/modules", "flows call each other in a cycle: " + " -> ".join(cycle))
 
-    def check_flow(self, mod: ModuleDef, mi: int, fl: FlowDef, flows: dict[str, FlowDef]) -> None:
+    def check_flow(self, mod: ModuleDef, mi: int, fl: FlowDef, flows: dict[str, FlowDef],
+                   implicit: dict[str, Type] | None = None) -> None:
         def report(code: str, path: str, msg: str, sev: str) -> None:
             self.add(sev, code, path, msg, fl.element_id)  # type: ignore[arg-type]
 
-        FlowChecker(self.index, mod, fl, flows, report, f"/modules/{mi}/flows/{fl.key}").run()
+        FlowChecker(self.index, mod, fl, flows, report, f"/modules/{mi}/flows/{fl.key}", implicit).run()
 
     # -- security
     def security(self) -> None:

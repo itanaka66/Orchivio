@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from orchivio.logic import tests_of
 from orchivio.model import AppModel, ModelIndex
 from orchivio.model.schema import OPERATIONS, parse_field_type
 from orchivio.security import resolve_access
@@ -70,4 +71,8 @@ def generate_cases(model: AppModel) -> list[Case]:
             if kind == "enum":
                 cases.append(Case(f"{fid}:enum", "validation", f"{ent.name}.{f.name} rejects values outside {f.type}", q, field=f.name, rule="enum"))
         cases.append(Case(f"validation:{q}:*:unknown_field", "validation", f"{ent.name} rejects unknown fields", q, rule="unknown_field"))
+
+    # 5. declarative flow tests stored in the model (FR-058)
+    for fq, flow, i, t in tests_of(model):
+        cases.append(Case(f"flow:{fq}:{i}", "flow", f"{flow.key}: {t.name}", fq, field=t.name, rule=str(i)))
     return cases

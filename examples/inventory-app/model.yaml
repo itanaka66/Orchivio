@@ -71,6 +71,32 @@ modules:
           - { id: e4, source: any, target: none, handle: "false" }
           - { id: e5, source: each, target: bump, handle: body }
           - { id: e6, source: each, target: done, handle: done }
+        tests:
+          - name: raises the reorder level of low products only
+            args: { min_gap: 0 }
+            fixtures:
+              Product:
+                - { name: Low, sku: L-1, quantity: 1, reorder_level: 5, owner: u1 }
+                - { name: Fine, sku: F-1, quantity: 50, reorder_level: 5, owner: u1 }
+            expect:
+              status: succeeded
+              visited: [find, each, bump, done]
+              not_visited: [none]
+              records:
+                - { entity: Product, where: "reorder_level == 10", count: 1 }
+                - { entity: Product, where: "reorder_level == 5", count: 1 }
+          - name: fails and changes nothing when no product is low
+            args: { min_gap: 5 }
+            fixtures:
+              Product:
+                - { name: Fine, sku: F-1, quantity: 50, reorder_level: 5, owner: u1 }
+            expect:
+              status: failed
+              error_contains: reorder level
+              visited: [none]
+              not_visited: [bump]
+              records:
+                - { entity: Product, where: "reorder_level == 5", count: 1 }
     pages:
       - key: product-list
         path: /products

@@ -89,3 +89,11 @@ fieldset { border: 1px solid var(--line); border-radius: 8px; margin: .6rem 0; p
 .react-flow__edge-textbg { fill: var(--panel); } .react-flow__edge-text { fill: var(--ink); font-size: 11px; }
 
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
+
+/* last-run overlay */
+.step.ran { box-shadow: 0 0 0 3px color-mix(in srgb, var(--ok) 35%, transparent); }
+.step.ran-error { border-color: var(--error); box-shadow: 0 0 0 3px color-mix(in srgb, var(--error) 35%, transparent); }
+.badge-ok { background: var(--ok); color: #fff; }
+.run-panel { margin-top: 1.25rem; border-top: 1px solid var(--line); padding-top: .75rem; }
+.run-panel ol { padding-left: 1.2rem; margin: .25rem 0; font-size: .9em; }
+.run-panel .result-failed { color: var(--error); font-weight: 600; } .run-panel .result-succeeded { color: var(--ok); font-weight: 600; }
