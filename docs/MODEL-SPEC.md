@@ -71,6 +71,7 @@ Error-severity issues block creating a revision.
 | `missing-mode` | error | `form` page without `create`/`edit` |
 | `expression` | error | Expression fails to parse or type-check (message includes position) |
 | `computed-cycle` | error | Computed fields depend on each other (`a -> b -> a`) |
+| `export` operation | - | An access rule may list `export` next to `read/create/update/delete`; it is not part of the generated CRUD test matrix |
 | `unknown-access-field`, `duplicate-access-field`, `access-field-unused` | error | Field lists of an access rule (docs/APP-SECURITY.md §3) |
 | `duplicate-flow`, `flow-*`, `edge-*`, `step-not-allowed`, `missing-branch`, `unreachable-step`, `loop-*`, `duplicate-variable` | error | Flow structure and scoping rules (FLOW-SPEC.md) |
 | `unknown-role`, `unknown-page` | error | Security block references something undefined |

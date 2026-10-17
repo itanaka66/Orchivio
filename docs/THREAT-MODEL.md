@@ -65,6 +65,9 @@ Status: ✅ implemented and tested · 🟡 partly / not verified end-to-end · �
 | A8 | Event payloads leak data to a receiver | `fields` allow-list, default ids only; URL kept out of the audit log; signing secret only by reference | ✅ |
 | A9 | Forged or replayed webhook requests at the receiver | HMAC-SHA256 over timestamp + body, constant-time verification helper, replay window | ✅ |
 
+| A10 | CSV import used to bypass validation, row/field access or hooks | Rows are created through `AppData.create` as the caller; unwritable columns are refused; size, row and column limits | ✅ tested |
+| A11 | Formula injection and bulk exfiltration through CSV export | Separate `export` grant (A3 to widen), field and row filters, row cap, audit, quote-prefixing of formula cells | ✅ tested |
+
 ## 4. Assumptions
 
 - PostgreSQL, the host OS and the TLS terminator are operated securely.

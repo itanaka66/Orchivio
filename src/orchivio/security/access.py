@@ -27,7 +27,7 @@ from orchivio.expr import (
 )
 from orchivio.expr.ast import BOOL
 from orchivio.model import AppModel, ModelIndex
-from orchivio.model.schema import OPERATIONS
+from orchivio.model.schema import ALL_OPERATIONS
 
 DENY_ALL = SqlPredicate("(1 = 0)", {})
 ALLOW_ALL = SqlPredicate("(1 = 1)", {})
@@ -47,7 +47,7 @@ def resolve_access(
     model: AppModel, roles: Iterable[str], entity: str, operation: str
 ) -> AccessDecision:
     """Decide whether any of ``roles`` may perform ``operation`` on qualified ``entity``."""
-    if operation not in OPERATIONS:
+    if operation not in ALL_OPERATIONS:
         return DENIED
     index = ModelIndex(model)
     found = index.entities.get(entity)

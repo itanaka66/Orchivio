@@ -674,6 +674,25 @@ class AppData:
             self._emit("deleted", info, pk, dict(current))
             self._hook("after_delete", info, user, before)
 
+    def require(self, entity: str, user: AppUser, op: str) -> None:
+        """Raise ``Forbidden`` unless the user's roles grant ``op`` on ``entity``."""
+        self._guard(self._info(entity), user, op)
+
+    def export_rows(self, entity: str, user: AppUser, *, limit: int = 10_000) -> list[dict[str, Any]]:
+        """Rows for a file download. Needs the separate ``export`` operation *and* ``read``; both row predicates
+        apply and only readable fields are returned. Audited."""
+        info = self._info(entity)
+        _, export_pred = self._guard(info, user, "export")
+        _, read_pred = self._guard(info, user, "read")
+        with self._conn() as conn:
+            rows = conn.execute(select(info.table).where(export_pred, read_pred).order_by(info.table.c[info.pk.name])
+                                .limit(limit + 1)).mappings().all()
+        if len(rows) > limit:
+            raise Invalid(f"more than {limit} rows match; the export is limited", [{"field": "", "message": "too many rows"}])
+        out = [self._present(info, dict(r), user) for r in rows]
+        self._audit("records.exported", info, user, f"{len(out)} rows")
+        return out
+
     def seed(self, entity: str, data: Mapping[str, Any]) -> dict[str, Any]:
         """Insert a validated row without access checks. For synthetic preview data only."""
         info = self._info(entity)

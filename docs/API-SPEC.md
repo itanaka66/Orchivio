@@ -114,6 +114,8 @@ one owner (`409 last_owner`). Any member may leave an organization.
 | GET/PATCH/DELETE | `/webhooks/{id}` | read / change (including `status: active|paused`) / delete |
 | POST | `/webhooks/{id}/test` | queue one `orchivio.ping` delivery |
 | GET | `/webhooks/{id}/deliveries`, `/webhook-deliveries/{id}`; POST `/webhook-deliveries/{id}/retry` | delivery log (`status`), one delivery with payload, requeue a dead one |
+| POST | `/apps/{app_id}/import/{entity}`; `/applications/{id}/preview/import/{entity}` | CSV import as the signed-in user / simulated role (`mode`, `dry_run`, `delimiter`, `ignore_unknown`, `map.*`); `422 import_rejected` lists row errors |
+| GET | `/apps/{app_id}/export/{entity}`; `/applications/{id}/preview/export/{entity}` | CSV download; needs the `export` operation, audited |
 | GET | `/healthz`, `/readyz` | liveness / readiness (unauthenticated; docs/OPERATIONS.md) |
 | GET | `/metrics` | Prometheus text; bearer `ORCHIVIO_METRICS_TOKEN`, disabled when unset |
 
