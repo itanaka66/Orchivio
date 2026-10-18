@@ -6,6 +6,8 @@ import { collectElements } from './board/elements'
 import { FeedbackWidget } from './board/FeedbackWidget'
 import { FlowEditor } from './components/FlowEditor'
 import { Preview } from './preview/Preview'
+import { PwaBar } from './pwa/PwaBar'
+import { clearShellCaches } from './pwa/register'
 import { FLOW_KEY_RE } from './flow/catalog'
 import { listFlows, viewOf, withFlow } from './flow/model'
 import { newFlow } from './flow/ops'
@@ -112,12 +114,13 @@ export default function App({ client: injected }: { client?: ApiClient }) {
 
   return (
     <>
+    <PwaBar />
     {overlay}
     <main className="page" hidden={overlay !== null}>
       <h1>Orchivio Studio · Flow builder</h1>
       {user ? (
         <Browser client={client} user={user} onOpen={setOpen} onBoard={setBoard} onPreview={setPreview} onAdmin={setAdmin}
-                 onLogout={() => { void client.logout().finally(() => setUser(null)) }} />
+                 onLogout={() => { void client.logout().finally(() => { clearShellCaches(); setUser(null) }) }} />
       ) : (
         <Login client={client} onUser={setUser} />
       )}

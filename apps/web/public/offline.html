@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="color-scheme" content="light dark" />
+    <title>Orchivio Studio · Offline</title>
+    <style>
+      body { margin: 0; font: 16px/1.5 system-ui, -apple-system, 'Segoe UI', sans-serif; background: #f6f7f9; color: #1c2330; display: grid; place-items: center; min-height: 100vh; padding: 16px; }
+      @media (prefers-color-scheme: dark) { body { background: #12161d; color: #e8ecf3; } }
+      main { max-width: 32rem; }
+      button { font: inherit; padding: .5rem 1rem; border-radius: 6px; border: 1px solid currentColor; background: none; color: inherit; cursor: pointer; }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>You are offline</h1>
+      <p>Orchivio Studio needs a connection to the server to load or save anything. Nothing you were working on has been sent. Check your network and try again.</p>
+      <p><button type="button" onclick="location.reload()">Try again</button></p>
+    </main>
+  </body>
+</html>
