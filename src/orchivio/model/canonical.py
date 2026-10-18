@@ -47,6 +47,11 @@ _SAFE_PATH = re.compile(r"^(application\.yaml|security/security\.yaml|security/a
                         r"modules/[a-z][a-z0-9_]*/(module\.yaml|(enumerations|entities|pages|flows|integrations|processes)/[A-Za-z0-9_\-]+\.yaml))$")
 
 
+def is_canonical_path(path: str) -> bool:
+    """Does ``path`` have the shape of a file of the canonical format (so a repository's other files can be told apart)?"""
+    return bool(_SAFE_PATH.match(path))
+
+
 class CanonicalError(ValueError):
     """The files are not a valid canonical model. ``path`` names the offending file when known."""
 

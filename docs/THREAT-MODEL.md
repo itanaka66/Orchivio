@@ -109,6 +109,12 @@ Status: ✅ implemented and tested · 🟡 partly / not verified end-to-end · �
 | A41 | A document steers the requirement extraction or floods the project | Document is wrapped as untrusted data; output is draft requirements only, titles de-duplicated, at most 20 per call | ✅ tested |
 | A42 | The widget captures more than the person intends | Screen capture goes through the browser's share prompt and takes one frame on a click; element picking swallows exactly one click; nothing is sent until Send | ✅ tested (picking, validation); capture needs a manual check |
 
+| A43 | The remote URL is used for SSRF or local file access (internal hosts, `file://`, `ext::`, ssh) | https only, operator allow-list, public-address check, `GIT_ALLOW_PROTOCOL=https`, no redirects; disabled unless hosts are configured | ✅ tested (DNS pinning not possible: residual risk documented) |
+| A44 | A malicious repository attacks the server (hooks, filters, symlinks, submodules, option injection) | No checkout, plumbing only, hooks off, clean config, `--` before untrusted arguments, validated branch/path names, regular files only | ✅ tested |
+| A45 | The Git token leaks (logs, errors, audit, argv) | Reference only; passed as an environment header; scrubbed; git output never returned | ✅ tested |
+| A46 | Git becomes a way around approval | Pull only creates a proposal; push only writes a non-base branch | ✅ tested |
+| A47 | Orchivio overwrites people's files in the repository | Only canonical-shaped files under the path are replaced; the base branch is never written | ✅ tested |
+
 ## 4. Assumptions
 
 - PostgreSQL, the host OS and the TLS terminator are operated securely.

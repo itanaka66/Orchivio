@@ -10,6 +10,7 @@ SRC = Path(__file__).resolve().parents[2] / "src" / "orchivio"
 # package -> sibling packages it may import
 ALLOWED: dict[str, set[str]] = {
     "ai": {"llm", "model", "telemetry"},
+    "gitsync": {"integrations", "model", "telemetry"},
     "auth": set(),
     "ops": {"db", "ports"},
     "telemetry": set(),
@@ -28,7 +29,7 @@ ALLOWED: dict[str, set[str]] = {
     "model": {"expr", "policy"},
     "security": {"expr", "model", "policy"},
     "db": {"model", "policy"},
-    "api": {"telemetry", "process", "integrations", "delivery", "jobs", "ai", "auth", "codegen", "logic", "runtime", "testgen", "expr", "model", "security", "policy", "db", "llm", "ports"},
+    "api": {"gitsync", "telemetry", "process", "integrations", "delivery", "jobs", "ai", "auth", "codegen", "logic", "runtime", "testgen", "expr", "model", "security", "policy", "db", "llm", "ports"},
 }
 
 

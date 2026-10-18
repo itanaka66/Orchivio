@@ -419,6 +419,30 @@ class AuditEvent(Base):
     created_at: Mapped[datetime] = _created()
 
 
+class GitSync(Base):
+    """How an application is synchronised with a Git repository (docs/GIT-SYNC.md). One per application; no secrets, only a reference."""
+
+    __tablename__ = "git_syncs"
+
+    id: Mapped[uuid.UUID] = _id()
+    application_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("applications.id", ondelete="CASCADE"), nullable=False, unique=True
+    )
+    remote_url: Mapped[str] = mapped_column(String(500), nullable=False)
+    base_branch: Mapped[str] = mapped_column(String(100), nullable=False, default="main")
+    push_branch: Mapped[str] = mapped_column(String(100), nullable=False)
+    path: Mapped[str] = mapped_column(String(100), nullable=False, default="")
+    token_ref: Mapped[str | None] = mapped_column(String(300))
+    provider: Mapped[str] = mapped_column(String(10), nullable=False, default="git")
+    last_push_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_push_commit: Mapped[str | None] = mapped_column(String(40))
+    last_push_revision_id: Mapped[uuid.UUID | None] = mapped_column(Uuid)
+    last_pull_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_pull_commit: Mapped[str | None] = mapped_column(String(40))
+    created_by: Mapped[uuid.UUID | None] = mapped_column(Uuid)
+    created_at: Mapped[datetime] = _created()
+
+
 REQUIREMENT_STATUS = ("draft", "accepted", "implemented", "rejected")
 STORY_STATUS = ("proposed", "backlog", "ready", "in_progress", "done", "rejected")
 ITEM_SOURCE = ("manual", "ai", "feedback")

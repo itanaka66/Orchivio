@@ -155,6 +155,9 @@ one owner (`409 last_owner`). Any member may leave an organization.
 | GET/POST | `/applications/{id}/feedback` | preview feedback: list (editor) / submit (member) |
 | GET/PATCH | `/applications/{id}/feedback/{fid}[/screenshot]` | screenshot / dismiss |
 | POST | `/applications/{id}/feedback/cluster` | AI groups new feedback into proposed stories |
+| GET/PUT/DELETE | `/applications/{id}/git-sync` | Git repository settings (admin; docs/GIT-SYNC.md) |
+| POST | `/applications/{id}/git-sync/push` | commit a revision to the push branch, optionally open a pull request |
+| POST | `/applications/{id}/git-sync/pull` | read the base branch and create a proposal |
 | GET | `/healthz`, `/readyz` | liveness / readiness (unauthenticated; docs/OPERATIONS.md) |
 | GET | `/metrics` | Prometheus text; bearer `ORCHIVIO_METRICS_TOKEN`, disabled when unset |
 

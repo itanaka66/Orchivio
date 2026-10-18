@@ -56,6 +56,10 @@ class Settings(BaseSettings):
     otel_endpoint: str | None = None  # OTLP/HTTP base URL; else OTEL_EXPORTER_OTLP_ENDPOINT
     otel_sample_ratio: float = 1.0
     otel_metric_interval_ms: int = 30_000
+    git_sync_allowed_hosts: list[str] = []  # fnmatch patterns of Git hosts that may be synchronised; empty = Git sync is off
+    git_sync_timeout_seconds: int = 60
+    git_executable: str = "git"
+    git_github_api_url: str = "https://api.github.com"  # GitHub Enterprise: https://ghe.example.com/api/v3
     app_log_retention_days: int = 30  # application log lines kept in the platform database
     otel_logs: bool = True  # also ship the platform's own log lines over OTLP when an endpoint is set
     otel_propagate_outbound: bool = False  # add traceparent to webhook and consumed-API requests
