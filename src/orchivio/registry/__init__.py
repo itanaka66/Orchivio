@@ -73,28 +73,39 @@ def _strings(obj: Any) -> set[str]:
     return out
 
 
-def slice_module(model: AppModel, module_key: str, *, name: str) -> AppModel:
-    """A standalone model with only ``module_key`` and the security slice it needs (access rules on its entities, page access for its
-    pages, and the roles those or the module itself name). Raises ``RegistryError`` with the validation issues if it is not
-    self-contained (it uses another module's entities or flows)."""
-    mod = next((m for m in model.modules if m.key == module_key), None)
-    if mod is None:
-        raise RegistryError(f"the model has no module '{module_key}'", "unknown_module")
-    rules = [r for r in model.security.access if r.entity.split(".")[0] == module_key]
-    page_keys = {p.key for p in mod.pages}
+def _cut(model: AppModel, keys: list[str], name: str) -> AppModel:
+    """The modules ``keys`` of ``model`` with the security slice they need: access rules on their entities, page access for their pages
+    and the roles those or the modules name."""
+    mods = []
+    for key in keys:
+        m = next((x for x in model.modules if x.key == key), None)
+        if m is None:
+            raise RegistryError(f"the model has no module '{key}'", "unknown_module")
+        mods.append(m)
+    rules = [r for r in model.security.access if r.entity.split(".")[0] in keys]
+    page_keys = {p.key for m in mods for p in m.pages}
     pages = {k: v for k, v in model.security.pages.items() if k in page_keys}
-    body = {"module": mod.model_dump(mode="json", exclude_none=True), "rules": [r.model_dump(mode="json", exclude_none=True) for r in rules], "pages": pages}
+    body = {"modules": [m.model_dump(mode="json", exclude_none=True) for m in mods], "rules": [r.model_dump(mode="json", exclude_none=True) for r in rules], "pages": pages}
     named = _strings(body)
-    roles = [r for r in model.security.roles if r in named]
-    sliced = AppModel(
+    return AppModel(
         application=ApplicationInfo(key=name, name=name),
-        modules=[mod.model_copy(deep=True)],
-        security=SecurityModel(roles=roles, access=[r.model_copy(deep=True) for r in rules], pages={k: list(v) for k, v in pages.items()}),
+        modules=[m.model_copy(deep=True) for m in mods],
+        security=SecurityModel(roles=[r for r in model.security.roles if r in named], access=[r.model_copy(deep=True) for r in rules],
+                               pages={k: list(v) for k, v in pages.items()}),
     )
-    errors = [i.as_dict() for i in validate_model(sliced) if i.severity == "error"]
+
+
+def slice_module(model: AppModel, module_key: str, *, name: str, depends_on: list[str] | None = None) -> AppModel:
+    """A package model with only ``module_key`` and the security slice it needs. It must validate on its own, **together with** the modules
+    named in ``depends_on`` (the modules of the packages it requires, which are not part of this package). Raises ``RegistryError`` with the
+    validation issues if the module uses anything else (another module's entities or flows)."""
+    deps = [k for k in (depends_on or []) if k != module_key]
+    full = _cut(model, [module_key, *deps], name)
+    errors = [i.as_dict() for i in validate_model(full) if i.severity == "error"]
     if errors:
-        raise RegistryError("the module is not self-contained: it needs things that are not part of it", "not_self_contained", errors[:30])
-    return sliced
+        raise RegistryError("the module is not self-contained: it needs things that are not part of it or of its declared dependencies",
+                            "not_self_contained", errors[:30])
+    return full if not deps else _cut(model, [module_key], name)
 
 
 # --- building and verifying packages ----------------------------------------------------------------------------------
@@ -122,7 +133,7 @@ def contents_of(model: AppModel, kind: str) -> dict[str, Any]:
 
 
 def build_package(model: AppModel, *, name: str, version: str, kind: str, description: str, license: str, runtime_version: str,
-                  signing_seed: str) -> RegistryPackage:
+                  signing_seed: str, requires: list[dict[str, str]] | None = None) -> RegistryPackage:
     if not NAME.match(name):
         raise RegistryError("names are lower-case letters, digits and -, 2-63 characters, starting with a letter", "invalid_name")
     try:
@@ -136,7 +147,7 @@ def build_package(model: AppModel, *, name: str, version: str, kind: str, descri
     manifest = {
         "format": FORMAT, "name": name, "version": version, "kind": kind, "description": description[:500], "license": license[:100],
         "schema_version": model.schema_version, "min_runtime_version": runtime_version, "model_hash": model_hash(model),
-        "contents": contents_of(model, kind), "key_id": key_id(pub),
+        "contents": contents_of(model, kind), "requires": sorted(requires or [], key=lambda r: r["package"]), "key_id": key_id(pub),
         "files": {n: hashlib.sha256(b).hexdigest() for n, b in sorted(parts.items())},
     }
     manifest_bytes = _json(manifest)
@@ -267,6 +278,55 @@ def merge_module(target: AppModel, package: AppModel, *, replace: bool) -> AppMo
     return new
 
 
+_KEY = re.compile(r"^[a-z][a-z0-9_]{0,62}$")
+
+
+def rename_module(package: AppModel, new_key: str) -> AppModel:
+    """The package's module under another key. Every *qualified* reference to its own elements (``old.Entity``, ``ref:old.Entity``, access rules,
+    qualified flow calls, expressions) is rewritten; the match needs a real element name after the dot, so unrelated text is left alone. The
+    caller validates the merged model, which is what proves the result consistent. Page keys and routes are not changed: they must be unique
+    across the application, so a copy next to the original needs different ones."""
+    mod = package.modules[0]
+    if not _KEY.match(new_key):
+        raise RegistryError("a module key is lower-case letters, digits and _, starting with a letter", "invalid_module_key")
+    old = mod.key
+    if new_key == old:
+        return package
+    names = {e.name for e in mod.entities} | {e.name for e in mod.enumerations} | {f.key for f in mod.flows} | {p.key for p in mod.pages} \
+        | {p.key for p in (mod.processes or [])} | {i.key for i in (mod.integrations or [])}
+    pattern = re.compile(r"(?<![A-Za-z0-9_.$])" + re.escape(old) + r"\.(?=(?:" + "|".join(re.escape(n) for n in sorted(names, key=len, reverse=True)) + r")(?![A-Za-z0-9_]))") if names else None
+
+    def walk(o: Any) -> Any:
+        if isinstance(o, str):
+            return pattern.sub(new_key + ".", o) if pattern else o
+        if isinstance(o, dict):
+            return {k: walk(v) for k, v in o.items()}
+        if isinstance(o, list):
+            return [walk(v) for v in o]
+        return o
+
+    data = walk(package.model_dump(mode="json", exclude_none=True))
+    data["modules"][0]["key"] = new_key
+    try:
+        return AppModel.model_validate(data)
+    except ValueError as e:
+        raise RegistryError(f"the module cannot be renamed: {e}", "rename_failed") from e
+
+
+def remove_module(target: AppModel, module_key: str) -> AppModel:
+    """``target`` without the module, its access rules and the page access of its pages. Roles are kept (people may hold them); whether anything
+    else still refers to the module is for the validator to say when the result becomes a proposal."""
+    mod = next((m for m in target.modules if m.key == module_key), None)
+    if mod is None:
+        raise RegistryError(f"the application has no module '{module_key}'", "unknown_module")
+    new = target.model_copy(deep=True)
+    pages = {p.key for p in mod.pages}
+    new.modules = [m for m in new.modules if m.key != module_key]
+    new.security.access = [r for r in new.security.access if r.entity.split(".")[0] != module_key]
+    new.security.pages = {k: v for k, v in new.security.pages.items() if k not in pages}
+    return new
+
+
 def template_model(package: AppModel, *, key: str, name: str) -> AppModel:
     out = package.model_copy(deep=True)
     out.application = ApplicationInfo(key=key, name=name, version=package.application.version, default_locale=package.application.default_locale,
@@ -275,4 +335,4 @@ def template_model(package: AppModel, *, key: str, name: str) -> AppModel:
 
 
 __all__ = ["FORMAT", "NAME", "AccessRule", "RegistryError", "RegistryPackage", "Version", "VersionError", "VerifiedRegistryPackage", "build_package",
-           "contents_of", "merge_module", "module_hash", "resolve", "satisfies", "slice_module", "template_model", "verify_package"]
+           "contents_of", "merge_module", "module_hash", "remove_module", "rename_module", "resolve", "satisfies", "slice_module", "template_model", "verify_package"]

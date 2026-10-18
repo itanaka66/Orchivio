@@ -57,18 +57,59 @@ open) and whether a newer version exists.
 `POST /projects/{id}/registry/instantiate` `{package, version, key, name}` (needs `application.create` and `model.apply`) creates an application whose first
 revision is the template, under the new key and name, through the same checks (including policy packs) as creating one from a model.
 
-## 5. Moving packages between registries
+## 5. Dependencies
 
-Download a package from one server and `POST /organizations/{id}/registry/import` it (raw `application/zip`) into another. It is accepted only if it is signed
-by a key that server trusts, so two instances exchange packages by trusting each other's public keys; imported packages are marked `imported`.
+A module may **require** other module packages: `requires: [{package, range}]` when publishing (`^1.0.0`, `~1.2.0`, `>=1.0.0`, an exact version or `latest`).
+Publishing checks them: each must exist and be readable, its module must be part of the revision, and the module must **validate together with its
+dependencies** (and what they themselves build on) even though their files are not copied into the package. The manifest records `requires` with the module key.
 
-## 6. Withdrawing
+Installing resolves the requirements into **one proposal**, dependencies first, one version per package (the highest that matches):
 
-`POST /registry/packages/{org}/{name}/{version}/yank` `{reason}` (admin) stops new installs of that version; applications that already installed it
-are unaffected, `unyank` reverses it. Versions are never deleted or replaced.
+* a requirement already met by an installed version is **kept** (nothing changes); an unmet one is **upgraded** (refused if that module was changed locally,
+  unless `overwrite_local_changes`);
+* a module key that already exists but did not come from the required package is a `dependency_conflict`, as is a second request that the chosen version does not
+  satisfy; there is no backtracking, so the message names the package and who wanted what. Cycles are refused (`dependency_cycle`);
+* the response lists the `steps` (install / upgrade / kept, which are dependencies, renames).
 
-## 7. Not built
+## 6. Installing under another module key
 
-Removing an installed module (uninstall), dependencies between packages and automatic upgrade, renaming a module on install, a hosted public catalogue or
-a federation protocol (exchange is by file), download counts and ratings, publishing from the Studio UI, and package-level licence checks (the licence
-is a label).
+`as_module` on the first install gives the module another key. Every **qualified** reference to its own elements is rewritten (`old.Entity`, `ref:old.Entity`, access
+rules, qualified flow calls, expressions); a match needs a real element name after the dot, so free text that merely contains the old key stays as it is. The
+result is validated as part of the proposal. Page keys and routes are **not** changed and must be unique in the application, so a renamed copy next to the
+original is refused by validation; the rename exists for a module whose key is taken by something else. Later upgrades keep the installed key
+(`module_renamed` if you ask for another); a test runs the generated test suite for the original and the renamed module and requires identical outcomes.
+
+## 7. Uninstalling
+
+`POST /applications/{id}/registry/uninstall {module, overwrite_local_changes}` proposes removing a module that came from the registry, together with its access
+rules and the page access of its pages. Roles stay (people may hold them). It is refused when another installed module requires it (`required_by`), when the module
+was changed after installing (unless told otherwise), or when something else in the application still uses it (the validator says what). A revision does not drop
+data tables of a deployed environment; only the model changes.
+
+## 8. Other servers' registries
+
+Packages move between servers as signed files over HTTPS; there is no federation protocol and no trust in a remote's word. Per organization an admin registers a
+**remote**: `PUT /organizations/{id}/registry/remotes/{name}` `{base_url, token_ref, remote_organization_id}` (the server's address without `/api/v1`; a bearer
+token for it as an `env:` / `file:` reference; where pushes go). Then:
+
+* `GET .../remotes/{name}/packages?q=` searches what that server shows to the token;
+* `POST .../remotes/{name}/pull {package, version}` downloads a package and stores it as an **imported** package of this organization, **only if it is signed with a
+  key in `ORCHIVIO_PACKAGE_TRUSTED_PUBLIC_KEYS`** (same verification as an import);
+* `POST .../remotes/{name}/push {package, version}` sends one of your own packages to the remote's import endpoint, which applies the same check with its keys.
+
+Addresses go through the SSRF-pinned transport and the same destination policy as webhooks (https, public addresses, optional allow-list); the remote's error text is never
+passed on (only fixed messages: unreachable, refused our credentials, not found, rejected it, it already has it). Trusting another server therefore means adding its public
+key, nothing more.
+
+## 9. Studio
+
+*Module registry* in the administration workspace (editors can browse and install; admins publish and manage remotes): installed modules with state (installed,
+changed after install, proposal not applied, removal proposed), requirements, updates and one-click upgrade/removal proposals; search with versions and withdrawn
+versions; installation with a version range and optional module key showing the resolved steps; templates; publishing with requirements; withdrawing and restoring a
+version; remote registries (browse, pull, push).
+
+## 10. Not built
+
+Automatic updates, dependency ranges with alternatives (`||`) or backtracking resolution, a rename that also changes page keys and routes, optional/peer dependencies,
+mirroring or federation between registries, download counts and ratings, signature key rotation tooling (add the new key to the trusted list), and licence checks
+(the licence is a label).
