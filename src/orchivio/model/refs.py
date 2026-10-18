@@ -75,6 +75,10 @@ def build_refs(model: AppModel) -> list[Ref]:
     flow_id = {f"{m.key}.{f.key}": f.element_id for m in model.modules for f in m.flows}
     integration_id = {f"{m.key}.{i.key}": i.element_id for m in model.modules for i in m.integrations or []}
     for mod in model.modules:
+        for pr in mod.processes or []:  # a system task depends on the flow it runs
+            for st in pr.steps:
+                if st.type == "system_task" and isinstance(st.config.get("flow"), str):
+                    add(pr.element_id, flow_id.get(qualify(mod.key, st.config["flow"])), "process-flow")
         for ig in mod.integrations or []:  # an operation depends on the entities that type its body and response
             for op in ig.operations:
                 for name in (op.body, op.response):

@@ -96,6 +96,12 @@ All settings are environment variables with the `ORCHIVIO_` prefix (see `.env.ex
 
 Run migrations explicitly (`alembic upgrade head`); the API does not migrate on start.
 
+## 5a. Processes
+
+Timers and task escalation are driven by the worker (`orchivio worker`, or the in-process worker): each tick fires due
+timers and escalates overdue tasks. Without a running worker a timer never fires and nothing escalates; tasks and
+completions still work. See docs/PROCESS-SPEC.md.
+
 ## 6. Known gaps
 
 No retention jobs for sessions, audit events or conversations; no automatic scheduling of backups (use cron

@@ -209,7 +209,16 @@ fields, `into` exactly when there is a response). Flow tests give canned answers
 {"<integration>.<operation>": {status, json}}`; a call without a mock fails the test. Adding an integration, or a flow
 step that calls an operation the flow did not call before, is classified A3 (`external-integration`, `external-call`).
 
-## 14. Planned
+## 14. Processes
+
+`modules[].processes[]` (omitted when empty) define long-running business processes with user tasks, system tasks,
+decisions, parallel paths and timers; see docs/PROCESS-SPEC.md. Rules: `duplicate-process`, `process-start`,
+`process-end`, `duplicate-step`, `duplicate-edge`, `edge-unknown-step`, `process-edges`, `process-join`,
+`process-config`, `process-assignee`, `process-escalation`, `process-variable`, `process-run-as`,
+`process-sync-cycle`, `process-dead-end`, `unreachable-step`, plus `unknown-role` and `expression`. Widening
+`start_roles` or changing `run_as_role` is classified A3.
+
+## 15. Planned
 
 Flows, processes, scheduled jobs, integrations, AI steps, themes, translations, field-level
 security, per-element canonical YAML files (DESIGN.md §8.9).

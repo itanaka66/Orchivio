@@ -749,3 +749,82 @@ class McpServer(Base):
     discovered_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_by: Mapped[uuid.UUID | None] = mapped_column(Uuid)
     created_at: Mapped[datetime] = _created()
+
+
+PROCESS_STATUS = ("running", "completed", "failed", "cancelled")
+TASK_STATUS = ("open", "completed", "cancelled")
+
+
+class ProcessInstance(Base):
+    """A running (or finished) process. ``state`` is the engine's JSON state; ``version`` makes updates compare-and-set.
+    The instance is pinned to the revision whose process definition it started with."""
+
+    __tablename__ = "process_instances"
+    __table_args__ = (_in("status", PROCESS_STATUS, "status"), Index("ix_process_instances_wake", "next_wake_at"))
+
+    id: Mapped[uuid.UUID] = _id()
+    application_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("applications.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    revision_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("app_revisions.id"), nullable=False)
+    process: Mapped[str] = mapped_column(String(130), nullable=False)  # module.Key
+    status: Mapped[str] = mapped_column(String(10), nullable=False, default="running")
+    state: Mapped[dict[str, Any]] = mapped_column(PortableJSON, nullable=False)
+    version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    next_wake_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    initiator: Mapped[str] = mapped_column(String(64), nullable=False)  # app user id, or studio:<user id>
+    error: Mapped[str | None] = mapped_column(Text)
+    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class UserTask(Base):
+    """A task in the inbox (FR-111): offered to a role (anyone holding it may claim) or assigned to one user."""
+
+    __tablename__ = "user_tasks"
+    __table_args__ = (
+        _in("status", TASK_STATUS, "status"),
+        Index("ix_user_tasks_role", "application_id", "status", "assignee_role"),
+        Index("ix_user_tasks_user", "application_id", "status", "assignee_user"),
+        Index("ix_user_tasks_escalation", "status", "escalate_at"),
+    )
+
+    id: Mapped[uuid.UUID] = _id()
+    instance_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("process_instances.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    application_id: Mapped[uuid.UUID] = mapped_column(Uuid, nullable=False)
+    step_id: Mapped[str] = mapped_column(String(40), nullable=False)
+    token_id: Mapped[int] = mapped_column(Integer, nullable=False)
+    title: Mapped[str] = mapped_column(String(200), nullable=False)
+    assignee_role: Mapped[str | None] = mapped_column(String(64))
+    assignee_user: Mapped[str | None] = mapped_column(String(64))
+    delegated_by: Mapped[str | None] = mapped_column(String(64))
+    status: Mapped[str] = mapped_column(String(10), nullable=False, default="open")
+    outcomes: Mapped[list[Any]] = mapped_column(PortableJSON, nullable=False)
+    form: Mapped[list[Any]] = mapped_column(PortableJSON, nullable=False)
+    due_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    escalate_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    escalate_to_role: Mapped[str | None] = mapped_column(String(64))
+    escalated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    completed_by: Mapped[str | None] = mapped_column(String(64))
+    outcome: Mapped[str | None] = mapped_column(String(31))
+    result: Mapped[dict[str, Any] | None] = mapped_column(PortableJSON)
+
+
+class ProcessEvent(Base):
+    """What happened to an instance, in order: the monitoring and audit trail of the process (FR-113, basic)."""
+
+    __tablename__ = "process_events"
+
+    id: Mapped[int] = mapped_column(BigInteger().with_variant(Integer, "sqlite"), primary_key=True, autoincrement=True)
+    instance_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("process_instances.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    type: Mapped[str] = mapped_column(String(40), nullable=False)
+    step_id: Mapped[str | None] = mapped_column(String(40))
+    actor: Mapped[str | None] = mapped_column(String(64))
+    data: Mapped[dict[str, Any]] = mapped_column(PortableJSON, nullable=False, default=dict)

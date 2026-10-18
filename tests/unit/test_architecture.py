@@ -12,6 +12,7 @@ ALLOWED: dict[str, set[str]] = {
     "ai": {"llm", "model"},
     "auth": set(),
     "ops": {"db", "ports"},
+    "process": {"db", "expr", "logic", "model", "ports", "runtime"},
     "integrations": {"db", "model", "ports", "runtime"},
     "delivery": {"model"},
     "jobs": {"db", "logic", "model", "ports", "runtime"},
@@ -26,7 +27,7 @@ ALLOWED: dict[str, set[str]] = {
     "model": {"expr", "policy"},
     "security": {"expr", "model", "policy"},
     "db": {"model", "policy"},
-    "api": {"integrations", "delivery", "jobs", "ai", "auth", "codegen", "logic", "runtime", "testgen", "expr", "model", "security", "policy", "db", "llm", "ports"},
+    "api": {"process", "integrations", "delivery", "jobs", "ai", "auth", "codegen", "logic", "runtime", "testgen", "expr", "model", "security", "policy", "db", "llm", "ports"},
 }
 
 

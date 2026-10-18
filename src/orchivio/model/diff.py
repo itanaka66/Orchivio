@@ -15,7 +15,7 @@ from .schema import AppModel
 
 ChangeKind = Literal["added", "removed", "modified"]
 _CHILD_KEYS = {
-    "module": {"enumerations", "entities", "pages", "flows", "integrations"},
+    "module": {"enumerations", "entities", "pages", "flows", "integrations", "processes"},
     "entity": {"fields"},
 }
 
@@ -73,7 +73,7 @@ def _flatten(model: AppModel) -> dict[str, tuple[str, str, dict[str, Any]]]:
         etype = key[0]
         skip = _CHILD_KEYS.get(etype, set()) | {"element_id"}
         props = el.model_dump(mode="json", exclude=skip)
-        if etype == "flow":  # node positions are layout, not behaviour
+        if etype in ("flow", "process"):  # node positions are layout, not behaviour
             for step in props.get("steps", []):
                 step.pop("position", None)
         name = ".".join(key[1:])
@@ -109,6 +109,10 @@ def _risks(etype: str, old: dict[str, Any], new: dict[str, Any]) -> list[str]:
     elif etype == "access":
         if _widened(old, new):
             risks.append("permission-expansion")
+    elif etype == "process":
+        before, after = set(old.get("start_roles", [])), set(new.get("start_roles", []))
+        if after - before or (old.get("run_as_role") != new.get("run_as_role") and new.get("run_as_role")):
+            risks.append("permission-expansion")  # who may start it, or what its system tasks may do, grew
     elif etype == "integration":
         risks.append("external-integration")  # what may leave the platform, and where, changed
     elif etype == "flow":

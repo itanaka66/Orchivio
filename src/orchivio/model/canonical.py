@@ -10,6 +10,7 @@ element is a change to one file and Git diffs and pull requests stay readable:
     modules/<module>/pages/<key>.yaml
     modules/<module>/flows/<Key>.yaml      (steps, edges and tests are inside)
     modules/<module>/integrations/<key>.yaml (only when the module consumes external APIs)
+    modules/<module>/processes/<Key>.yaml    (only when the module defines processes)
     security/security.yaml                 roles, page access, anonymous flag, rule order
     security/access/<entity>__<role>.yaml  one file per access rule
 
@@ -43,7 +44,7 @@ MAX_TOTAL_BYTES = 20_000_000
 MAX_RATIO = 200  # uncompressed/compressed, a zip-bomb guard
 
 _SAFE_PATH = re.compile(r"^(application\.yaml|security/security\.yaml|security/access/[A-Za-z0-9_.\-]+\.yaml|"
-                        r"modules/[a-z][a-z0-9_]*/(module\.yaml|(enumerations|entities|pages|flows|integrations)/[A-Za-z0-9_\-]+\.yaml))$")
+                        r"modules/[a-z][a-z0-9_]*/(module\.yaml|(enumerations|entities|pages|flows|integrations|processes)/[A-Za-z0-9_\-]+\.yaml))$")
 
 
 class CanonicalError(ValueError):
@@ -117,6 +118,7 @@ def to_files(model: AppModel) -> dict[str, str]:
             "pages": [p.key for p in mod.pages],
             "flows": [f.key for f in mod.flows],
             **({"integrations": [i.key for i in mod.integrations]} if mod.integrations else {}),
+            **({"processes": [p.key for p in mod.processes]} if mod.processes else {}),
         })
         for e in mod.enumerations:
             put(f"{base}/enumerations/{e.name}.yaml", _plain(e))
@@ -128,6 +130,8 @@ def to_files(model: AppModel) -> dict[str, str]:
             put(f"{base}/flows/{fl.key}.yaml", _plain(fl))
         for ig in mod.integrations or []:
             put(f"{base}/integrations/{ig.key}.yaml", _plain(ig))
+        for pr in mod.processes or []:
+            put(f"{base}/processes/{pr.key}.yaml", _plain(pr))
     sec = model.security
     put("security/security.yaml", {"roles": list(sec.roles), "anonymous": sec.anonymous, "pages": dict(sec.pages),
                                    "access": [_rule_file(r).removeprefix("security/access/") for r in sec.access]})
@@ -192,6 +196,8 @@ def from_files(files: Mapping[str, str]) -> AppModel:
                 "flows": [_expect(take(f"{base}/flows/{n}.yaml"), f"{base}/flows/{n}.yaml") for n in _names(m, "flows", mp)],
                 **({"integrations": [_expect(take(f"{base}/integrations/{n}.yaml"), f"{base}/integrations/{n}.yaml")
                                      for n in _names(m, "integrations", mp)]} if m.get("integrations") else {}),
+                **({"processes": [_expect(take(f"{base}/processes/{n}.yaml"), f"{base}/processes/{n}.yaml")
+                                  for n in _names(m, "processes", mp)]} if m.get("processes") else {}),
             })
         sec = _expect(take("security/security.yaml"), "security/security.yaml")
         access = [_expect(take(f"security/access/{n}"), f"security/access/{n}")

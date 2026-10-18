@@ -28,6 +28,7 @@ from .observability import configure_logging, logger, new_request_id, request_id
 from orchivio.integrations import PinnedTransport, destination_policy, dispatcher_from_settings, integration_client_factory
 from orchivio.integrations.mcp_client import ToolBroker
 from orchivio.jobs import Worker
+from orchivio.process import ticker
 
 from .routes import ALL
 from .routes.mcp import RateLimiter
@@ -84,7 +85,9 @@ def create_app(
             dispatcher = dispatcher_from_settings(settings, session_factory, app.state.preview_store.engine)
             worker = Worker(session_factory, app.state.preview_store, audit=app.state.audit_sink,
                             lease_seconds=settings.worker_lease_seconds, per_app_limit=settings.worker_per_app_limit,
-                            extra_steps=(dispatcher.tick,), integrations=app.state.integration_clients)
+                            extra_steps=(dispatcher.tick, ticker(session_factory, app.state.preview_store, audit=app.state.audit_sink,
+                                                                 integrations=app.state.integration_clients)),
+                            integrations=app.state.integration_clients)
             thread = threading.Thread(target=worker.run_forever, args=(settings.worker_interval_seconds, stop),
                                       name="orchivio-jobs", daemon=True)
             thread.start()

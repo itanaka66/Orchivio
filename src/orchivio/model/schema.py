@@ -204,6 +204,47 @@ class FlowDef(Element):
     schedule: ScheduleDef | None = None
 
 
+PROCESS_STEP_TYPES = ("start", "user_task", "system_task", "decision", "parallel_split", "parallel_join", "timer", "end")
+ProcessStepType = Literal["start", "user_task", "system_task", "decision", "parallel_split", "parallel_join", "timer", "end"]
+OutcomeName = Annotated[str, StringConstraints(pattern=r"^[a-z][a-z0-9_]{0,30}$")]
+
+
+class ProcessFormField(_Strict):
+    """A value the person completing a user task supplies; it becomes a process variable of the same name."""
+
+    name: VarName
+    type: Literal["string", "integer", "decimal", "boolean"] = "string"
+    required: bool = True
+
+
+class ProcessStep(_Strict):
+    id: StepId
+    type: ProcessStepType
+    label: str | None = Field(default=None, max_length=100)
+    config: dict[str, Any] = Field(default_factory=dict)
+    position: Position | None = None
+
+
+class ProcessEdge(_Strict):
+    id: StepId
+    source: StepId
+    target: StepId
+    outcome: OutcomeName | None = None  # the user-task outcome, or true/false after a decision
+
+
+class ProcessDef(Element):
+    """A long-running business process: tasks for people, flows run by the system, decisions, parallel paths and timers
+    (FR-110). Instances are persisted and survive restarts; people see their tasks in the task inbox (FR-111)."""
+
+    key: FlowKey
+    description: str | None = Field(default=None, max_length=500)
+    params: list[FlowParam] = Field(default_factory=list, max_length=30)
+    start_roles: list[KeyName] = Field(default_factory=list, max_length=20)  # application roles that may start an instance
+    run_as_role: KeyName | None = None  # role under which system tasks run their flows
+    steps: list[ProcessStep] = Field(default_factory=list, max_length=100)
+    edges: list[ProcessEdge] = Field(default_factory=list, max_length=300)
+
+
 HTTP_METHODS = ("GET", "POST", "PUT", "PATCH", "DELETE")
 INTEGRATION_PARAM_TYPES = ("string", "integer", "decimal", "boolean")
 IntegrationKey = Annotated[str, StringConstraints(pattern=r"^[a-z][a-z0-9_]{0,62}$")]
@@ -253,6 +294,7 @@ class ModuleDef(Element):
     pages: list[PageDef] = Field(default_factory=list)
     flows: list[FlowDef] = Field(default_factory=list)
     integrations: list[IntegrationDef] | None = None  # None (not []) keeps the hash of models without any
+    processes: list[ProcessDef] | None = None
 
 
 class FieldAccess(_Strict):
