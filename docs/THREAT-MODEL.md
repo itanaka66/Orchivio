@@ -101,6 +101,11 @@ Status: ✅ implemented and tested · 🟡 partly / not verified end-to-end · �
 | A35 | Trace context lets a caller force sampling, or tells a third party about us | Incoming context ignored by default; outbound `traceparent` opt-in and only for webhooks and consumed APIs | ✅ tested |
 | A36 | The AI invents evidence in a log analysis | Findings must cite line ids that were sent; others are dropped and counted | ✅ tested |
 
+| A37 | Feedback text steers the AI (prompt injection) or floods the board | Feedback is wrapped as untrusted data; AI output only creates `proposed` stories and cites validated ids; per-user rate limit | ✅ tested |
+| A38 | A screenshot upload carries active content | Only PNG/JPEG by magic bytes, 512 KiB, served with the stored type, `nosniff`, CSP `default-src 'none'; sandbox`, editors only | ✅ tested |
+| A39 | Trace links point at another project's data | Every link target is resolved inside the same project (stories, revisions, elements of its applications) | ✅ tested |
+| A40 | Requirement text executes in a spreadsheet | Cells starting with `= + - @` are prefixed in CSV export | ✅ tested |
+
 ## 4. Assumptions
 
 - PostgreSQL, the host OS and the TLS terminator are operated securely.

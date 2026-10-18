@@ -145,6 +145,13 @@ one owner (`409 last_owner`). Any member may leave an organization.
 | GET | `/organizations/{id}/governance/audit-export` | audit events as JSON lines or CSV, paged, hashed, itself audited |
 | GET | `/applications/{id}/logs` | application log lines (editor+): filters, newest first, `before_id` paging |
 | POST | `/applications/{id}/logs/analyze` | AI analysis of a recent window of log lines; findings cite line ids |
+| GET/POST | `/projects/{id}/requirements`, `/stories` | requirements and stories (docs/AGILE.md) |
+| GET/PATCH/DELETE | `/projects/{id}/requirements/{rid}`, `/stories/{sid}` | read / change / delete |
+| GET/POST | `/projects/{id}/trace-links` | trace links; `DELETE .../{link}` |
+| GET | `/projects/{id}/traceability?format=json\|csv` | coverage and links report |
+| GET/POST | `/applications/{id}/feedback` | preview feedback: list (editor) / submit (member) |
+| GET/PATCH | `/applications/{id}/feedback/{fid}[/screenshot]` | screenshot / dismiss |
+| POST | `/applications/{id}/feedback/cluster` | AI groups new feedback into proposed stories |
 | GET | `/healthz`, `/readyz` | liveness / readiness (unauthenticated; docs/OPERATIONS.md) |
 | GET | `/metrics` | Prometheus text; bearer `ORCHIVIO_METRICS_TOKEN`, disabled when unset |
 

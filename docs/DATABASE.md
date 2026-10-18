@@ -86,6 +86,8 @@ records which request started a run.
 
 `policy_packs` (per organization: name, rules as validated JSON, status).
 
+`requirements`, `stories`, `trace_links` (from requirement/story to story/element/revision/test, unique edge), `feedback_items` (page, element, text, optional screenshot bytes, status, story).
+
 `app_logs` (per application: level, source, short message, request/trace ids, allow-listed scalar fields; pruned by age).
 
 ### Audit
