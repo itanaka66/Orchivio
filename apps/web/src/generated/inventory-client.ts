@@ -62,6 +62,20 @@ export interface ProductUpdate {
   owner?: string
 }
 
+export interface FlowRunResult {
+  flow: string
+  status: 'succeeded' | 'failed'
+  error?: string | null
+  error_step?: string | null
+  /** min 0 */
+  steps_executed: number
+  trace: { step: string; status: string }[]
+}
+
+export interface ReorderLowStockArgs {
+  min_gap: number
+}
+
 export interface ProductListParams {
   limit?: number
   offset?: number
@@ -116,5 +130,11 @@ export class OrchivioDataClient {
     get: (id: string) => this.request<Product>('GET', '/data/core.Product/{id}'.replace('{id}', encodeURIComponent(id))),
     update: (id: string, patch: ProductUpdate) => this.request<Product>('PATCH', '/data/core.Product/{id}'.replace('{id}', encodeURIComponent(id)), { body: patch }),
     delete: (id: string) => this.request<void>('DELETE', '/data/core.Product/{id}'.replace('{id}', encodeURIComponent(id))),
+  }
+
+  /** Server flows the caller's roles may run directly. */
+  readonly flows = {
+    /** Run the flow ReorderLowStock: Mark products that fell below their reorder level and raise an error if none exist. (roles: viewer, editor, admin) */
+    reorderLowStock: (args: ReorderLowStockArgs) => this.request<FlowRunResult>('POST', '/flows/core.ReorderLowStock/run', { body: { args } }),
   }
 }

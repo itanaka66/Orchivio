@@ -158,7 +158,7 @@ one owner (`409 last_owner`). Any member may leave an organization.
 | GET/PUT/DELETE | `/applications/{id}/git-sync` | Git repository settings (admin; docs/GIT-SYNC.md) |
 | POST | `/applications/{id}/git-sync/push` | commit a revision to the push branch, optionally open a pull request |
 | POST | `/applications/{id}/git-sync/pull` | read the base branch and create a proposal |
-| GET | `/revisions/{id}/client.ts` | typed TypeScript client for the revision's data API (docs/CLIENTS.md) |
+| GET | `/revisions/{id}/client.ts`, `.py`, `.cs` | typed client (TypeScript, Python, C#) for the revision's data API (docs/CLIENTS.md) |
 | POST | `/applications/{id}/registry/publish` | publish a module or template version (admin; docs/REGISTRY.md) |
 | GET | `/registry/packages`, `/registry/packages/{org}/{name}` | search / versions |
 | GET | `/registry/packages/{org}/{name}/{version}/download` | the signed package |

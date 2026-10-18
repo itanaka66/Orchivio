@@ -135,6 +135,8 @@ def build_client(model: AppModel) -> str:
 
     entities: dict[str, dict[str, Any]] = {}
     for path, ops in doc["paths"].items():
+        if not path.startswith("/data/"):
+            continue
         entity = path.split("/")[2]
         for verb, op in ops.items():
             entities.setdefault(entity, {})[op["operationId"].split("_", 1)[0]] = (path, verb, op)
@@ -164,6 +166,23 @@ def build_client(model: AppModel) -> str:
             lines.append(f"    delete: (id: string) => this.request<void>('DELETE', '{ops['delete'][0]}'.replace('{{id}}', encodeURIComponent(id))),")
         member = schema_name[:1].lower() + schema_name[1:]
         groups.append(f"  /** {read_ref} */\n  readonly {member} = {{\n" + "\n".join(lines) + "\n  }\n")
+
+    flow_lines = []
+    flow_paths = {p: ops["post"] for p, ops in doc["paths"].items() if p.startswith("/flows/")}
+    keys = [p.split("/")[2].split(".", 1)[1] for p in flow_paths]
+    for path, op in flow_paths.items():
+        q = path.split("/")[2]
+        module, key = q.split(".", 1)
+        args = ts_type(op["requestBody"]["content"]["application/json"]["schema"]["properties"]["args"])
+        member = key[:1].lower() + key[1:] if keys.count(key) == 1 else f"{module}_{key}"
+        optional = "" if op["requestBody"].get("required") else " = {}"
+        flow_lines.append(f"    /** {op['summary'].replace('*/', '* /')} (roles: {', '.join(op['x-orchivio-roles'])}) */" + chr(10)
+                          + f"    {member}: (args: {args}{optional}) => this.request<FlowRunResult>('POST', '{path}', {{ body: {{ args }} }}),")
+    if flow_lines:
+        taken = {g.split("readonly ", 1)[1].split(" ", 1)[0] for g in groups}
+        group = "flows" if "flows" not in taken else "flowRuns"
+        nl = chr(10)
+        groups.append(f"  /** Server flows the caller's roles may run directly. */{nl}  readonly {group} = {{{nl}" + nl.join(flow_lines) + f"{nl}  }}{nl}")
 
     out.extend(list_types)
     out.append("function listQuery(p: { limit?: number; offset?: number; orderBy?: string; desc?: boolean; filter?: Record<string, unknown> }): Record<string, string> {\n"
