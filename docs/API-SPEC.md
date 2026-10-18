@@ -158,6 +158,14 @@ one owner (`409 last_owner`). Any member may leave an organization.
 | GET/PUT/DELETE | `/applications/{id}/git-sync` | Git repository settings (admin; docs/GIT-SYNC.md) |
 | POST | `/applications/{id}/git-sync/push` | commit a revision to the push branch, optionally open a pull request |
 | POST | `/applications/{id}/git-sync/pull` | read the base branch and create a proposal |
+| POST | `/applications/{id}/registry/publish` | publish a module or template version (admin; docs/REGISTRY.md) |
+| GET | `/registry/packages`, `/registry/packages/{org}/{name}` | search / versions |
+| GET | `/registry/packages/{org}/{name}/{version}/download` | the signed package |
+| POST | `/registry/packages/{org}/{name}/{version}/yank`, `/unyank` | withdraw / restore a version |
+| POST | `/organizations/{id}/registry/import` | add a package signed by a trusted key |
+| POST | `/applications/{id}/registry/install` | install or upgrade a module as a proposal |
+| GET | `/applications/{id}/registry/installs` | installed modules, state, updates |
+| POST | `/projects/{id}/registry/instantiate` | create an application from a template |
 | GET | `/healthz`, `/readyz` | liveness / readiness (unauthenticated; docs/OPERATIONS.md) |
 | GET | `/metrics` | Prometheus text; bearer `ORCHIVIO_METRICS_TOKEN`, disabled when unset |
 
