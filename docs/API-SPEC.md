@@ -138,6 +138,11 @@ one owner (`409 last_owner`). Any member may leave an organization.
 | GET | `/apps/{app_id}/pages/{key}/rows[/{id}]` | rows with only the page's columns and per-row `_actions` |
 | POST / PATCH | `/apps/{app_id}/pages/{key}/rows[/{id}]` | submit a create / edit form (declared columns only; `editable_expr` enforced) |
 | POST | `/apps/{app_id}/pages/{key}/actions/{action}` | invoke a page action (`{row_id}`); flow-bound actions run as the caller |
+| GET | `/governance/policy-rules` | the catalogue of policy rules |
+| GET/POST | `/organizations/{id}/policy-packs` | policy packs of the organization (admin): list / create |
+| GET/PATCH/DELETE | `/organizations/{id}/policy-packs/{pack}` | read / change rules and status / delete |
+| GET | `/organizations/{id}/governance/compliance`, `/inventory`, `/ai-usage` | governance reports (docs/GOVERNANCE.md) |
+| GET | `/organizations/{id}/governance/audit-export` | audit events as JSON lines or CSV, paged, hashed, itself audited |
 | GET | `/healthz`, `/readyz` | liveness / readiness (unauthenticated; docs/OPERATIONS.md) |
 | GET | `/metrics` | Prometheus text; bearer `ORCHIVIO_METRICS_TOKEN`, disabled when unset |
 

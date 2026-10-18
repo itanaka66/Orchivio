@@ -84,6 +84,8 @@ records which request started a run.
 `oidc_login_states` (single-use state, nonce, PKCE verifier; hashed state and browser binding), `app_user_identities`
 (unique per application, issuer and subject).
 
+`policy_packs` (per organization: name, rules as validated JSON, status).
+
 ### Audit
 `audit_events` — append-only. `plane` (platform/application) and `channel`
 (studio/api/mcp) separate streams. **No foreign keys on purpose:** audit history must outlive

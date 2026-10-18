@@ -38,6 +38,7 @@ _MIN_ROLE: dict[str, PlatformRole] = {
     "project.export": PlatformRole.ADMIN,
     "member.manage": PlatformRole.ADMIN,
     "token.manage": PlatformRole.ADMIN,
+    "governance.manage": PlatformRole.ADMIN,  # policy packs, compliance, inventory, AI usage, audit export
     "mcpserver.manage": PlatformRole.ADMIN,  # external MCP servers and their tools for the AI Builder
     "integration.manage": PlatformRole.ADMIN,  # webhooks and other outbound integrations
     "appuser.manage": PlatformRole.ADMIN,  # end users of generated applications
@@ -65,6 +66,7 @@ _ACTION_LEVEL: dict[str, ApprovalLevel] = {
     "model.rollback": ApprovalLevel.A2,
     "project.export": ApprovalLevel.A3,
     "project.delete": ApprovalLevel.A3,
+    "governance.manage": ApprovalLevel.A3,
     "mcpserver.manage": ApprovalLevel.A3,
     "package.build": ApprovalLevel.A2,
     "deployment.request": ApprovalLevel.A2,

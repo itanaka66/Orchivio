@@ -7,6 +7,7 @@ from . import (
     auth,
     csvdata,
     delivery,
+    governance,
     inbound,
     integrations,
     jobs,
@@ -26,5 +27,5 @@ from . import (
     webhooks,
 )
 
-ALL = (auth, orgs, projects, proposals, ai, preview, testruns, tokens, tools, mcp, jobs, delivery, appusers, appauth, webhooks, csvdata, inbound,
+ALL = (auth, orgs, projects, proposals, ai, preview, testruns, tokens, tools, mcp, jobs, delivery, governance, appusers, appauth, webhooks, csvdata, inbound,
        integrations, mcpservers, processes, tasks, pages, oidc)
