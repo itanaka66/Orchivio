@@ -51,6 +51,16 @@ describe('generated data client (inventory)', () => {
     expect(err).toMatchObject({ status: 422, code: 'validation_failed', message: 'sku is required', details: [{ field: 'sku' }] })
   })
 
+  it('runs a flow with typed arguments and returns the typed result', async () => {
+    const { client, calls } = clientWith(() => json(200, { flow: 'core.ReorderLowStock', status: 'succeeded', error: null, error_step: null, steps_executed: 3, trace: [{ step: 's1', status: 'ok' }] }))
+    const result = await client.flows.reorderLowStock({ min_gap: 2 })
+    expect(result.status).toBe('succeeded')
+    expect(result.trace[0]?.step).toBe('s1')
+    expect(calls[0]!.url).toBe('/api/v1/applications/a1/preview/flows/core.ReorderLowStock/run')
+    expect(calls[0]!.init.method).toBe('POST')
+    expect(JSON.parse(calls[0]!.init.body as string)).toEqual({ args: { min_gap: 2 } })
+  })
+
   it('copes with error pages that are not JSON', async () => {
     const { client } = clientWith(() => new Response('<html>bad gateway</html>', { status: 502 }))
     await expect(client.product.get('1')).rejects.toMatchObject({ status: 502, code: 'http_error', message: 'Request failed (502)' })

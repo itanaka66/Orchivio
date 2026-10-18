@@ -25,7 +25,7 @@ from typing import TextIO
 import yaml
 from pydantic import ValidationError
 
-from .codegen import build_client, build_openapi
+from .codegen import CLIENT_LANGUAGES, build_openapi
 from .model import (
     AppModel,
     CanonicalError,
@@ -161,7 +161,9 @@ def run(args: argparse.Namespace, out: TextIO) -> int:
             out.write(spec)
         return EXIT_OK
     if args.command == "client":
-        text = build_client(load(args.path))
+        _ext, generate, _media = CLIENT_LANGUAGES[args.lang]
+        model = load(args.path)
+        text = generate(model, namespace=args.namespace) if args.lang == "csharp" else generate(model)
         if args.out:
             Path(args.out).write_text(text, encoding="utf-8", newline="\n")
             print(f"wrote {args.out}", file=out)
@@ -259,8 +261,10 @@ def parser() -> argparse.ArgumentParser:
     o = sub.add_parser("openapi", help="OpenAPI 3.1 document of the application's data API")
     o.add_argument("path")
     o.add_argument("-o", "--out")
-    c = sub.add_parser("client", help="typed TypeScript client for the application's data API")
+    c = sub.add_parser("client", help="typed client for the application's data API (TypeScript, Python or C#)")
     c.add_argument("path")
+    c.add_argument("--lang", choices=sorted(CLIENT_LANGUAGES), default="typescript")
+    c.add_argument("--namespace", default="Orchivio.Client", help="C# namespace")
     c.add_argument("-o", "--out")
     b = sub.add_parser("backup", help="logical backup of the platform database and artifacts")
     b.add_argument("file")
