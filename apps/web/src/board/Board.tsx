@@ -1,8 +1,9 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   ApiError, type ApiClient, type FeedbackItem, type Requirement, type RequirementStatus, type Story, type StoryStatus,
   type TraceLink, type Traceability,
 } from '../api/client'
+import { useOffline } from '../offline/OfflineProvider'
 import type { ElementRef } from './elements'
 
 export const COLUMNS: { status: StoryStatus; title: string }[] = [
@@ -29,20 +30,49 @@ export function Board({ client, projectId, applicationId, elements, canEdit }: P
   const [requirements, setRequirements] = useState<Requirement[]>([])
   const [error, setError] = useState('')
   const [notice, setNotice] = useState('')
+  const off = useOffline()
+  const offRef = useRef(off)
+  offRef.current = off
+  const connected = off ? off.online : true
+  const editable = canEdit && connected // changing or deleting what exists needs the server; creating does not
+  const [savedAt, setSavedAt] = useState<string | null>(null)
 
   const reload = useCallback(async () => {
-    try {
+    const load = async () => {
       const [s, r] = await Promise.all([client.stories(projectId), client.requirements(projectId)])
-      setStories(s.items)
-      setRequirements(r.items)
+      return { stories: s.items, requirements: r.items }
+    }
+    try {
+      const o = offRef.current
+      const res = o ? await o.readThrough(`board:${projectId}`, load) : { data: await load(), stale: false as const, savedAt: undefined }
+      setStories(res.data.stories)
+      setRequirements(res.data.requirements)
+      setSavedAt(res.stale ? res.savedAt ?? '' : null)
       setError('')
     } catch (e) { setError(message(e)) }
   }, [client, projectId])
-  useEffect(() => { void reload() }, [reload])
+  // reload when the number of unsent changes goes down: they were sent, so the server's lists have changed
+  useEffect(() => { void reload() }, [reload, off?.pending, off?.unlocked, off?.online])
+
+  /** Create a story or requirement: sent now, or kept on this device until the server can be reached. */
+  const create = useCallback(async (kind: 'story' | 'requirement', title: string, body = '') => {
+    const o = offRef.current
+    const send = (): Promise<unknown> => (kind === 'story' ? client.createStory(projectId, title) : client.createRequirement(projectId, title, body))
+    if (!o) return guardRef.current(send)
+    try {
+      const r = await o.submit({ kind, path: `/projects/${projectId}/${kind === 'story' ? 'stories' : 'requirements'}`, body: kind === 'story' ? { title } : { title, body }, label: title, project: projectId }, send)
+      setError('')
+      setNotice(r.queued ? 'Saved on this device. It will be sent when you are online.' : '')
+      await reload()
+    } catch (e) { setError(message(e)) }
+  }, [client, projectId, reload])
 
   const guard = useCallback(async (work: () => Promise<unknown>, done?: string) => {
     try { await work(); setError(''); if (done !== undefined) setNotice(done); await reload() } catch (e) { setError(message(e)) }
   }, [reload])
+  const guardRef = useRef(guard)
+  guardRef.current = guard
+  const waiting = (off?.items ?? []).filter((i) => i.project === projectId && (i.kind === 'story' || i.kind === 'requirement'))
 
   return (
     <section className="board" aria-label="Story board">
@@ -55,40 +85,54 @@ export function Board({ client, projectId, applicationId, elements, canEdit }: P
       </div>
       {error && <p role="alert" className="sev-error">{error}</p>}
       {notice && <p role="status" className="hint">{notice}</p>}
-      {tab === 'board' && <Columns stories={stories} requirements={requirements} canEdit={canEdit}
-        onAdd={(title) => guard(() => client.createStory(projectId, title))}
+      {savedAt !== null && <p role="status" className="sev-warning">You are looking at the copy saved {savedAt ? new Date(savedAt).toLocaleString() : 'earlier'}: the server cannot be reached. You can add new items; changing or deleting existing ones needs a connection.</p>}
+      {off && !connected && <p className="hint">Offline: new requirements and stories wait on this device and are sent when you are back online.</p>}
+      {tab === 'board' && <Columns stories={stories} requirements={requirements} canEdit={editable} canCreate={canEdit} waiting={waiting.filter((w) => w.kind === 'story')}
+        onAdd={(title) => create('story', title)}
         onMove={(s, status) => guard(() => client.updateStory(projectId, s.id, { status, position: Math.max(0, ...stories.map((x) => x.position)) + 1 }))}
         onDelete={(s) => guard(() => client.deleteStory(projectId, s.id))} />}
-      {tab === 'requirements' && <Requirements requirements={requirements} canEdit={canEdit} canExtract={canEdit && !!applicationId}
-        onAdd={(title, body) => guard(() => client.createRequirement(projectId, title, body))}
+      {tab === 'requirements' && <Requirements requirements={requirements} canEdit={editable} canCreate={canEdit} waiting={waiting.filter((w) => w.kind === 'requirement')} canExtract={editable && !!applicationId}
+        onAdd={(title, body) => create('requirement', title, body)}
         onStatus={(r, status) => guard(() => client.updateRequirement(projectId, r.id, { status }))}
         onDelete={(r) => guard(() => client.deleteRequirement(projectId, r.id))}
         onExtract={(text) => guard(async () => {
           const r = await client.extractRequirements(applicationId!, text)
           setNotice(`${r.requirements.length} draft requirement${r.requirements.length === 1 ? '' : 's'} added${r.skipped_duplicates ? `, ${r.skipped_duplicates} duplicate${r.skipped_duplicates === 1 ? '' : 's'} skipped` : ''}.`)
         })} />}
-      {tab === 'feedback' && (applicationId
+      {tab === 'feedback' && (!connected ? <p className="hint">Reviewing feedback needs a connection.</p> : applicationId
         ? <Feedback client={client} applicationId={applicationId} canEdit={canEdit} onChanged={reload} setNotice={setNotice} setError={setError} />
         : <p className="hint">Choose an application to see its preview feedback.</p>)}
-      {tab === 'traceability' && <Trace client={client} projectId={projectId} stories={stories} requirements={requirements} elements={elements} canEdit={canEdit} />}
+      {tab === 'traceability' && (!connected ? <p className="hint">Traceability needs a connection.</p> : <Trace client={client} projectId={projectId} stories={stories} requirements={requirements} elements={elements} canEdit={canEdit} />)}
     </section>
   )
 }
 
-function Columns({ stories, requirements, canEdit, onAdd, onMove, onDelete }: {
-  stories: Story[]; requirements: Requirement[]; canEdit: boolean
+interface Waiting { id: number; label: string; status: string }
+
+function WaitingList({ items, what }: { items: Waiting[]; what: string }) {
+  if (items.length === 0) return null
+  return (
+    <ul className="list waiting" aria-label={`${what} waiting to be sent`}>
+      {items.map((w) => <li key={w.id} className="card slim"><strong>{w.label}</strong> <small className="hint">{w.status === 'rejected' ? 'refused by the server (see Offline work)' : 'waiting to be sent'}</small></li>)}
+    </ul>
+  )
+}
+
+function Columns({ stories, requirements, canEdit, canCreate, waiting, onAdd, onMove, onDelete }: {
+  stories: Story[]; requirements: Requirement[]; canEdit: boolean; canCreate: boolean; waiting: Waiting[]
   onAdd: (title: string) => void; onMove: (s: Story, status: StoryStatus) => void; onDelete: (s: Story) => void
 }) {
   const [title, setTitle] = useState('')
   const reqTitle = useMemo(() => new Map(requirements.map((r) => [r.id, r.title])), [requirements])
   return (
     <>
-      {canEdit && (
+      {canCreate && (
         <form className="inline" onSubmit={(e) => { e.preventDefault(); if (title.trim()) { onAdd(title.trim()); setTitle('') } }}>
           <label className="field"><span>New story</span><input value={title} maxLength={300} onChange={(e) => setTitle(e.target.value)} placeholder="As a clerk I want …" /></label>
           <button type="submit" disabled={!title.trim()}>Add story</button>
         </form>
       )}
+      <WaitingList items={waiting} what="Stories" />
       <div className="columns">
         {COLUMNS.map((col) => {
           const here = stories.filter((s) => s.status === col.status)
@@ -128,8 +172,8 @@ function Columns({ stories, requirements, canEdit, onAdd, onMove, onDelete }: {
   )
 }
 
-function Requirements({ requirements, canEdit, canExtract, onAdd, onStatus, onDelete, onExtract }: {
-  requirements: Requirement[]; canEdit: boolean; canExtract: boolean
+function Requirements({ requirements, canEdit, canCreate, waiting, canExtract, onAdd, onStatus, onDelete, onExtract }: {
+  requirements: Requirement[]; canEdit: boolean; canCreate: boolean; waiting: Waiting[]; canExtract: boolean
   onAdd: (title: string, body: string) => void; onStatus: (r: Requirement, s: RequirementStatus) => void
   onDelete: (r: Requirement) => void; onExtract: (text: string) => void
 }) {
@@ -157,7 +201,8 @@ function Requirements({ requirements, canEdit, canExtract, onAdd, onStatus, onDe
           </li>
         ))}
       </ul>
-      {canEdit && (
+      <WaitingList items={waiting} what="Requirements" />
+      {canCreate && (
         <form className="card" onSubmit={(e) => { e.preventDefault(); if (title.trim()) { onAdd(title.trim(), body); setTitle(''); setBody('') } }}>
           <h2>Add a requirement</h2>
           <label className="field"><span>Title</span><input value={title} maxLength={300} onChange={(e) => setTitle(e.target.value)} /></label>

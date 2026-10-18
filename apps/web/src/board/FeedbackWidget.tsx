@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { ApiError, type ApiClient } from '../api/client'
+import { useOffline } from '../offline/OfflineProvider'
 
 /** Largest screenshot the server accepts (docs/AGILE.md). */
 export const MAX_SCREENSHOT_BYTES = 512 * 1024
@@ -64,6 +65,8 @@ export function FeedbackWidget({ client, applicationId, page }: Props) {
   const [sent, setSent] = useState(false)
   const [busy, setBusy] = useState(false)
   const root = useRef<HTMLDivElement>(null)
+  const off = useOffline()
+  const [queued, setQueued] = useState(false)
 
   useEffect(() => { if (!element) setPageKey(page) }, [page, element])
 
@@ -101,7 +104,10 @@ export function FeedbackWidget({ client, applicationId, page }: Props) {
     setBusy(true)
     setError('')
     try {
-      await client.submitFeedback(applicationId, { page_key: pageKey, body: body.trim(), element_id: element, screenshot_base64: shot ? toBase64(shot) : null })
+      const input = { page_key: pageKey, body: body.trim(), element_id: element, screenshot_base64: shot ? toBase64(shot) : null }
+      const send = () => client.submitFeedback(applicationId, input)
+      const r = off ? await off.submit({ kind: 'feedback', path: `/applications/${applicationId}/feedback`, body: input, label: body.trim().slice(0, 60) }, send) : { queued: false as const, value: await send() }
+      setQueued(r.queued)
       setSent(true)
       reset()
       setOpen(false)
@@ -117,7 +123,7 @@ export function FeedbackWidget({ client, applicationId, page }: Props) {
       {!open && !picking && (
         <button type="button" className="primary" onClick={() => { setSent(false); setOpen(true) }}>Feedback</button>
       )}
-      {sent && !open && <p role="status" className="hint">Thanks, your feedback was sent.</p>}
+      {sent && !open && <p role="status" className="hint">{queued ? 'Saved on this device. It will be sent when you are online.' : 'Thanks, your feedback was sent.'}</p>}
       {picking && <p role="status" className="feedback-banner">Click the part of the page you mean, or press Escape.</p>}
       {open && (
         <form role="dialog" aria-label="Send feedback" className="card feedback-dialog" onSubmit={(e) => { e.preventDefault(); void submit() }}

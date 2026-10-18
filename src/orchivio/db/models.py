@@ -516,6 +516,23 @@ class GitSync(Base):
     created_at: Mapped[datetime] = _created()
 
 
+class IdempotencyKey(Base):
+    """A client-chosen key naming one request, so a retry after a lost answer does not do the work twice (docs/OFFLINE.md). Kept 24 hours."""
+
+    __tablename__ = "idempotency_keys"
+    __table_args__ = (UniqueConstraint("user_id", "key", name="uq_idempotency_keys_user_key"), Index("ix_idempotency_keys_created", "created_at"))
+
+    id: Mapped[uuid.UUID] = _id()
+    user_id: Mapped[uuid.UUID] = mapped_column(Uuid, nullable=False)
+    key: Mapped[str] = mapped_column(String(64), nullable=False)
+    request_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    state: Mapped[str] = mapped_column(String(12), nullable=False, default="running")
+    status_code: Mapped[int | None] = mapped_column(Integer)
+    response_body: Mapped[str | None] = mapped_column(Text)
+    content_type: Mapped[str | None] = mapped_column(String(100))
+    created_at: Mapped[datetime] = _created()
+
+
 REQUIREMENT_STATUS = ("draft", "accepted", "implemented", "rejected")
 STORY_STATUS = ("proposed", "backlog", "ready", "in_progress", "done", "rejected")
 ITEM_SOURCE = ("manual", "ai", "feedback")

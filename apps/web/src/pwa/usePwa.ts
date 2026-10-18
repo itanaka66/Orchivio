@@ -1,5 +1,8 @@
 import { useCallback, useEffect, useState } from 'react'
 import { applyUpdate, onPwaState } from './register'
+import { PROBE_MS, useOnline } from './useOnline'
+
+export { PROBE_MS }
 
 /** The browser's install prompt event, which TypeScript's DOM types do not include. */
 export interface BeforeInstallPromptEvent extends Event {

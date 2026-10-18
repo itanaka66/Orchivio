@@ -17,10 +17,11 @@ from orchivio.db.proposals import NoChanges, NotPending, Stale
 from orchivio.policy import ApprovalLevel, can_approve
 
 from ..deps import Principal, api_error, authorize, current_principal, get_db, load_application
+from ..idempotency import IdempotentRoute
 from ..modelio import load_model
 from ..schemas import Page
 
-router = APIRouter(tags=["proposals"])
+router = APIRouter(tags=["proposals"], route_class=IdempotentRoute)
 
 
 class ProposalIn(BaseModel):
