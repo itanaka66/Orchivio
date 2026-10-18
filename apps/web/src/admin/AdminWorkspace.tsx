@@ -11,6 +11,7 @@ import { Logs } from './Logs'
 import { McpServers } from './McpServers'
 import { Oidc } from './Oidc'
 import { Processes } from './Processes'
+import { Registry } from './Registry'
 import { Webhooks } from './Webhooks'
 
 type Json = Record<string, unknown>
@@ -28,6 +29,7 @@ export const SECTIONS: Section[] = [
   { key: 'oidc', label: 'Single sign-on (OIDC)', group: 'Application', min: 'admin', scope: 'app' },
   { key: 'webhooks', label: 'Webhooks', group: 'Integrations', min: 'admin', scope: 'app' },
   { key: 'integrations', label: 'Destinations & API import', group: 'Integrations', min: 'admin', scope: 'app' },
+  { key: 'registry', label: 'Module registry', group: 'Integrations', min: 'editor', scope: 'app' },
   { key: 'git', label: 'Git sync', group: 'Integrations', min: 'admin', scope: 'app' },
   { key: 'mcp', label: 'MCP servers', group: 'Organization', min: 'admin', scope: 'org' },
   { key: 'governance', label: 'Governance', group: 'Organization', min: 'admin', scope: 'org' },
@@ -53,6 +55,7 @@ export function AdminWorkspace({ client, org, project, application, model }: Pro
   const current = sections.find((s) => s.key === key) ?? sections[0]
   const { roles, processes } = useMemo(() => modelFacts(model), [model])
   const appId = application?.id
+  const moduleKeys = useMemo(() => ((model?.modules ?? []) as { key: string }[]).map((m) => m.key), [model])
 
   let body: ReactNode = <p className="hint">Nothing here is available for your role.</p>
   if (current) {
@@ -67,6 +70,7 @@ export function AdminWorkspace({ client, org, project, application, model }: Pro
       oidc: <Oidc client={client} appId={a} roles={roles} />,
       webhooks: <Webhooks client={client} appId={a} />,
       integrations: <Integrations client={client} appId={a} />,
+      registry: <Registry client={client} appId={a} orgId={org.id} modules={moduleKeys} canPublish={RANK[org.role]! >= RANK.admin!} />,
       git: <GitSync client={client} appId={a} />,
       mcp: <McpServers client={client} orgId={org.id} />,
       governance: <Governance client={client} orgId={org.id} />,

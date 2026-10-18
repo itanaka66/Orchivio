@@ -464,10 +464,31 @@ class RegistryInstall(Base):
     )
     package_ref: Mapped[str] = mapped_column(String(130), nullable=False)
     version: Mapped[str] = mapped_column(String(64), nullable=False)
-    module_key: Mapped[str] = mapped_column(String(63), nullable=False)
+    module_key: Mapped[str] = mapped_column(String(63), nullable=False)  # the key the module has in the application
+    source_key: Mapped[str] = mapped_column(String(63), nullable=False, default="")  # the key it has in the package ("" = the same)
+    action: Mapped[str] = mapped_column(String(10), nullable=False, default="install")  # install | uninstall
+    dependency_of: Mapped[str | None] = mapped_column(String(130))  # the package whose install pulled this one in
     module_hash: Mapped[str] = mapped_column(String(80), nullable=False)
     proposal_id: Mapped[uuid.UUID | None] = mapped_column(Uuid)
     installed_by: Mapped[uuid.UUID | None] = mapped_column(Uuid)
+    created_at: Mapped[datetime] = _created()
+
+
+class RegistryRemote(Base):
+    """Another Orchivio server's registry that this organization can search, pull from and push to (docs/REGISTRY.md §5)."""
+
+    __tablename__ = "registry_remotes"
+    __table_args__ = (UniqueConstraint("organization_id", "name", name="uq_registry_remotes_name"),)
+
+    id: Mapped[uuid.UUID] = _id()
+    organization_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    name: Mapped[str] = mapped_column(String(63), nullable=False)
+    base_url: Mapped[str] = mapped_column(String(500), nullable=False)
+    token_ref: Mapped[str | None] = mapped_column(String(300))
+    remote_organization_id: Mapped[str | None] = mapped_column(String(64))  # where pushes go on the remote
+    created_by: Mapped[uuid.UUID | None] = mapped_column(Uuid)
     created_at: Mapped[datetime] = _created()
 
 

@@ -208,8 +208,9 @@ def test_installs_report_state_and_upgrades_replace_only_unmodified_modules(worl
     approve(p["admin"], install(p["editor"], dst).json()["proposal"]["id"])
     assert install(p["editor"], dst).json()["error"]["code"] == "already_installed"
     listed = p["editor"].get(f"/applications/{dst['id']}/registry/installs").json()["items"]
-    assert listed == [{"module": "core", "package": "acme/inventory-core", "version": "1.0.0", "state": "installed", "proposal_id": listed[0]["proposal_id"],
-                       "latest_version": "1.0.0", "update_available": False}]
+    assert len(listed) == 1 and {k: listed[0][k] for k in ("module", "package", "version", "state", "latest_version", "update_available")} == {
+        "module": "core", "package": "acme/inventory-core", "version": "1.0.0", "state": "installed", "latest_version": "1.0.0", "update_available": False}
+    assert listed[0]["requires"] == [] and listed[0]["required_by"] == [] and listed[0]["renamed_from"] is None
     # the publisher improves the module and releases 1.1.0
     newer = copy.deepcopy(raw_model)
     newer["modules"][0]["entities"][0]["display_name"] = "Stock item"
