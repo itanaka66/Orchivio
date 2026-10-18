@@ -16,6 +16,7 @@ from decimal import Decimal
 from typing import Any
 from urllib.parse import quote
 
+from orchivio import telemetry
 from orchivio.expr import (
     CheckEnv,
     CheckResult,
@@ -147,15 +148,20 @@ class FlowRunner:
         mod, fl = self._find(flow, None)
         run = _Run(user, self.limits)
         result = FlowResult(f"{mod.key}.{fl.key}", "succeeded")
-        try:
-            with self.data.transaction():
-                self._invoke(run, mod, fl, dict(args), user, depth=0)
-        except FlowError as e:
-            result.status, result.error, result.error_step = "failed", e.message, e.step
-        except DataError as e:
-            result.status, result.error = "failed", f"{e.message}" + (f" {e.details}" if e.details else "")
-            result.error_step = run.trace[-1].step if run.trace and run.trace[-1].status == "error" else None
-        result.steps_executed, result.trace = run.steps, run.trace
+        with telemetry.span("flow.run", flow=result.flow) as sp:
+            try:
+                with self.data.transaction():
+                    self._invoke(run, mod, fl, dict(args), user, depth=0)
+            except FlowError as e:
+                result.status, result.error, result.error_step = "failed", e.message, e.step
+            except DataError as e:
+                result.status, result.error = "failed", f"{e.message}" + (f" {e.details}" if e.details else "")
+                result.error_step = run.trace[-1].step if run.trace and run.trace[-1].status == "error" else None
+            result.steps_executed, result.trace = run.steps, run.trace
+            sp.set_attributes({"flow.status": result.status, "flow.steps": run.steps})
+            if result.status != "succeeded":
+                sp.set_error("flow failed")  # the message can hold record data: it stays out of telemetry
+        telemetry.count("orchivio.flow.runs", status=result.status)
         return result
 
     def run_hook(self, flow: str, user: AppUser | None, record: dict[str, Any], previous: dict[str, Any] | None,

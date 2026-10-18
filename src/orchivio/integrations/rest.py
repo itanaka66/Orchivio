@@ -8,6 +8,7 @@ size-limited. Credentials are read from the secret reference at call time and on
 from __future__ import annotations
 
 import json
+import time
 from collections.abc import Callable
 from typing import Any, Protocol
 from urllib.parse import urlencode
@@ -16,6 +17,7 @@ from uuid import UUID
 from sqlalchemy import select
 from sqlalchemy.orm import Session, sessionmaker
 
+from orchivio import telemetry
 from orchivio.db.models import IntegrationDestination
 from orchivio.ports import IntegrationCall, IntegrationError, IntegrationResult
 
@@ -48,6 +50,23 @@ class RestClient:
             return row
 
     def call(self, call: IntegrationCall) -> IntegrationResult:
+        started = time.perf_counter()
+        with telemetry.span("integration.call", kind="client", **{"integration": call.integration, "operation": call.operation,
+                                                               "http.request.method": call.method}) as sp:
+            try:
+                out = self._call(call)
+            except IntegrationError:
+                telemetry.count("orchivio.integration.calls", status_class="error")
+                raise
+            klass = f"{out.status // 100}xx"
+            sp.set_attribute("http.response.status_code", out.status)
+            if out.status >= 500:
+                sp.set_error(f"HTTP {out.status}")
+        telemetry.count("orchivio.integration.calls", status_class=klass)
+        telemetry.record("orchivio.integration.call.duration", time.perf_counter() - started, status_class=klass)
+        return out
+
+    def _call(self, call: IntegrationCall) -> IntegrationResult:
         dest = self._destination(call.destination)
         url = dest.base_url.rstrip("/") + call.path + (("?" + urlencode(call.query)) if call.query else "")
         headers = {"Accept": "application/json", "User-Agent": "Orchivio-Integrations/1"}

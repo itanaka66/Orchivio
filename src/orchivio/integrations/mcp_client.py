@@ -25,6 +25,7 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.orm import Session, sessionmaker
 
+from orchivio import telemetry
 from orchivio.db.models import McpServer
 
 from .dispatcher import SecretUnavailable, resolve_secret
@@ -288,15 +289,22 @@ class ToolBroker:
             if isinstance(client, McpError):
                 rec.error = str(client)
                 continue
-            try:
-                out = client.call_tool(tool, args)
-            except McpError as e:
-                rec.error = str(e)
-                continue
-            if out.is_error:
-                rec.error = "the tool reported an error"
-                continue
-            rec.ok, rec.text, rec.truncated = True, out.text, out.truncated
+            with telemetry.span("mcp.tool_call", kind="client", **{"mcp.server": server, "mcp.tool": tool}) as sp:
+                try:
+                    out = client.call_tool(tool, args)
+                except McpError as e:
+                    rec.error = str(e)
+                    sp.set_error("mcp error")
+                    telemetry.count("orchivio.mcp.tool_calls", outcome="error")
+                    continue
+                if out.is_error:
+                    rec.error = "the tool reported an error"
+                    sp.set_error("tool error")
+                    telemetry.count("orchivio.mcp.tool_calls", outcome="tool_error")
+                    continue
+                rec.ok, rec.text, rec.truncated = True, out.text, out.truncated
+                sp.set_attribute("mcp.output_chars", len(out.text))
+            telemetry.count("orchivio.mcp.tool_calls", outcome="ok")
         return records
 
     def _connect(self, organization_id: uuid.UUID, name: str) -> McpClient | McpError:

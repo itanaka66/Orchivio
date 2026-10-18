@@ -102,9 +102,51 @@ Timers and task escalation are driven by the worker (`orchivio worker`, or the i
 timers and escalates overdue tasks. Without a running worker a timer never fires and nothing escalates; tasks and
 completions still work. See docs/PROCESS-SPEC.md.
 
+## 7. OpenTelemetry (FR-123)
+
+Traces and metrics can be exported over OTLP/HTTP to any OpenTelemetry collector or compatible backend. Off by default.
+
+```
+pip install "orchivio[otel]"
+ORCHIVIO_OTEL_ENABLED=true
+ORCHIVIO_OTEL_ENDPOINT=http://collector:4318      # or the standard OTEL_EXPORTER_OTLP_ENDPOINT
+ORCHIVIO_OTEL_SERVICE_NAME=orchivio                # default
+ORCHIVIO_OTEL_SAMPLE_RATIO=1.0                     # head sampling of new traces
+ORCHIVIO_OTEL_EXPORTER=otlp                        # otlp | console (debugging) | none
+ORCHIVIO_OTEL_TRUST_INCOMING_CONTEXT=false         # honour a caller's traceparent (see below)
+```
+
+Credentials for the collector go in the standard `OTEL_EXPORTER_OTLP_HEADERS` environment variable. Without the SDK installed,
+or without an endpoint, enabling telemetry only logs a warning; nothing breaks. The API and `orchivio worker` both export.
+
+**Traces.** One server span per HTTP request, named `METHOD /route/{template}` (never the raw path, which contains ids), with
+child spans for flow runs (`flow.run`: flow key, status, step count), background jobs (`job.run`: flow, trigger, attempt,
+outcome), webhook deliveries (`webhook.deliver`, client span: event type, HTTP status), consumed API calls
+(`integration.call`: integration, operation, method, status), MCP tool calls (`mcp.tool_call`) and process work
+(`process.start`, `process.task.complete`, `process.tick`). 5xx responses and failed operations set the span status to error.
+
+**Metrics.** `orchivio.http.server.duration` (histogram, by method, route template and status class),
+`orchivio.flow.runs`, `orchivio.job.runs`, `orchivio.webhook.deliveries`, `orchivio.process.events`,
+`orchivio.integration.calls` and `.call.duration`, `orchivio.mcp.tool_calls`. Attributes are restricted per instrument to
+low-cardinality keys. The Prometheus `/metrics` endpoint (§1) is unaffected and can be used alongside.
+
+**Logs.** JSON log lines (`ORCHIVIO_LOG_JSON=true`) carry `trace_id` and `span_id` while a span is active, next to the existing
+`request_id`, so log lines join to traces. OTLP log export is not implemented.
+
+**What is never recorded.** Request and response bodies, headers (including `Authorization` and cookies), query strings, SQL,
+record values, AI prompts and outputs, e-mail addresses, URLs of webhooks, destinations or MCP servers, and secrets. Spans carry
+only the short scalar attributes listed above; an exception is recorded by *type* only, because its message may contain data.
+
+**Trace context.** An incoming `traceparent` is ignored by default: otherwise any caller could force sampling or pick trace ids.
+Turn `ORCHIVIO_OTEL_TRUST_INCOMING_CONTEXT` on only behind a gateway that you control. Outgoing requests (webhooks, consumed
+APIs, MCP) do not propagate trace context.
+
+**Cost.** With telemetry off, instrumented code paths call no-op functions. With it on, use `ORCHIVIO_OTEL_SAMPLE_RATIO` to bound
+volume; metrics are not sampled.
+
 ## 6. Known gaps
 
 No retention jobs for sessions, audit events or conversations; no automatic scheduling of backups (use cron
-or your orchestrator); no log shipping or OpenTelemetry traces (planned, FR-123); no rate limiting beyond the
+or your orchestrator); no log shipping (logs carry trace ids, see §7; OTLP log export and a log viewer are planned, FR-123); no rate limiting beyond the
 login throttle; the login throttle is per process. Jobs have no UI, no per-environment schedule enablement and
 no queue metrics yet.

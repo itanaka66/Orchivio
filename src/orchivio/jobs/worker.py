@@ -17,6 +17,7 @@ from typing import Any
 
 from sqlalchemy.orm import Session, sessionmaker
 
+from orchivio import telemetry
 from orchivio.db import to_model
 from orchivio.db.models import Application, AppRevision, AuditEvent, JobRun, Project
 from orchivio.logic import FlowHooks, FlowRunner
@@ -87,9 +88,18 @@ class Worker:
     # -- one run ----------------------------------------------------------------------------
 
     def _execute(self, job_id: uuid.UUID) -> str:
+        with telemetry.span("job.run") as sp:
+            outcome = self._execute_traced(job_id, sp)
+            sp.set_attribute("job.outcome", outcome)
+            if outcome in ("dead", "retry"):
+                sp.set_error(f"job {outcome}")
+        return outcome
+
+    def _execute_traced(self, job_id: uuid.UUID, sp) -> str:  # noqa: ANN001
         with self.sessions() as s:
             job = s.get(JobRun, job_id)
             assert job is not None
+            sp.set_attributes({"job.flow": job.flow, "job.trigger": job.trigger, "job.attempt": job.attempt})
             error: str | None = None
             result: dict[str, Any] = {}
             try:
@@ -114,6 +124,7 @@ class Worker:
                                      target_id=str(job.id),
                                      meta={"flow": job.flow, "attempts": job.attempt, "error": error[:300]}))
             s.commit()
+            telemetry.count("orchivio.job.runs", outcome=outcome, trigger=job.trigger)
             return outcome
 
     def _run(self, s: Session, job: JobRun) -> dict[str, Any]:
