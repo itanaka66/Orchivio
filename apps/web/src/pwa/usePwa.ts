@@ -7,6 +7,9 @@ export interface BeforeInstallPromptEvent extends Event {
   userChoice: Promise<{ outcome: 'accepted' | 'dismissed' }>
 }
 
+/** How often an offline Studio checks whether the server is reachable again. */
+export const PROBE_MS = 4000
+
 export function usePwa() {
   const [online, setOnline] = useState(typeof navigator === 'undefined' ? true : navigator.onLine)
   const [update, setUpdate] = useState(false)
@@ -31,6 +34,15 @@ export function usePwa() {
       stop()
     }
   }, [])
+
+  // `online`/`offline` events are not reliable everywhere (some browsers and emulations never send `online`): while offline, ask the server now and then.
+  useEffect(() => {
+    if (online) return
+    const timer = setInterval(() => {
+      fetch('/healthz', { cache: 'no-store' }).then((r) => { if (r.ok) setOnline(true) }, () => undefined)
+    }, PROBE_MS)
+    return () => clearInterval(timer)
+  }, [online])
 
   const install = useCallback(async () => {
     if (!installEvent) return
