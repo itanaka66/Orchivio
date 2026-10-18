@@ -12,7 +12,18 @@ import uuid
 from datetime import UTC, datetime
 from typing import Any
 
-from sqlalchemy import Column, DateTime, Engine, MetaData, String, Table, delete, inspect, insert, select
+from sqlalchemy import (
+    Column,
+    DateTime,
+    Engine,
+    MetaData,
+    String,
+    Table,
+    delete,
+    insert,
+    inspect,
+    select,
+)
 
 from orchivio.model import AppModel
 from orchivio.ports import AuditSink, IntegrationClient

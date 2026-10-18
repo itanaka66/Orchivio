@@ -1,8 +1,8 @@
 import sqlite3
 
 from orchivio.expr import EvalContext, SqlContext, UserRef
-from orchivio.policy import PlatformRole, is_allowed, level_for_action
 from orchivio.policy import ApprovalLevel as L
+from orchivio.policy import PlatformRole, is_allowed, level_for_action
 from orchivio.security import (
     check_consistency,
     record_allowed,

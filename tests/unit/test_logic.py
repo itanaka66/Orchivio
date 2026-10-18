@@ -4,7 +4,7 @@ import uuid
 import pytest
 
 from orchivio.db import make_engine
-from orchivio.logic import FlowHooks, FlowRunner, Limits
+from orchivio.logic import FlowError, FlowHooks, FlowRunner, Limits
 from orchivio.model import AppModel, assign_element_ids, has_errors, model_hash, validate_model
 from orchivio.ports import InMemoryAuditSink
 from orchivio.runtime import AppUser, HookFailed, PreviewStore
@@ -69,9 +69,8 @@ def test_arguments_are_validated(world):
     assert "missing argument" in runner.run("ReorderLowStock", {}, ADMIN).error
     assert "unknown argument" in runner.run("ReorderLowStock", {"min_gap": 1, "x": 2}, ADMIN).error
     assert "integer" in runner.run("ReorderLowStock", {"min_gap": "one"}, ADMIN).error
-    assert runner.run("Nope", {}, ADMIN).status == "failed" if False else True
-    with pytest.raises(Exception):
-        runner.run("Nope", {}, ADMIN)
+    with pytest.raises(FlowError):
+        runner.run("Nope", {}, ADMIN)  # an unknown flow is a caller error, not a failed run
 
 
 # --- atomicity ------------------------------------------------------------------------------------

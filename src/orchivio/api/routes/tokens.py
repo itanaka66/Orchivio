@@ -13,7 +13,16 @@ from orchivio.auth import API_TOKEN_PREFIX, new_token
 from orchivio.db.models import ApiToken, Project
 from orchivio.policy import KNOWN_ACTIONS
 
-from ..deps import Principal, api_error, audit, authorize, current_principal, get_db, not_found, utcnow
+from ..deps import (
+    Principal,
+    api_error,
+    audit,
+    authorize,
+    current_principal,
+    get_db,
+    not_found,
+    utcnow,
+)
 from ..schemas import Page, TokenCreated, TokenIn, TokenOut
 
 router = APIRouter(tags=["tokens"])

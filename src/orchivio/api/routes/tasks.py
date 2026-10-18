@@ -14,8 +14,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import desc, func, or_, select
 from sqlalchemy.orm import Session
 
-from orchivio.db import to_model
-from orchivio.db.models import AppRevision, ProcessEvent, ProcessInstance, UserTask
+from orchivio.db.models import ProcessEvent, ProcessInstance, UserTask
 from orchivio.process import ProcessService, ServiceError
 from orchivio.process.service import aware
 

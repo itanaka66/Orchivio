@@ -1,7 +1,6 @@
 import copy
 
 import pytest
-from tests_support import load_yaml
 from pydantic import ValidationError
 
 from orchivio.model import (
@@ -17,6 +16,7 @@ from orchivio.model import (
     validate_model,
 )
 from orchivio.policy import ApprovalLevel
+from tests_support import load_yaml
 
 
 def codes(issues):

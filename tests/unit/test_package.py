@@ -5,7 +5,15 @@ import zipfile
 
 import pytest
 
-from orchivio.delivery import PackageError, build_package, generate_key, plan_migration, public_key_of, sbom, verify_package
+from orchivio.delivery import (
+    PackageError,
+    build_package,
+    generate_key,
+    plan_migration,
+    public_key_of,
+    sbom,
+    verify_package,
+)
 from orchivio.model import AppModel, assign_element_ids, migrate_to_latest
 
 SEED, PUB = generate_key()

@@ -10,9 +10,9 @@ from __future__ import annotations
 
 import time
 from collections.abc import Callable, Mapping
-from decimal import Decimal
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
+from decimal import Decimal
 from typing import Any
 from urllib.parse import quote
 
@@ -32,8 +32,8 @@ from orchivio.expr import (
 from orchivio.expr.ast import BOOL, list_t
 from orchivio.model import AppModel
 from orchivio.model.schema import FieldDef, FlowDef, FlowStep, ModuleDef, qualify
-from orchivio.runtime import AppData, AppUser, DataError, HookFailed
 from orchivio.ports import IntegrationCall, IntegrationError
+from orchivio.runtime import AppData, AppUser, DataError, HookFailed
 from orchivio.runtime.service import coerce_value, to_eval, to_json
 
 MAX_RESPONSE_ITEMS = 1000
@@ -57,6 +57,9 @@ class Limits:
     max_steps: int = 10_000
     max_call_depth: int = 10
     max_seconds: float = 30.0
+
+
+DEFAULT_LIMITS = Limits()
 
 
 class FlowError(Exception):
@@ -129,7 +132,7 @@ class _Scope:
 
 
 class FlowRunner:
-    def __init__(self, model: AppModel, data: AppData, *, limits: Limits = Limits(),
+    def __init__(self, model: AppModel, data: AppData, *, limits: Limits = DEFAULT_LIMITS,
                  clock: Callable[[], datetime] = lambda: datetime.now(UTC)) -> None:
         self.model, self.data, self.limits, self.clock = model, data, limits, clock
         self.schema = data.schema

@@ -26,7 +26,6 @@ import yaml
 from pydantic import ValidationError
 
 from .codegen import build_openapi
-from .ops import BackupError, backup, read_backup, restore
 from .model import (
     AppModel,
     CanonicalError,
@@ -42,6 +41,7 @@ from .model import (
     validate_model,
 )
 from .model.canonical import _SAFE_PATH
+from .ops import BackupError, backup, read_backup, restore
 
 EXIT_OK, EXIT_PROBLEMS, EXIT_USAGE = 0, 1, 2
 

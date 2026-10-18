@@ -15,13 +15,13 @@ from alembic import command
 from sqlalchemy import create_engine, text
 from sqlalchemy.exc import DBAPIError
 from sqlalchemy.orm import Session
-from tests_support import alembic_config, load_yaml
 
 from orchivio.db import RevisionRepository
 from orchivio.db.models import Application, AuditEvent, Organization, Project, User
 from orchivio.expr import CheckEnv, SqlContext, UserRef, check, compile_predicate
 from orchivio.model import AppModel, assign_element_ids, migrate_to_latest, model_hash
 from orchivio.testgen import run_tests
+from tests_support import alembic_config, load_yaml
 
 URL = os.environ.get("ORCHIVIO_TEST_PG_URL")
 pytestmark = pytest.mark.skipif(not URL, reason="set ORCHIVIO_TEST_PG_URL to a disposable PostgreSQL database")

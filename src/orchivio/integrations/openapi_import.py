@@ -19,7 +19,13 @@ import re
 from dataclasses import dataclass, field
 from typing import Any
 
-from orchivio.model.schema import EntityDef, FieldDef, IntegrationDef, IntegrationOperation, IntegrationParam
+from orchivio.model.schema import (
+    EntityDef,
+    FieldDef,
+    IntegrationDef,
+    IntegrationOperation,
+    IntegrationParam,
+)
 
 MAX_OPERATIONS = 200
 MAX_PROPERTIES = 100

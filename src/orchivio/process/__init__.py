@@ -1,7 +1,6 @@
 """Processes and the task inbox (FR-110, FR-111)."""
 
 from .engine import Hooks, Machine, ProcessError, State, TaskSpec, Token, resolve_definition
-
 from .service import ProcessService, ServiceError
 
 

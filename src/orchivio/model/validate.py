@@ -17,9 +17,9 @@ from orchivio.expr.ast import BOOL, DATETIME, DECIMAL, INT, STRING, Type, enum_t
 
 from .cron import CronError, parse_cron
 from .flows import FlowChecker, call_cycles
-from .processes import ProcessChecker
 from .hooks import HOOK_EVENTS
 from .ids import iter_elements
+from .processes import ProcessChecker
 from .schema import (
     BUILTIN_ENTITIES,
     AppModel,

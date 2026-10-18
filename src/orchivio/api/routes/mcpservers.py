@@ -18,7 +18,13 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from orchivio.db.models import McpServer
-from orchivio.integrations import DestinationError, SecretUnavailable, check_url, destination_policy, resolve_secret
+from orchivio.integrations import (
+    DestinationError,
+    SecretUnavailable,
+    check_url,
+    destination_policy,
+    resolve_secret,
+)
 from orchivio.integrations.dispatcher import SECRET_REF
 from orchivio.integrations.mcp_client import McpClient, McpError
 

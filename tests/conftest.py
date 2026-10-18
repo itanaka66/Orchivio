@@ -7,7 +7,6 @@ from orchivio.model import AppModel, migrate_to_latest
 from tests_support import load_yaml
 
 
-
 @event.listens_for(Engine, "connect")
 def _fast_sqlite(dbapi_conn, _record):
     """Durability is irrelevant for throwaway test databases and fsync dominates the run time."""
@@ -53,11 +52,10 @@ def db_url(migrated_template, tmp_path) -> str:
 
 @pytest.fixture
 def app(db_url):
-    from orchivio.api import create_app
-    from orchivio.api.settings import Settings
-
     from sqlalchemy import event
 
+    from orchivio.api import create_app
+    from orchivio.api.settings import Settings
     from orchivio.db import make_engine
 
     engine = make_engine(db_url)

@@ -31,7 +31,14 @@ from sqlalchemy import (
 from sqlalchemy.types import TypeEngine
 
 from orchivio.model import AppModel, ModelIndex
-from orchivio.model.schema import BUILTIN_ENTITIES, EntityDef, FieldDef, ModuleDef, parse_field_type, qualify
+from orchivio.model.schema import (
+    BUILTIN_ENTITIES,
+    EntityDef,
+    FieldDef,
+    ModuleDef,
+    parse_field_type,
+    qualify,
+)
 
 USER_REF_LENGTH = 64
 

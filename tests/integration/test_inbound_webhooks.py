@@ -171,7 +171,8 @@ def test_replays_and_duplicate_ids_run_once(world, app):
     assert post({"Webhook-Id": "evt_2"}, sign(SECRET, body, int(time.time()) + 3)).json()["duplicate"] is False
     assert len(jobs(app)) == 3
     assert post({"Webhook-Id": "bad id!"}, sign(SECRET, body, int(time.time()) + 4)).status_code == 400
-    events = p["owner"].get(f"/inbound-webhooks/{p['owner'].get(f'/applications/{a['id']}/inbound-webhooks').json()['items'][0]['id']}/events").json()
+    hook_id = p["owner"].get(f"/applications/{a['id']}/inbound-webhooks").json()["items"][0]["id"]
+    events = p["owner"].get(f"/inbound-webhooks/{hook_id}/events").json()
     assert len(events["items"]) == 3
 
 

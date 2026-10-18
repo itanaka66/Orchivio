@@ -11,8 +11,8 @@ from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from orchivio.db import BranchError, ModelInvalid, ProposalRepository, RevisionRepository, to_model
 from orchivio.codegen import build_openapi
+from orchivio.db import BranchError, ModelInvalid, ProposalRepository, RevisionRepository, to_model
 from orchivio.db.models import Application, AppRevision, Branch, Project
 from orchivio.db.proposals import NoChanges
 from orchivio.db.repository import NotFound
@@ -32,7 +32,6 @@ from ..deps import (
     not_found,
 )
 from ..modelio import load_model
-from .proposals import proposal_detail
 from ..schemas import (
     AppIn,
     AppOut,
@@ -48,6 +47,7 @@ from ..schemas import (
     RevisionOut,
     RollbackIn,
 )
+from .proposals import proposal_detail
 
 router = APIRouter(tags=["projects"])
 

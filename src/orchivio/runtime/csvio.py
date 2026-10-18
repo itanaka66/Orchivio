@@ -26,7 +26,7 @@ from typing import Any
 
 from orchivio.model.schema import FieldDef, parse_field_type
 
-from .service import AppData, AppUser, DataError, Invalid, coerce_value
+from .service import AppData, AppUser, DataError, Invalid
 
 MAX_BYTES = 2 * 1024 * 1024
 MAX_ROWS = 5000

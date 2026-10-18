@@ -8,12 +8,19 @@ import http.client
 import socket
 import ssl
 import time
-from collections.abc import Callable
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from typing import Protocol
 
-from .ssrf import DestinationError, Policy, Resolver, check_url, resolve_public, system_resolver
+from .ssrf import (
+    DEFAULT_POLICY,
+    DestinationError,
+    Policy,
+    Resolver,
+    check_url,
+    resolve_public,
+    system_resolver,
+)
 
 MAX_RESPONSE_BYTES = 64 * 1024
 TOLERANCE_SECONDS = 300
@@ -78,7 +85,7 @@ class _PinnedHttp(http.client.HTTPConnection):
 class PinnedTransport:
     """POSTs after re-checking the destination at send time; follows no redirects."""
 
-    def __init__(self, policy: Policy = Policy(), *, timeout: float = 10.0, resolver: Resolver = system_resolver,
+    def __init__(self, policy: Policy = DEFAULT_POLICY, *, timeout: float = 10.0, resolver: Resolver = system_resolver,
                  tls: Callable[[], ssl.SSLContext] = ssl.create_default_context) -> None:
         self.policy, self.timeout, self.resolver, self.tls = policy, timeout, resolver, tls
 

@@ -23,13 +23,29 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from orchivio.db import to_model
-from orchivio.db.models import AppRevision, Application, AuditEvent, InboundDelivery, InboundWebhook, Project
+from orchivio.db.models import (
+    Application,
+    AppRevision,
+    AuditEvent,
+    InboundDelivery,
+    InboundWebhook,
+    Project,
+)
 from orchivio.integrations import SecretUnavailable, resolve_secret, verify_signature
 from orchivio.integrations.dispatcher import SECRET_REF
 from orchivio.jobs import queue
 from orchivio.model.validate import literal_fits
 
-from ..deps import Principal, api_error, audit, current_principal, get_db, load_application, not_found, utcnow
+from ..deps import (
+    Principal,
+    api_error,
+    audit,
+    current_principal,
+    get_db,
+    load_application,
+    not_found,
+    utcnow,
+)
 
 log = logging.getLogger("orchivio.inbound")
 router = APIRouter(tags=["inbound webhooks"])

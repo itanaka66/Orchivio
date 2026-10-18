@@ -14,7 +14,21 @@ import weakref
 from datetime import UTC, datetime
 from typing import Any
 
-from sqlalchemy import JSON, BigInteger, Column, DateTime, Engine, Index, Integer, MetaData, String, Table, delete, select, update
+from sqlalchemy import (
+    JSON,
+    BigInteger,
+    Column,
+    DateTime,
+    Engine,
+    Index,
+    Integer,
+    MetaData,
+    String,
+    Table,
+    delete,
+    select,
+    update,
+)
 
 _meta = MetaData()
 OUTBOX = Table(
@@ -30,7 +44,7 @@ OUTBOX = Table(
     Index("ix_orchivio_outbox_pending", "relayed_at", "id"),
 )
 
-_ensured: "weakref.WeakSet[Engine]" = weakref.WeakSet()
+_ensured: weakref.WeakSet[Engine] = weakref.WeakSet()
 _lock = threading.Lock()
 
 

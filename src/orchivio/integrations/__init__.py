@@ -1,10 +1,17 @@
 """Integration gateway: business events (outbox) delivered to outbound webhooks (FR-082/083)."""
 
-from .dispatcher import Dispatcher, DispatchResult, SecretUnavailable, build_event, matches, resolve_secret, valid_pattern
+from .dispatcher import (
+    Dispatcher,
+    DispatchResult,
+    SecretUnavailable,
+    build_event,
+    matches,
+    resolve_secret,
+    valid_pattern,
+)
 from .rest import RestClient
 from .ssrf import Destination, DestinationError, Policy, check_url, is_public, resolve_public
 from .transport import PinnedTransport, Response, Transport, sign, verify_signature
-
 
 
 def dispatcher_from_settings(settings, session_factory, preview_engine, *, transport=None) -> Dispatcher:

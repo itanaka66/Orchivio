@@ -6,7 +6,13 @@ import pytest
 from test_app_auth import AppClient, ready_client
 from test_tenancy import make_org
 
-from orchivio.model import AppModel, assign_element_ids, diff_models, migrate_to_latest, validate_model
+from orchivio.model import (
+    AppModel,
+    assign_element_ids,
+    diff_models,
+    migrate_to_latest,
+    validate_model,
+)
 from orchivio.security import page_access
 
 

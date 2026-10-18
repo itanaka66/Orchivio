@@ -5,12 +5,12 @@ import re
 from fastapi.testclient import TestClient
 from pydantic import SecretStr
 from sqlalchemy import create_engine, text
-from tests_support import ROOT
 
 from orchivio.api import create_app
 from orchivio.api.settings import Settings
 from orchivio.db import make_engine
 from orchivio.db.schema_revision import SCHEMA_REVISION
+from tests_support import ROOT
 
 
 def test_the_expected_schema_revision_is_the_migration_head():

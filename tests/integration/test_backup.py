@@ -1,6 +1,5 @@
 """Backup and restore (FR-044): a restored system must behave like the original."""
 
-from orchivio.db.schema_revision import SCHEMA_REVISION
 import io
 import json
 import shutil
@@ -8,15 +7,17 @@ import zipfile
 
 import pytest
 from sqlalchemy import func, insert, select, text
+from sqlalchemy.exc import IntegrityError
 from test_tenancy import add_member, make_org
-from tests_support import Api
 
 from orchivio.api import create_app
 from orchivio.api.settings import Settings
 from orchivio.cli import main
 from orchivio.db import make_engine
 from orchivio.db.models import Base, Membership
+from orchivio.db.schema_revision import SCHEMA_REVISION
 from orchivio.ops import BackupError, backup, read_backup, restore
+from tests_support import Api
 
 
 @pytest.fixture
@@ -157,7 +158,7 @@ def test_a_failed_restore_changes_nothing(system, migrated_template, tmp_path):
         for n, b in files.items():
             z.writestr(n, b)
     target, _ = fresh_database(migrated_template, tmp_path)
-    with pytest.raises(Exception):
+    with pytest.raises(IntegrityError):  # a membership of an organization that does not exist: the database refuses it
         restore(out.getvalue(), target, artifacts_dir=tmp_path / "never")
     with target.connect() as c:
         assert all(c.execute(select(func.count()).select_from(t)).scalar_one() == 0 for t in Base.metadata.sorted_tables)

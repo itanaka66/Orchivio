@@ -32,6 +32,9 @@ class Usage:
         )
 
 
+NO_USAGE = Usage()  # a shared, immutable zero (usable as a default argument)
+
+
 @dataclass(frozen=True)
 class LLMRequest:
     messages: tuple[Message, ...]

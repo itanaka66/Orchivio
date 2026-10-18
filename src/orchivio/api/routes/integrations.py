@@ -15,12 +15,26 @@ from sqlalchemy.orm import Session
 from orchivio.db import ModelInvalid, ProposalRepository, to_model
 from orchivio.db.models import AppRevision, IntegrationDestination
 from orchivio.db.proposals import NoChanges
-from orchivio.integrations import DestinationError, SecretUnavailable, check_url, destination_policy, resolve_secret
+from orchivio.integrations import (
+    DestinationError,
+    SecretUnavailable,
+    check_url,
+    destination_policy,
+    resolve_secret,
+)
 from orchivio.integrations.dispatcher import SECRET_REF
 from orchivio.integrations.openapi_import import ImportProblem, import_openapi
 from orchivio.model import assign_element_ids
 
-from ..deps import Principal, api_error, audit, current_principal, get_db, load_application, not_found
+from ..deps import (
+    Principal,
+    api_error,
+    audit,
+    current_principal,
+    get_db,
+    load_application,
+    not_found,
+)
 from .proposals import proposal_detail
 
 router = APIRouter(tags=["integrations"])

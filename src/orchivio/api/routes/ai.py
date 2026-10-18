@@ -17,7 +17,7 @@ from orchivio.ai import AIBuilder, BuilderError, ToolContext, ToolInfo
 from orchivio.db import ModelInvalid, ProposalRepository, to_model
 from orchivio.db.models import Application, AppRevision
 from orchivio.db.proposals import NoChanges, finish_ai_job, month_cost_usd, start_ai_job
-from orchivio.llm import LLMError, LLMProvider, Usage
+from orchivio.llm import NO_USAGE, LLMError, LLMProvider, Usage
 
 from ..deps import Principal, api_error, audit, current_principal, get_db, load_application
 from .proposals import ProposalDetail, proposal_detail
@@ -145,7 +145,7 @@ def gather_tool_context(request: Request, db: Session, provider: LLMProvider, pr
 def run_proposal(db: Session, provider: LLMProvider, principal: Principal, app: Application, project,
                  requirements: str, title: str | None, job_type: str = "propose_model", *,
                  context: list[ToolContext] | None = None, tool_calls: list[dict[str, Any]] | None = None,
-                 extra_usage: Usage = Usage()) -> ProposeOut:
+                 extra_usage: Usage = NO_USAGE) -> ProposeOut:
     """Ask the provider for a model, store it as a pending proposal and record the job."""
     job = start_ai_job(db, project_id=project.id, application_id=app.id, type=job_type,
                        created_by=principal.user_id, input_text=requirements,

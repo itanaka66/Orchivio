@@ -4,9 +4,9 @@ from .canonical import CanonicalError, build_archive, from_files, read_archive, 
 from .diff import Change, MissingElementId, ModelDiff, diff_models
 from .ids import assign_element_ids, iter_elements
 from .lint import RULES, Finding, Rule, blocking, catalog_markdown, lint
-from .refs import Ref, build_refs, usages
 from .merge import Conflict, MergeResult, flatten, merge, unflatten
 from .migrate import UnsupportedSchemaVersion, migrate_to_latest
+from .refs import Ref, build_refs, usages
 from .schema import SCHEMA_VERSION, AppModel, canonical_json, model_hash
 from .validate import Issue, ModelIndex, has_errors, validate_flow, validate_model
 

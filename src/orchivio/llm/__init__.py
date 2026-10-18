@@ -1,6 +1,8 @@
 """LLM provider abstraction."""
 
+from .anthropic import AnthropicProvider
 from .base import (
+    NO_USAGE,
     LLMError,
     LLMProvider,
     LLMRequest,
@@ -9,11 +11,11 @@ from .base import (
     Message,
     Usage,
 )
-from .anthropic import AnthropicProvider
 from .mock import MockProvider
 from .validated import StructuredOutputError, Validated, generate_validated
 
 __all__ = [
+    "NO_USAGE",
     "AnthropicProvider",
     "LLMError",
     "LLMProvider",

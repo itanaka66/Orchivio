@@ -19,7 +19,16 @@ from orchivio.auth import hash_password, password_problem
 from orchivio.db import to_model
 from orchivio.db.models import AppRevision, AppSession, AppUser, AppUserRole
 
-from ..deps import Principal, api_error, audit, current_principal, get_db, load_application, not_found, utcnow
+from ..deps import (
+    Principal,
+    api_error,
+    audit,
+    current_principal,
+    get_db,
+    load_application,
+    not_found,
+    utcnow,
+)
 from ..schemas import Page
 
 router = APIRouter(tags=["app users"])

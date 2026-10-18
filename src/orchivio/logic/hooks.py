@@ -7,13 +7,13 @@ from typing import Any
 from orchivio.model import AppModel
 from orchivio.runtime import AppData, AppUser
 
-from .engine import FlowRunner, Limits
+from .engine import DEFAULT_LIMITS, FlowRunner, Limits
 
 
 class FlowHooks:
     """Pass an instance as ``AppData(hooks=...)``; the entity's ``hooks`` map names the flows."""
 
-    def __init__(self, model: AppModel, limits: Limits = Limits()) -> None:
+    def __init__(self, model: AppModel, limits: Limits = DEFAULT_LIMITS) -> None:
         self.model, self.limits = model, limits
 
     def run(self, data: AppData, flow: str, event: str, entity: str, user: AppUser | None,
