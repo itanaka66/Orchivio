@@ -83,6 +83,10 @@ Status: ✅ implemented and tested · 🟡 partly / not verified end-to-end · �
 | A21 | A process is used to escalate privilege (start rights, system tasks) | `start_roles` and `run_as_role` are model elements: widening either is A3; system tasks run with only `run_as_role`; delegation only to active users who hold the task's role | ✅ |
 | A22 | A process spins forever or floods the worker | Static refusal of cycles without a waiting step, per-advance and per-instance step limits, bounded form and result sizes | ✅ |
 
+| A23 | Forced browsing: a user calls a page, row or action route the UI never showed them | Every page route re-checks role, entity operations, columns and the action's expressions; unauthorized pages and actions answer 404 exactly like missing ones | ✅ tested |
+| A24 | A page is used to read or write fields it does not display | Declared columns bound reads, writes, filters and sorting; field-level security applies underneath | ✅ |
+| A25 | Any signed-in user runs any server flow | Direct runs need a role in `run_roles` (deny by default); flows run as the caller; exposing a flow is A3 | ✅ tested |
+
 ## 4. Assumptions
 
 - PostgreSQL, the host OS and the TLS terminator are operated securely.

@@ -35,6 +35,7 @@ modules:
     flows:
       - key: ReorderLowStock
         kind: server
+        run_roles: [viewer, editor, admin]   # who may run it directly through the application API (deny by default)
         description: Mark products that fell below their reorder level and raise an error if none exist.
         params:
           - { name: min_gap, type: integer }

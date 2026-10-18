@@ -173,6 +173,11 @@
               "type": "integer"
             }
           ],
+          "run_roles": [
+            "viewer",
+            "editor",
+            "admin"
+          ],
           "steps": [
             {
               "config": {},

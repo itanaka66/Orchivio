@@ -131,6 +131,10 @@ one owner (`409 last_owner`). Any member may leave an organization.
 | GET | `/apps/{app_id}/process-instances/{id}` | progress of an instance you started |
 | GET | `/applications/{id}/process-instances`, `/process-instances/{id}`, `/applications/{id}/user-tasks` | monitoring (viewer and up) |
 | POST | `/applications/{id}/processes/{key}/start`, `/process-instances/{id}/cancel`, `/process-instances/{id}/retry` | start for testing / cancel / retry a failed step (editor) |
+| GET | `/apps/{app_id}/pages`, `/apps/{app_id}/pages/{key}` | the menu and one page definition, only for pages the caller may open |
+| GET | `/apps/{app_id}/pages/{key}/rows[/{id}]` | rows with only the page's columns and per-row `_actions` |
+| POST / PATCH | `/apps/{app_id}/pages/{key}/rows[/{id}]` | submit a create / edit form (declared columns only; `editable_expr` enforced) |
+| POST | `/apps/{app_id}/pages/{key}/actions/{action}` | invoke a page action (`{row_id}`); flow-bound actions run as the caller |
 | GET | `/healthz`, `/readyz` | liveness / readiness (unauthenticated; docs/OPERATIONS.md) |
 | GET | `/metrics` | Prometheus text; bearer `ORCHIVIO_METRICS_TOKEN`, disabled when unset |
 

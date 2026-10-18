@@ -218,7 +218,14 @@ decisions, parallel paths and timers; see docs/PROCESS-SPEC.md. Rules: `duplicat
 `process-sync-cycle`, `process-dead-end`, `unreachable-step`, plus `unknown-role` and `expression`. Widening
 `start_roles` or changing `run_as_role` is classified A3.
 
-## 15. Planned
+## 15. Page actions and direct flow access
+
+`pages[].actions[]` entries are a key or `{key, visible_expr, editable_expr, flow, args}`; `flow` names a server flow of
+the module (not an entity hook) and `args` gives an expression per flow parameter over the row (`page-action-flow`).
+`flows[].run_roles` lists the roles that may run the flow directly through the application API (`unknown-role`,
+`run-roles-not-runnable` for client and hook flows); omitted means nobody. See docs/APP-SECURITY.md §8.
+
+## 16. Planned
 
 Flows, processes, scheduled jobs, integrations, AI steps, themes, translations, field-level
 security, per-element canonical YAML files (DESIGN.md §8.9).

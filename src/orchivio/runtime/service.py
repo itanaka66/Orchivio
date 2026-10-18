@@ -34,6 +34,7 @@ from orchivio.expr import (
     check,
     evaluate,
 )
+from orchivio.expr.ast import BOOL
 from orchivio.model import AppModel
 from orchivio.model.schema import FieldDef, parse_field_type, qualify
 from orchivio.ports import AuditRecord, AuditSink, IntegrationClient
@@ -528,7 +529,9 @@ class AppData:
     # -- operations -----------------------------------------------------------------------
 
     def list(self, entity: str, user: AppUser, *, filters: Mapping[str, Any] | None = None, order_by: str | None = None,
-             descending: bool = False, limit: int = 50, offset: int = 0) -> dict[str, Any]:
+             descending: bool = False, limit: int = 50, offset: int = 0,
+             decorate: Callable[[dict[str, Any], dict[str, Any]], dict[str, Any]] | None = None) -> dict[str, Any]:
+        """``decorate(stored_row, presented_row)`` may reshape each item (page lists add per-row action state)."""
         info = self._info(entity)
         _, pred = self._guard(info, user, "read")
         t = info.table
@@ -552,7 +555,37 @@ class AppData:
             total = conn.execute(select(func.count()).select_from(t).where(*where)).scalar_one()
             rows = conn.execute(select(t).where(*where).order_by(order_col.desc() if descending else order_col,
                                                                  t.c[info.pk.name]).limit(limit).offset(max(0, offset))).mappings().all()
-        return {"items": [self._present(info, dict(r), user) for r in rows], "total": total, "limit": limit, "offset": offset}
+        items = [self._present(info, dict(r), user) for r in rows]
+        if decorate is not None:
+            items = [decorate(dict(r), p) for r, p in zip(rows, items, strict=True)]
+        return {"items": items, "total": total, "limit": limit, "offset": offset}
+
+    def raw_row(self, entity: str, user: AppUser, row_id: Any) -> dict[str, Any]:
+        """The stored row if the user's read access (role and row constraint) covers it; for server-side expression
+        checks that need values the user may not see. Never return this to the caller."""
+        info = self._info(entity)
+        _, pred = self._guard(info, user, "read")
+        pk = self._coerce_pk(info, row_id)
+        with self._conn() as conn:
+            row = conn.execute(select(info.table).where(info.table.c[info.pk.name] == pk, pred)).mappings().first()
+        if row is None:
+            raise RowNotFound("record not found")
+        return dict(row)
+
+    def evaluate_for_row(self, entity: str, user: AppUser, row: Mapping[str, Any], source: str) -> bool:
+        """A boolean page expression (``visible_expr``, ``editable_expr``) against a stored row, as ``user``."""
+        info = self._info(entity)
+        res = check(source, CheckEnv(self.schema.index.types_for(info.module.key), info.qualified), BOOL)
+        rec = self._with_computed(info, user, self._row_to_eval(info, row))
+        return bool(evaluate(res.ast, self._eval_ctx(info, user, rec)))
+
+    def evaluate_value_for_row(self, entity: str, user: AppUser, row: Mapping[str, Any], source: str) -> Any:
+        """Any page-expression value (for action arguments) against a stored row, as ``user``."""
+        info = self._info(entity)
+        res = check(source, CheckEnv(self.schema.index.types_for(info.module.key), info.qualified))
+        rec = self._with_computed(info, user, self._row_to_eval(info, row))
+        value = evaluate(res.ast, self._eval_ctx(info, user, rec))
+        return str(value) if isinstance(value, str) else value
 
     def select_rows(self, entity: str, user: AppUser, *, where: tuple[str, Mapping[str, Any]] | None = None,
                     limit: int = 100) -> list[dict[str, Any]]:

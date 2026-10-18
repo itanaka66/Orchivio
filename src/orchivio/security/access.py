@@ -91,6 +91,33 @@ def resolve_fields(model: AppModel, roles: Iterable[str], entity: str, operation
     return frozenset(allowed)
 
 
+@dataclass(frozen=True)
+class PageAccess:
+    allowed: bool
+    reason: str = ""
+
+
+PAGE_OPERATIONS = {("list", None): ("read",), ("detail", None): ("read",), ("form", "create"): ("create",), ("form", "edit"): ("read", "update")}
+STANDARD_ACTIONS = {"view": "read", "create": "create", "edit": "update", "delete": "delete"}
+
+
+def page_access(model: AppModel, roles: Iterable[str], page: Any) -> PageAccess:
+    """May a user with ``roles`` open ``page``? Needs a role listed in ``security.pages`` for the page (deny by default)
+    *and* the entity operations the page type implies, so a page can never be a way around entity access."""
+    role_set = set(roles)
+    if not role_set & set(model.security.pages.get(page.key, [])):
+        return PageAccess(False, "page")
+    index = ModelIndex(model)
+    owner = next((m.key for m in model.modules if page in m.pages), None)
+    q = index.resolve_entity(owner or "", page.entity)
+    if q is None:
+        return PageAccess(False, "entity")
+    for op in PAGE_OPERATIONS.get((page.type, page.mode if page.type == "form" else None), ("read",)):
+        if not resolve_access(model, role_set, q, op).allowed:
+            return PageAccess(False, f"entity:{op}")
+    return PageAccess(True)
+
+
 def row_predicate(decision: AccessDecision, ctx: SqlContext) -> SqlPredicate:
     """SQL predicate to AND into every query for this operation.
 

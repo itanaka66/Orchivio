@@ -282,8 +282,8 @@ def run_flow(flow: str, body: RunIn, request: Request, c: Caller = Depends(usabl
     data = _open(request, c)
     q = flow if "." in flow else f"{c.model.modules[0].key}.{flow}"
     target = next(((m, f) for m in c.model.modules for f in m.flows if f"{m.key}.{f.key}" == q), None)
-    if target is None or target[1].kind != "server":
-        raise api_error(404, "unknown_flow", "unknown flow")
+    if target is None or target[1].kind != "server" or not (set(target[1].run_roles or []) & set(c.roles)):
+        raise api_error(404, "unknown_flow", "unknown flow")  # not runnable by these roles looks the same as not existing
     if any(q == f"{m.key}.{h}" for m in c.model.modules for e in m.entities for h in e.hooks.values()):
         raise api_error(422, "not_runnable", "this flow is an entity hook; it runs when its event happens")
     try:

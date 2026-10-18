@@ -115,7 +115,15 @@ def _risks(etype: str, old: dict[str, Any], new: dict[str, Any]) -> list[str]:
             risks.append("permission-expansion")  # who may start it, or what its system tasks may do, grew
     elif etype == "integration":
         risks.append("external-integration")  # what may leave the platform, and where, changed
+    elif etype == "page":
+        def with_flow(page: dict[str, Any]) -> set[tuple[str, str]]:
+            return {(a["key"], a["flow"]) for a in page.get("actions", []) if isinstance(a, dict) and a.get("flow")}
+
+        if with_flow(new) - with_flow(old):
+            risks.append("permission-expansion")  # everyone who may open the page can now run another flow
     elif etype == "flow":
+        if set(new.get("run_roles") or []) - set(old.get("run_roles") or []) or (old.get("run_roles") is None and new.get("run_roles")):
+            risks.append("permission-expansion")
         before = {(s["config"].get("integration"), s["config"].get("operation")) for s in old.get("steps", []) if s["type"] == "call_integration"}
         after = {(s["config"].get("integration"), s["config"].get("operation")) for s in new.get("steps", []) if s["type"] == "call_integration"}
         if after - before:
@@ -137,6 +145,9 @@ def diff_models(base: AppModel, new: AppModel) -> ModelDiff:
             risks = ["permission-grant"] if etype == "access" else ["external-integration"] if etype == "integration" else []
             if etype == "flow" and any(s["type"] == "call_integration" for s in props.get("steps", [])):
                 risks = ["external-call"]
+            if (etype == "flow" and props.get("run_roles")) or (
+                    etype == "page" and any(isinstance(x, dict) and x.get("flow") for x in props.get("actions", []))):
+                risks = [*risks, "permission-expansion"]  # new ways for users to run a flow
             lvl = ApprovalLevel.A3 if risks else ApprovalLevel.A2
             changes.append(Change("added", etype, eid, name, (), tuple(risks), lvl))
             continue
