@@ -15,4 +15,6 @@ artifacts/
 node_modules/
 .coverage
 apps/web/dist/
+apps/web/test-results/
+apps/web/playwright-report/
 apps/web/node_modules/

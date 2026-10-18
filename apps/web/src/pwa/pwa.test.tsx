@@ -6,6 +6,7 @@ import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { stampServiceWorker } from '../../pwa-plugin'
 import { PwaBar } from './PwaBar'
+import { PROBE_MS } from './usePwa'
 import { applyUpdate, clearShellCaches, registerServiceWorker, resetPwaState } from './register'
 
 const PUBLIC = join(__dirname, '..', '..', 'public')
@@ -246,6 +247,34 @@ describe('PwaBar', () => {
     expect(screen.getByRole('status')).toHaveTextContent('You are offline')
     act(() => { window.dispatchEvent(new Event('online')) })
     expect(screen.queryByText(/You are offline/)).toBeNull()
+  })
+
+  it('notices that the server is back even when the browser never sends an online event', async () => {
+    vi.useFakeTimers()
+    const probe = vi.fn(async () => new Response('{}', { status: 200 }))
+    vi.stubGlobal('fetch', probe)
+    render(<PwaBar />)
+    act(() => { window.dispatchEvent(new Event('offline')) })
+    expect(screen.getByText(/You are offline/)).toBeInTheDocument()
+    await act(async () => { await vi.advanceTimersByTimeAsync(PROBE_MS + 50) })
+    expect(probe).toHaveBeenCalledWith('/healthz', { cache: 'no-store' })
+    expect(screen.queryByText(/You are offline/)).toBeNull()
+    probe.mockClear()
+    await act(async () => { await vi.advanceTimersByTimeAsync(PROBE_MS * 3) })
+    expect(probe).not.toHaveBeenCalled() // online again: no more probing
+    vi.useRealTimers()
+    vi.unstubAllGlobals()
+  })
+
+  it('keeps saying offline while the server cannot be reached', async () => {
+    vi.useFakeTimers()
+    vi.stubGlobal('fetch', vi.fn(async () => { throw new TypeError('offline') }))
+    render(<PwaBar />)
+    act(() => { window.dispatchEvent(new Event('offline')) })
+    await act(async () => { await vi.advanceTimersByTimeAsync(PROBE_MS * 3) })
+    expect(screen.getByText(/You are offline/)).toBeInTheDocument()
+    vi.useRealTimers()
+    vi.unstubAllGlobals()
   })
 
   it('offers installation when the browser allows it, once', async () => {
