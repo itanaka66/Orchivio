@@ -166,6 +166,11 @@ Optional; off until `ORCHIVIO_GIT_SYNC_ALLOWED_HOSTS` lists hosts (docs/GIT-SYNC
 runs git as a short-lived child process in a temporary directory (60 s limit, repository size checked after fetch). Tokens are `env:`/`file:`
 references; rotate them like webhook secrets.
 
+## 9. Serving the Studio as an installable app
+
+Serve `apps/web/dist` over HTTPS from the API's origin; `sw.js`, `index.html` and the manifest must not be HTTP-cached and `/assets/*` can be cached for a year
+(docs/PWA.md has the header table). The service worker never caches API responses.
+
 ## 6. Known gaps
 
 No retention jobs for sessions, audit events or conversations; no automatic scheduling of backups (use cron
