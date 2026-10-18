@@ -49,14 +49,25 @@ export class ApiClient {
 
   get signedIn(): boolean { return this.csrf !== null }
 
+  /** Absolute-path URL of an API route, for links the browser follows itself (downloads, screenshots). */
+  url(path: string): string { return `${this.base}${path}` }
+
   async request<T>(method: string, path: string, body?: unknown, extraHeaders: Record<string, string> = {}): Promise<T> {
-    const headers: Record<string, string> = { Accept: 'application/json', ...extraHeaders }
+    const headers: Record<string, string> = { ...extraHeaders }
     if (body !== undefined) headers['Content-Type'] = 'application/json'
+    return this.send<T>(method, path, body === undefined ? undefined : JSON.stringify(body), headers)
+  }
+
+  /** Send text as the raw request body (for endpoints that take a document, such as an OpenAPI description). */
+  requestText<T>(method: string, path: string, text: string, contentType = 'text/plain'): Promise<T> {
+    return this.send<T>(method, path, text, { 'Content-Type': contentType })
+  }
+
+  private async send<T>(method: string, path: string, payload: string | undefined, extra: Record<string, string>): Promise<T> {
+    const headers: Record<string, string> = { Accept: 'application/json', ...extra }
     // Cookie-authenticated unsafe requests must carry the CSRF token returned at login.
     if (method !== 'GET' && this.csrf) headers['X-CSRF-Token'] = this.csrf
-    const res = await this.doFetch(`${this.base}${path}`, {
-      method, headers, credentials: 'same-origin', body: body === undefined ? undefined : JSON.stringify(body),
-    })
+    const res = await this.doFetch(`${this.base}${path}`, { method, headers, credentials: 'same-origin', body: payload })
     if (res.status === 204) return undefined as T
     const text = await res.text()
     let data: unknown = undefined

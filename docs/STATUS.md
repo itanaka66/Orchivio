@@ -56,12 +56,12 @@ service), **Schema** (data structures only), **Planned**.
 | FR-113 | Process monitoring | Partial | Instance and task listings, event trail; no throughput or bottleneck analytics |
 | FR-065 | Page, action and flow access | Done (server side) | Pages need a listed role and the implied entity rights; columns, actions, `visible_expr`/`editable_expr` and flow-bound actions enforced; direct flow runs need `run_roles`; no UI renders these pages yet |
 | FR-073 | Conditional visibility and editability | Done (server side) | `visible_expr` filters actions per row, `editable_expr` is checked before an edit is stored |
-| FR-123 | Runtime observability | Partial (API) | OpenTelemetry traces and metrics over OTLP/HTTP (requests, flows, jobs, webhooks, consumed APIs, MCP, processes, AI Builder calls), OTLP log export, opt-in outbound `traceparent`, application log store with viewer API and AI log analysis; strict no-data policy. Flow runs made through the API are not yet logged to the store; no viewer UI |
-| FR-124 | Governance console | Partial (API) | Policy packs enforced on every model change, compliance report, app inventory with risk flags, AI usage, audit export; no UI, no per-project exceptions or quotas |
+| FR-123 | Runtime observability | Partial | OpenTelemetry traces and metrics over OTLP/HTTP (requests, flows, jobs, webhooks, consumed APIs, MCP, processes, AI Builder calls), OTLP log export, opt-in outbound `traceparent`, application log store with viewer API and AI log analysis; strict no-data policy. Flow runs made through the API are not yet logged to the store; Studio log viewer with AI analysis |
+| FR-124 | Governance console | Partial | Policy packs enforced on every model change, compliance report, app inventory with risk flags, AI usage, audit export; Studio screens for packs, compliance, inventory, AI usage and export; no per-project exceptions or quotas |
 | FR-098 | Requirements, story board, traceability | Partial | Requirements, stories, validated trace links (stories, elements, revisions, generated test cases), coverage report as JSON/CSV, AI extraction of draft requirements, Studio board with drag and drop; no story editor screen |
 | FR-099 | Preview feedback widget | Partial | Feedback with page, element and optional screenshot, rate limit, triage, AI clustering into proposed stories; widget (element picking, image attach/paste/screen capture) mounted on a Studio preview screen that renders the model's list/form pages with element ids; not the generated production UI |
 | FR-090 | Branch-ready revision graph | Done | `parent_revision_ids`, `branches` |
-| FR-091 | Branches and semantic merge | Done (API) | Three-way merge by element id with typed conflicts and per-conflict resolution; no UI yet, no per-branch preview |
+| FR-091 | Branches and semantic merge | Done | Three-way merge by element id with typed conflicts and per-conflict resolution; Studio screen for branches and merge; no per-branch preview |
 | FR-052 | Server Flows | Done (preview) | Modelled, validated, edited visually and executed transactionally under the caller's security; no elevation, no production deployment |
 | FR-053 | Client Flows | Partial | Modelled and validated (decision/call/end only); no browser runtime |
 | FR-055 | Scheduled jobs | Partial | Cron schedules on server flows, planned once across workers, missed-run policy; runs in the preview runtime only (no environments) |
@@ -109,7 +109,7 @@ Everything not listed is **Planned**.
 - Flow variable scoping is checked as "defined upstream on some path"; the engine fails at run time if a
   variable is unset on the path actually taken.
 
-- The web Studio contains only the flow builder; mouse dragging, zoom and canvas rendering are untested in a browser, and no screen-reader testing was done (apps/web/README.md).
+- The web Studio has the flow builder, story board, preview and administration screens (apps/web/README.md); the administration screens are tested with a fake API, not against a running server; mouse dragging, zoom and canvas rendering are untested in a browser, and no screen-reader testing was done (apps/web/README.md).
 - The CSRF token lives in `sessionStorage`; a new tab needs a new login.
 
 - Request-size limiting trusts `Content-Length`; enforce a body limit at the reverse proxy too.

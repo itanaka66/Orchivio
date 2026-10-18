@@ -1,7 +1,8 @@
 # Orchivio Studio (web)
 
-React + TypeScript front end. Today it contains the **flow builder**; the rest of the Studio
-(dashboard, model explorer, page builder, review screens) is planned.
+React + TypeScript front end. It contains the **flow builder**, the **story board** and **preview** (docs/AGILE.md), and the
+**administration screens** below. A model explorer, page builder and proposal review screens are still planned (proposals are reviewed
+through the API).
 
 ## Run
 
@@ -64,3 +65,27 @@ validation, proposal creation) outside the suite.
 - One flow per editor; no copy/paste of steps, no import, no flow-level search.
 - The bundle is about 138 kB gzipped; no code splitting yet.
 - A flow must exist in a module of an existing revision; creating the first module is not supported.
+
+## Administration screens (`src/admin`)
+
+"Open administration" (after choosing an organization, project and application) opens a workspace with a side navigation. What a person
+sees depends on their organization role; the server enforces the same rules again on every call, and its messages are shown as they are.
+
+| Screen | Role | What it does (API) |
+|---|---|---|
+| Branches | editor | list, create from a revision, abandon (two-step), merge into main with preview, conflict resolution choices and risk acknowledgement |
+| Environments & deployment | editor (admin for environments/constants) | environments and gates, constants (secrets only as references), build/verify/download packages, promote with destructive-step acknowledgement, approve/reject |
+| Jobs & schedules | editor | schedules with next/last run, queue a server flow as a role, filter, retry, cancel |
+| Processes & tasks | editor | instances (filter, details with tasks/events/variables, cancel, retry failed step), task monitor with overdue/escalated, start a test instance |
+| Logs | editor | filter, search, page older lines; AI analysis whose findings highlight the cited lines |
+| Application users | admin | list, create, edit roles, enable/disable, reset password, delete (two-step) |
+| Single sign-on (OIDC) | admin | configure provider, role mapping, domains, auto-provisioning warning, connection test showing the redirect URI |
+| Webhooks | admin | create, pause/resume with the reason, test, delivery log with payloads and resend |
+| Destinations & API import | admin | destinations and credentials (missing-credential warning), OpenAPI import as a proposal |
+| Git sync | admin | connect, push (optionally a pull request), pull as a proposal |
+| MCP servers | admin (organization) | register, discover tools, enable read-only tools |
+| Governance | admin (organization) | policy packs (JSON rules), compliance, inventory with risk flags, AI usage, audit export links |
+
+Design notes: one small kit (`admin/kit.tsx`: `useApi`, `useAction`, two-step `Danger` buttons, pager); screens talk to the API through
+`client.request` and are tested against a route-table fake (`admin/mock.ts`). Secrets are never typed in: fields take references such as
+`env:NAME`. The browser view stays mounted (hidden) while a screen is open, so going back keeps the chosen organization, project and application.

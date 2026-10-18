@@ -49,4 +49,36 @@ describe('App', () => {
     await user.click(screen.getByRole('button', { name: '← All flows' }))
     await waitFor(() => expect(screen.getByRole('heading', { name: /Flow builder/ })).toBeInTheDocument())
   })
+
+  it('opens the administration screens for the chosen project and application', async () => {
+    const user = userEvent.setup()
+    const request = vi.fn(async (_m: string, path: string) => {
+      if (path.includes('/webhooks')) return { items: [] }
+      if (path.includes('/branches')) return []
+      if (path.includes('/revisions')) return { items: [] }
+      if (path.includes('/mcp-servers')) return { items: [] }
+      throw new Error(`unmocked ${path}`)
+    })
+    const client = fakeClient({
+      signedIn: true,
+      me: vi.fn(async () => ({ user: { id: '1', email: 'a@b.c', display_name: 'Ada' } })),
+      organizations: vi.fn(async () => ({ items: [{ id: 'o1', name: 'Acme', slug: 'acme', role: 'admin' }], limit: 200, offset: 0, total: 1 })),
+      projects: vi.fn(async () => ({ items: [{ id: 'p1', organization_id: 'o1', name: 'Inventory', slug: 'inv' }], limit: 200, offset: 0, total: 1 })),
+      applications: vi.fn(async () => ({ items: [{ id: 'a1', project_id: 'p1', key: 'inv', name: 'Stock', current_revision_id: 'r1', current_revision_no: 1 }], limit: 200, offset: 0, total: 1 })),
+      revision: vi.fn(async () => ({ id: 'r1', revision_no: 1, model_json: { security: { roles: ['admin'] }, modules: [{ key: 'core', flows: [] }] } })),
+      request,
+    })
+    render(<App client={client} />)
+    await screen.findByRole('option', { name: 'Acme' })
+    await user.selectOptions(screen.getByLabelText('Organization'), 'o1')
+    await screen.findByRole('option', { name: 'Inventory' })
+    await user.selectOptions(screen.getByLabelText('Project'), 'p1')
+    await screen.findByRole('option', { name: 'Stock' })
+    await user.selectOptions(screen.getByLabelText('Application'), 'a1')
+    await user.click(await screen.findByRole('button', { name: 'Open administration' }))
+    expect(await screen.findByRole('navigation', { name: 'Administration' })).toBeInTheDocument()
+    expect(await screen.findByRole('region', { name: 'Branches' })).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: '← Back' }))
+    expect(await screen.findByRole('button', { name: 'Open administration' })).toBeInTheDocument()
+  })
 })

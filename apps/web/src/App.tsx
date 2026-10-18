@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
 import { ApiClient, ApiError, type Application, type Org, type Project, type User } from './api/client'
+import { AdminWorkspace } from './admin/AdminWorkspace'
 import { Board } from './board/Board'
 import { collectElements } from './board/elements'
 import { FeedbackWidget } from './board/FeedbackWidget'
@@ -14,6 +15,7 @@ import type { Flow } from './flow/types'
 type Json = Record<string, unknown>
 
 interface BoardTarget { project: Project; application?: Application; elements: { id: string; label: string }[]; canEdit: boolean }
+interface AdminTarget { org: Org; project: Project; application?: Application; model: Json | null }
 interface PreviewTarget { application: Application; model: Json; roles: string[]; canEdit: boolean }
 interface Open { model: Json; module: string; flow: Flow; application?: Application; readOnly: boolean; demo: boolean }
 
@@ -24,6 +26,7 @@ export default function App({ client: injected }: { client?: ApiClient }) {
   const [open, setOpen] = useState<Open | null>(null)
   const [board, setBoard] = useState<BoardTarget | null>(null)
   const [preview, setPreview] = useState<PreviewTarget | null>(null)
+  const [admin, setAdmin] = useState<AdminTarget | null>(null)
 
   useEffect(() => {
     if (!client.signedIn) return
@@ -32,8 +35,23 @@ export default function App({ client: injected }: { client?: ApiClient }) {
 
   if (booting) return <main className="page"><p>Loading…</p></main>
 
-  if (preview) {
-    return (
+  // The browser below stays mounted (hidden) while a screen is open, so going back keeps the chosen organization, project and application.
+  let overlay: ReactNode = null
+  if (admin) {
+    overlay = (
+      <div className="shell">
+        <header className="topbar">
+          <button type="button" className="link" onClick={() => setAdmin(null)}>← Back</button>
+          <span>{admin.project.name}{admin.application ? ` · ${admin.application.name}` : ''} · Administration</span>
+          <span className="spacer" />
+          {user && <span>{user.display_name}</span>}
+        </header>
+        <main className="page wide"><AdminWorkspace client={client} org={admin.org} project={admin.project} application={admin.application} model={admin.model} /></main>
+      </div>
+    )
+
+  } else if (preview) {
+    overlay = (
       <div className="shell">
         <header className="topbar">
           <button type="button" className="link" onClick={() => setPreview(null)}>← Back</button>
@@ -46,10 +64,9 @@ export default function App({ client: injected }: { client?: ApiClient }) {
         </main>
       </div>
     )
-  }
 
-  if (board) {
-    return (
+  } else if (board) {
+    overlay = (
       <div className="shell">
         <header className="topbar">
           <button type="button" className="link" onClick={() => setBoard(null)}>← Back</button>
@@ -63,12 +80,11 @@ export default function App({ client: injected }: { client?: ApiClient }) {
         {board.application && <FeedbackWidget client={client} applicationId={board.application.id} page="studio:board" />}
       </div>
     )
-  }
 
-  if (open) {
+  } else if (open) {
     const { model, module, flow, application, readOnly, demo } = open
     const view = viewOf(model, module)
-    return (
+    overlay = (
       <div className="shell">
         <header className="topbar">
           <button type="button" className="link" onClick={() => setOpen(null)}>← All flows</button>
@@ -95,10 +111,12 @@ export default function App({ client: injected }: { client?: ApiClient }) {
   }
 
   return (
-    <main className="page">
+    <>
+    {overlay}
+    <main className="page" hidden={overlay !== null}>
       <h1>Orchivio Studio · Flow builder</h1>
       {user ? (
-        <Browser client={client} user={user} onOpen={setOpen} onBoard={setBoard} onPreview={setPreview}
+        <Browser client={client} user={user} onOpen={setOpen} onBoard={setBoard} onPreview={setPreview} onAdmin={setAdmin}
                  onLogout={() => { void client.logout().finally(() => setUser(null)) }} />
       ) : (
         <Login client={client} onUser={setUser} />
@@ -112,6 +130,7 @@ export default function App({ client: injected }: { client?: ApiClient }) {
         }}>Open the demo flow</button>
       </section>
     </main>
+    </>
   )
 }
 
@@ -150,7 +169,7 @@ function useLoad<T>(load: () => Promise<T>, deps: unknown[]): { data: T | null; 
   return state
 }
 
-function Browser({ client, user, onOpen, onBoard, onPreview, onLogout }: { client: ApiClient; user: User; onOpen: (o: Open) => void; onBoard: (b: BoardTarget) => void; onPreview: (p: PreviewTarget) => void; onLogout: () => void }) {
+function Browser({ client, user, onOpen, onBoard, onPreview, onAdmin, onLogout }: { client: ApiClient; user: User; onOpen: (o: Open) => void; onBoard: (b: BoardTarget) => void; onPreview: (p: PreviewTarget) => void; onAdmin: (a: AdminTarget) => void; onLogout: () => void }) {
   const orgs = useLoad(() => client.organizations(), [client])
   const [org, setOrg] = useState<Org | null>(null)
   const projects = useLoad(() => (org ? client.projects(org.id) : Promise.resolve(null)), [org])
@@ -180,6 +199,11 @@ function Browser({ client, user, onOpen, onBoard, onPreview, onLogout }: { clien
       <Pick label="Organization" items={orgs.data?.items} error={orgs.error} value={org?.id} onPick={(id) => { setOrg(orgs.data?.items.find((o) => o.id === id) ?? null); setProject(null); setApp(null) }} />
       {org && <Pick label="Project" items={projects.data?.items} error={projects.error} value={project?.id} onPick={(id) => { setProject(projects.data?.items.find((p) => p.id === id) ?? null); setApp(null) }} />}
       {project && <Pick label="Application" items={apps.data?.items} error={apps.error} value={app?.id} onPick={(id) => setApp(apps.data?.items.find((a) => a.id === id) ?? null)} />}
+      {org && project && (
+        <p>
+          <button type="button" onClick={() => onAdmin({ org, project, application: app ?? undefined, model: revision.data?.model_json ?? null })}>Open administration</button>
+        </p>
+      )}
       {project && (
         <p>
           <button type="button" onClick={() => onBoard({ project, application: app ?? undefined, canEdit, elements: revision.data ? collectElements(revision.data.model_json) : [] })}>
