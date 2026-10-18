@@ -419,6 +419,79 @@ class AuditEvent(Base):
     created_at: Mapped[datetime] = _created()
 
 
+REGISTRY_KINDS = ("module", "template")
+
+
+class RegistryEntry(Base):
+    """One published version of a module or template (FR-126). Immutable; withdrawn by yanking, never deleted or replaced."""
+
+    __tablename__ = "registry_entries"
+    __table_args__ = (
+        UniqueConstraint("organization_id", "name", "version", name="uq_registry_entries_version"),
+        _in("kind", REGISTRY_KINDS, "kind"),
+        _in("visibility", ("org", "instance"), "visibility"),
+    )
+
+    id: Mapped[uuid.UUID] = _id()
+    organization_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    name: Mapped[str] = mapped_column(String(63), nullable=False)
+    version: Mapped[str] = mapped_column(String(64), nullable=False)
+    kind: Mapped[str] = mapped_column(String(10), nullable=False)
+    description: Mapped[str] = mapped_column(String(500), nullable=False, default="")
+    license: Mapped[str] = mapped_column(String(100), nullable=False, default="")
+    visibility: Mapped[str] = mapped_column(String(10), nullable=False, default="org")
+    digest: Mapped[str] = mapped_column(String(64), nullable=False)
+    key_id: Mapped[str] = mapped_column(String(32), nullable=False)
+    artifact_key: Mapped[str] = mapped_column(String(200), nullable=False)
+    manifest: Mapped[dict[str, Any]] = mapped_column(PortableJSON, nullable=False)
+    imported: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    yanked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    yanked_reason: Mapped[str | None] = mapped_column(String(300))
+    published_by: Mapped[uuid.UUID | None] = mapped_column(Uuid)
+    created_at: Mapped[datetime] = _created()
+
+
+class RegistryInstall(Base):
+    """A module version offered to an application as a proposal; used to tell upgrades from local changes."""
+
+    __tablename__ = "registry_installs"
+
+    id: Mapped[uuid.UUID] = _id()
+    application_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("applications.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    package_ref: Mapped[str] = mapped_column(String(130), nullable=False)
+    version: Mapped[str] = mapped_column(String(64), nullable=False)
+    module_key: Mapped[str] = mapped_column(String(63), nullable=False)  # the key the module has in the application
+    source_key: Mapped[str] = mapped_column(String(63), nullable=False, default="")  # the key it has in the package ("" = the same)
+    action: Mapped[str] = mapped_column(String(10), nullable=False, default="install")  # install | uninstall
+    dependency_of: Mapped[str | None] = mapped_column(String(130))  # the package whose install pulled this one in
+    module_hash: Mapped[str] = mapped_column(String(80), nullable=False)
+    proposal_id: Mapped[uuid.UUID | None] = mapped_column(Uuid)
+    installed_by: Mapped[uuid.UUID | None] = mapped_column(Uuid)
+    created_at: Mapped[datetime] = _created()
+
+
+class RegistryRemote(Base):
+    """Another Orchivio server's registry that this organization can search, pull from and push to (docs/REGISTRY.md §5)."""
+
+    __tablename__ = "registry_remotes"
+    __table_args__ = (UniqueConstraint("organization_id", "name", name="uq_registry_remotes_name"),)
+
+    id: Mapped[uuid.UUID] = _id()
+    organization_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    name: Mapped[str] = mapped_column(String(63), nullable=False)
+    base_url: Mapped[str] = mapped_column(String(500), nullable=False)
+    token_ref: Mapped[str | None] = mapped_column(String(300))
+    remote_organization_id: Mapped[str | None] = mapped_column(String(64))  # where pushes go on the remote
+    created_by: Mapped[uuid.UUID | None] = mapped_column(Uuid)
+    created_at: Mapped[datetime] = _created()
+
+
 class GitSync(Base):
     """How an application is synchronised with a Git repository (docs/GIT-SYNC.md). One per application; no secrets, only a reference."""
 
