@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import contextvars
 import json
 import logging
 import re
@@ -10,7 +9,7 @@ import uuid
 
 from orchivio import telemetry
 
-request_id_var: contextvars.ContextVar[str] = contextvars.ContextVar("request_id", default="-")
+request_id_var = telemetry.request_id_var
 _SAFE_ID = re.compile(r"^[A-Za-z0-9._\-]{8,64}$")
 
 logger = logging.getLogger("orchivio")

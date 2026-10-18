@@ -29,6 +29,7 @@ _MIN_ROLE: dict[str, PlatformRole] = {
     "project.read": PlatformRole.VIEWER,
     "model.read": PlatformRole.VIEWER,
     "audit.read": PlatformRole.ADMIN,
+    "logs.read": PlatformRole.EDITOR,  # operational log lines of an application and their AI analysis
     "model.propose": PlatformRole.EDITOR,
     "model.apply": PlatformRole.EDITOR,
     "model.rollback": PlatformRole.EDITOR,
@@ -61,6 +62,7 @@ _RANK = {
 # Actions that additionally need an explicit approval step at this level.
 _ACTION_LEVEL: dict[str, ApprovalLevel] = {
     "model.read": ApprovalLevel.A0,
+    "logs.read": ApprovalLevel.A0,
     "model.propose": ApprovalLevel.A1,
     "model.apply": ApprovalLevel.A2,
     "model.rollback": ApprovalLevel.A2,

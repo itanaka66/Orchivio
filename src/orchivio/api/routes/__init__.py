@@ -11,6 +11,7 @@ from . import (
     inbound,
     integrations,
     jobs,
+    logs,
     mcp,
     mcpservers,
     oidc,
@@ -28,4 +29,4 @@ from . import (
 )
 
 ALL = (auth, orgs, projects, proposals, ai, preview, testruns, tokens, tools, mcp, jobs, delivery, governance, appusers, appauth, webhooks, csvdata, inbound,
-       integrations, mcpservers, processes, tasks, pages, oidc)
+       integrations, mcpservers, processes, tasks, pages, oidc, logs)

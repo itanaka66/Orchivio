@@ -418,6 +418,32 @@ class AuditEvent(Base):
     created_at: Mapped[datetime] = _created()
 
 
+APP_LOG_LEVELS = ("debug", "info", "warning", "error")
+
+
+class AppLog(Base):
+    """Operational log lines of a running application (FR-123): background jobs, webhook deliveries, integration calls.
+
+    Short fixed messages and allow-listed scalar fields only; never record data, URLs, headers or error texts. Pruned by age.
+    """
+
+    __tablename__ = "app_logs"
+    __table_args__ = (
+        _in("level", APP_LOG_LEVELS, "level"),
+        Index("ix_app_logs_app_time", "application_id", "created_at"),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger().with_variant(Integer, "sqlite"), primary_key=True, autoincrement=True)
+    application_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("applications.id", ondelete="CASCADE"), nullable=False)
+    level: Mapped[str] = mapped_column(String(8), nullable=False)
+    source: Mapped[str] = mapped_column(String(24), nullable=False)
+    message: Mapped[str] = mapped_column(String(300), nullable=False)
+    request_id: Mapped[str | None] = mapped_column(String(64))
+    trace_id: Mapped[str | None] = mapped_column(String(32))
+    fields: Mapped[dict[str, Any]] = mapped_column(PortableJSON, nullable=False, default=dict)
+    created_at: Mapped[datetime] = _created()
+
+
 JOB_RUN_STATUS = ("queued", "running", "succeeded", "dead", "cancelled")
 
 

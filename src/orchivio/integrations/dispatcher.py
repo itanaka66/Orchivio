@@ -207,6 +207,9 @@ class Dispatcher:
                 result = self._finish(s, d, ok=ok, status=status, error=error, now=self.clock(), worker=self.id, permanent=permanent)
                 s.commit()
                 telemetry.count("orchivio.webhook.deliveries", outcome=result)
+                telemetry.applog(sub.application_id, logging.INFO if result == "delivered" else logging.ERROR if result == "dead" else logging.WARNING,
+                                 "webhook", f"webhook delivery {result}", webhook=sub.name, event_type=d.event_type, outcome=result,
+                                 status=status or 0, attempt=d.attempt)
             out.delivered += result == "delivered"
             out.retried += result == "retry"
             out.dead += result == "dead"
@@ -221,7 +224,7 @@ class Dispatcher:
                    "Orchivio-Signature": sign(secret, body), "Orchivio-Event-Id": d.event_id, "Orchivio-Event-Type": d.event_type,
                    "Orchivio-Delivery-Id": str(d.id), "Orchivio-Attempt": str(d.attempt)}
         try:
-            resp = self.transport.post(sub.url, headers, body)
+            resp = self.transport.post(sub.url, telemetry.inject(headers), body)
         except DestinationError as e:
             return False, None, f"destination refused: {e}", True
         except OSError as e:

@@ -7,6 +7,7 @@ import pytest
 from opentelemetry.sdk.metrics.export import InMemoryMetricReader
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
 from opentelemetry.trace import SpanKind, StatusCode
+from test_ai_api import ctx as ai_ctx  # noqa: F401 - fixture reused below
 from test_jobs import Clock, seed_low_stock, with_schedule
 from test_jobs import ctx as jobs_ctx  # noqa: F401 - fixtures reused below
 from test_jobs import make_app as make_job_app
@@ -279,3 +280,75 @@ def test_enabled_without_an_endpoint_warns_and_exports_nothing(app, monkeypatch,
     finally:
         telemetry.shutdown()
         app.state.settings.otel_enabled = False
+
+
+# --- AI spans, outbound propagation, OTLP logs ---------------------------------------------------
+
+
+def test_ai_builder_calls_are_client_spans_without_prompts(app, otel, ai_ctx, raw_model):  # noqa: F811
+    from test_ai_api import use
+
+    exporter, reader = otel
+    proj, a, p = ai_ctx
+    use(app, raw_model)
+    secret = "supplier code word PINEAPPLE-7"
+    r = p["editor"].post(f"/applications/{a['id']}/ai/propose", json={"requirements": secret})
+    assert r.status_code == 201, r.text
+    (s,) = spans(exporter, "ai.propose_model")
+    assert s.kind == SpanKind.CLIENT and s.attributes["operation"] == "propose_model"
+    assert s.attributes["ai.attempts"] == 1 and "PINEAPPLE" not in everything(exporter)
+    assert [x.value for x in metrics(reader)["orchivio.ai.calls"]] == [1]
+
+
+def test_outbound_traceparent_is_off_by_default_and_opt_in(app, otel):
+    exporter, _ = otel
+    with telemetry.span("x"):
+        assert telemetry.inject({"a": "b"}) == {"a": "b"}
+    app.state.settings.otel_propagate_outbound = True
+    telemetry.shutdown()
+    telemetry.setup(app.state.settings, version="t", span_exporter=exporter)
+    with telemetry.span("x") as _:
+        h = telemetry.inject({"a": "b"})
+        ids = telemetry.current_ids()
+    assert h["a"] == "b" and h["traceparent"].split("-")[1:3] == list(ids)
+    assert telemetry.inject({"a": "b"}) == {"a": "b"}  # outside any span: nothing to propagate
+    app.state.settings.otel_propagate_outbound = False
+
+
+def test_otlp_log_handler_ships_levels_ids_and_exception_types_only():
+    import logging
+
+    from orchivio.telemetry.logs import attach_log_export
+
+    sent = []
+    h = attach_log_export("http://collector/v1/logs", resource_attrs={"service.name": "t"}, post=lambda u, b: sent.append((u, json.loads(b))), start=False)
+    try:
+        lg = logging.getLogger("orchivio.test")
+        lg.setLevel(logging.INFO)
+        lg.info("hello %s", "world", extra={"fields": {"count": 3, "nested": {"x": 1}}})
+        try:
+            raise ValueError("customer 4711")
+        except ValueError:
+            lg.error("boom", exc_info=True)
+        lg.debug("not shipped")
+        h.flush()
+    finally:
+        h.close()
+    (url, doc), = sent
+    recs = doc["resourceLogs"][0]["scopeLogs"][0]["logRecords"]
+    assert url.endswith("/v1/logs") and [r["body"]["stringValue"] for r in recs] == ["hello world", "boom"]
+    assert recs[1]["severityText"] == "ERROR" and "4711" not in json.dumps(doc) and "ValueError" in json.dumps(recs[1])
+    assert "nested" not in json.dumps(recs[0])
+
+
+def test_otlp_log_handler_drops_instead_of_blocking(monkeypatch):
+    import logging
+
+    from orchivio.telemetry import logs
+
+    monkeypatch.setattr(logs, "MAX_QUEUE", 2)
+    h = logs.OtlpLogHandler("http://x", {}, post=lambda u, b: (_ for _ in ()).throw(OSError("down")), start=False)
+    for i in range(5):
+        h.emit(logging.LogRecord("orchivio", logging.INFO, "f", 1, f"m{i}", None, None))
+    h.flush()
+    assert h.dropped >= 3

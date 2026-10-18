@@ -143,6 +143,8 @@ one owner (`409 last_owner`). Any member may leave an organization.
 | GET/PATCH/DELETE | `/organizations/{id}/policy-packs/{pack}` | read / change rules and status / delete |
 | GET | `/organizations/{id}/governance/compliance`, `/inventory`, `/ai-usage` | governance reports (docs/GOVERNANCE.md) |
 | GET | `/organizations/{id}/governance/audit-export` | audit events as JSON lines or CSV, paged, hashed, itself audited |
+| GET | `/applications/{id}/logs` | application log lines (editor+): filters, newest first, `before_id` paging |
+| POST | `/applications/{id}/logs/analyze` | AI analysis of a recent window of log lines; findings cite line ids |
 | GET | `/healthz`, `/readyz` | liveness / readiness (unauthenticated; docs/OPERATIONS.md) |
 | GET | `/metrics` | Prometheus text; bearer `ORCHIVIO_METRICS_TOKEN`, disabled when unset |
 

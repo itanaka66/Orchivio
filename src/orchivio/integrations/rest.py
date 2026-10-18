@@ -8,6 +8,7 @@ size-limited. Credentials are read from the secret reference at call time and on
 from __future__ import annotations
 
 import json
+import logging
 import time
 from collections.abc import Callable
 from typing import Any, Protocol
@@ -57,12 +58,18 @@ class RestClient:
                 out = self._call(call)
             except IntegrationError:
                 telemetry.count("orchivio.integration.calls", status_class="error")
+                telemetry.applog(self.application_id, logging.ERROR, "integration", "integration call failed",
+                                 integration=call.integration, operation=call.operation, status_class="error")
                 raise
             klass = f"{out.status // 100}xx"
             sp.set_attribute("http.response.status_code", out.status)
             if out.status >= 500:
                 sp.set_error(f"HTTP {out.status}")
         telemetry.count("orchivio.integration.calls", status_class=klass)
+        if out.status >= 400:
+            telemetry.applog(self.application_id, logging.ERROR if out.status >= 500 else logging.WARNING, "integration",
+                             "integration call returned an error status", integration=call.integration, operation=call.operation,
+                             status_class=klass, status=out.status)
         telemetry.record("orchivio.integration.call.duration", time.perf_counter() - started, status_class=klass)
         return out
 
@@ -84,7 +91,7 @@ class RestClient:
             body = json.dumps(call.body, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
             headers["Content-Type"] = "application/json"
         try:
-            resp = self.transport.request(call.method, url, headers, body, timeout=call.timeout_seconds, max_bytes=MAX_RESPONSE_BYTES)
+            resp = self.transport.request(call.method, url, telemetry.inject(headers), body, timeout=call.timeout_seconds, max_bytes=MAX_RESPONSE_BYTES)
         except DestinationError as e:
             raise IntegrationError(f"destination refused: {e}") from e
         except OSError as e:

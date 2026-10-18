@@ -86,6 +86,8 @@ records which request started a run.
 
 `policy_packs` (per organization: name, rules as validated JSON, status).
 
+`app_logs` (per application: level, source, short message, request/trace ids, allow-listed scalar fields; pruned by age).
+
 ### Audit
 `audit_events` — append-only. `plane` (platform/application) and `channel`
 (studio/api/mcp) separate streams. **No foreign keys on purpose:** audit history must outlive
@@ -130,4 +132,4 @@ From DESIGN.md §9.2, by phase: `app_users`, `app_user_roles` (3), `requirements
 `trace_links`, `feedback_items`, `scheduled_jobs_state`, `task_queue` (8), `outbox_events`,
 `webhook_subscriptions`, `mcp_tokens`, `mcp_servers` (9), `environments`,
 `environment_constants`, `deployment_packages` (10), `process_instances`, `user_tasks`,
-`ai_runs`, `kb_documents`, `kb_chunks` (11), `policy_packs` (12).
+`ai_runs`, `kb_documents`, `kb_chunks` (11), `policy_packs` (12), `app_logs` (12).
