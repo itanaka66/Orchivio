@@ -12,7 +12,7 @@ ALLOWED: dict[str, set[str]] = {
     "ai": {"llm", "model", "telemetry"},
     "gitsync": {"integrations", "model", "telemetry"},
     "auth": set(),
-    "ops": {"db", "ports"},
+    "ops": {"auth", "db", "ports"},
     "telemetry": set(),
     "process": {"telemetry", "db", "expr", "logic", "model", "ports", "runtime"},
     "integrations": {"telemetry", "db", "model", "ports", "runtime"},

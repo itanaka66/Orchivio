@@ -9,6 +9,7 @@
     orchivio keygen | verify-package FILE --public-key K        # signed deployment packages (docs/DELIVERY.md)
     orchivio worker [--once] [--interval S]                   # scheduled jobs and the task queue
     orchivio backup | restore | verify-backup FILE            # see docs/OPERATIONS.md
+    orchivio user add --email E --name N [--org SLUG --role R] [--password-stdin]   # scripts/add-user.sh|bat wrap this
 
 A model is a single YAML/JSON file, a directory of canonical files (docs/MODEL-SPEC.md) or a zip.
 """
@@ -130,6 +131,8 @@ def run(args: argparse.Namespace, out: TextIO) -> int:
         return EXIT_OK
     if args.command in ("backup", "restore", "verify-backup"):
         return run_ops(args, out)
+    if args.command == "user":
+        return run_user(args, out)
     if args.command == "worker":
         return run_worker(args, out)
     if args.command == "keygen":
@@ -205,6 +208,33 @@ def run_worker(args: argparse.Namespace, out: TextIO) -> int:
     return EXIT_OK
 
 
+def run_user(args: argparse.Namespace, out: TextIO) -> int:
+    import getpass
+
+    from .api.settings import get_settings
+    from .db import make_engine, make_session_factory
+    from .ops import UserError, add_user
+
+    url = args.database_url or get_settings().database_url  # ORCHIVIO_DATABASE_URL or .env, like the API
+    if args.password_stdin:
+        password = sys.stdin.readline().rstrip("\r\n")
+    elif sys.stdin.isatty():
+        password = getpass.getpass("Password: ")
+        if getpass.getpass("Repeat the password: ") != password:
+            raise CliError("the passwords differ")
+    else:
+        raise CliError("no terminal to ask for a password on; use --password-stdin and pipe it in")
+    try:
+        with make_session_factory(make_engine(url))() as session:
+            r = add_user(session, email=args.email, display_name=args.name, password=password, org_slug=args.org, role=args.role)
+    except UserError as e:
+        print(f"error: {e}", file=sys.stderr)
+        return EXIT_PROBLEMS
+    where = f" in '{r.organization}' as {r.role}" if r.organization else ""
+    print(f"created {r.email} ({r.user_id}){where}", file=out)
+    return EXIT_OK
+
+
 def run_ops(args: argparse.Namespace, out: TextIO) -> int:
     from .db import make_engine
 
@@ -267,6 +297,15 @@ def parser() -> argparse.ArgumentParser:
     w = sub.add_parser("worker", help="plan scheduled jobs and run the background queue")
     w.add_argument("--once", action="store_true", help="one pass, then exit")
     w.add_argument("--interval", type=float, default=15.0)
+    u = sub.add_parser("user", help="manage Studio users")
+    usub = u.add_subparsers(dest="user_command", required=True)
+    ua = usub.add_parser("add", help="create a user (the password is asked for, or read from stdin; never an argument)")
+    ua.add_argument("--email", required=True)
+    ua.add_argument("--name", required=True, help="display name")
+    ua.add_argument("--org", help="slug of an existing organization to add the user to")
+    ua.add_argument("--role", choices=("owner", "admin", "editor", "viewer"), help="role in that organization")
+    ua.add_argument("--password-stdin", action="store_true", help="read the password from the first line of stdin")
+    ua.add_argument("--database-url", help="default: ORCHIVIO_DATABASE_URL, .env, or the built-in default, like the API")
     sub.add_parser("verify-backup").add_argument("file")
     d = sub.add_parser("diff")
     d.add_argument("before")
