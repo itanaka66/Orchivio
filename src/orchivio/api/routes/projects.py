@@ -11,7 +11,7 @@ from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from orchivio.codegen import build_openapi
+from orchivio.codegen import CLIENT_LANGUAGES, build_openapi
 from orchivio.db import BranchError, ModelInvalid, ProposalRepository, RevisionRepository, to_model
 from orchivio.db.models import Application, AppRevision, Branch, Project
 from orchivio.db.proposals import NoChanges
@@ -384,6 +384,21 @@ def revision_openapi(revision_id: uuid.UUID, principal: Principal = Depends(curr
     spec = build_openapi(to_model(rev), version=f"{to_model(rev).application.version}+r{rev.revision_no}")
     spec["info"]["x-orchivio-model-hash"] = rev.model_hash
     return spec
+
+
+@router.get("/revisions/{revision_id}/client.{ext}")
+def revision_client(revision_id: uuid.UUID, ext: str, namespace: str = Query("Orchivio.Client", pattern=r"^[A-Za-z_][A-Za-z0-9_]*(\.[A-Za-z_][A-Za-z0-9_]*)*$", max_length=100),
+                    principal: Principal = Depends(current_principal), db: Session = Depends(get_db)) -> Response:
+    """A typed client for the data API of this revision: ``client.ts`` (TypeScript), ``client.py`` (Python), ``client.cs`` (C#; ``namespace`` names its namespace)."""
+    lang = next((k for k, (e, _g, _m) in CLIENT_LANGUAGES.items() if e == ext), None)
+    if lang is None:
+        raise api_error(404, "not_found", "use client.ts, client.py or client.cs")
+    rev, app, _ = load_revision(db, principal, revision_id, "model.read")
+    _ext, generate, media = CLIENT_LANGUAGES[lang]
+    model = to_model(rev)
+    text = generate(model, namespace=namespace) if lang == "csharp" else generate(model)
+    return Response(text, media_type=f"{media}; charset=utf-8",
+                    headers={"Content-Disposition": f'attachment; filename="{app.key}-r{rev.revision_no}-client.{ext}"', "X-Content-Type-Options": "nosniff"})
 
 
 @router.get("/revisions/{revision_id}/lint")

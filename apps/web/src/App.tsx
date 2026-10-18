@@ -158,7 +158,7 @@ function Studio({ client }: { client: ApiClient }) {
       {user && <OfflinePanel />}
       {user ? (
         <Browser client={client} user={user} onOpen={setOpen} onBoard={setBoard} onPreview={setPreview} onAdmin={setAdmin}
-                 onLogout={signOut} />
+                 onLogout={() => { void client.logout().finally(() => { clearShellCaches(); setUser(null) }) }} />
       ) : (
         <Login client={client} onUser={setUser} />
       )}

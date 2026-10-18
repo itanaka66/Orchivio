@@ -62,6 +62,7 @@ service), **Schema** (data structures only), **Planned**.
 | FR-099 | Preview feedback widget | Partial | Feedback with page, element and optional screenshot, rate limit, triage, AI clustering into proposed stories; widget (element picking, image attach/paste/screen capture) mounted on a Studio preview screen that renders the model's list/form pages with element ids; not the generated production UI |
 | FR-129 | PWA and offline | Partial (PWA) | Studio is installable (manifest, icons, service worker for the shell only, offline page, update prompt, offline bar, safe-area CSS); never caches API data; offline data and sync for additive changes (docs/OFFLINE.md; tested in jsdom only); not tried on real devices; generated applications have no PWA (no UI renderer) |
 | FR-126 | Module registry | Partial | Signed, semver, immutable module and template packages in the running server: publish, search, install/upgrade/remove as proposals, dependencies resolved into one proposal, install under another module key, yank, import/export and pull/push with other servers' registries (trusted keys only), templates, Studio screen; no automatic updates, no backtracking resolution, rename does not change page keys/routes |
+| FR-129 | PWA and offline | Partial (PWA) | Studio is installable (manifest, icons, service worker for the shell only, offline page, update prompt, offline bar, safe-area CSS); never caches API data; no offline data or sync; not tried on real devices; generated applications have no PWA (no UI renderer) |
 | FR-090 | Branch-ready revision graph | Done | `parent_revision_ids`, `branches` |
 | FR-091 | Branches and semantic merge | Done | Three-way merge by element id with typed conflicts and per-conflict resolution; Studio screen for branches and merge; no per-branch preview |
 | FR-052 | Server Flows | Done (preview) | Modelled, validated, edited visually and executed transactionally under the caller's security; no elevation, no production deployment |
@@ -75,7 +76,8 @@ service), **Schema** (data structures only), **Planned**.
 | FR-120 | Model linter | Done | 21 rules, suppressions with justification, blocking errors, stored per revision |
 | FR-030 | CRUD API runtime | Partial | Preview environment only (docs/RUNTIME.md) |
 | FR-032 | OpenAPI for generated apps | Done | `build_openapi`, endpoint and CLI; schemas validated against live responses and request validation in tests |
-| FR-031/033/034/036 | UI renderer, typed clients, data migrations, build export | Planned | |
+| FR-031 | Typed clients | Partial | Generated clients for the data API in TypeScript, Python and C# (types, typed list parameters, permitted operations only, typed flow runs, typed errors); compiled/executed in tests (C# with the .NET SDK); other languages via the OpenAPI document; no pagination helpers or auth handling |
+| FR-033/034/036 | UI renderer, data migrations, build export | Planned | |
 | FR-035 | Preview isolated from production data | Done | Separate database, per-app table prefix; prod requires a different preview URL |
 | FR-040 | Test generation and execution | Done (preview scope) | Access, row-constraint, CRUD, validation cases; reports persisted; run comparison |
 | FR-127 | Explain mode | Done | Read-only; citations are checked against the model |

@@ -166,6 +166,25 @@ Optional; off until `ORCHIVIO_GIT_SYNC_ALLOWED_HOSTS` lists hosts (docs/GIT-SYNC
 runs git as a short-lived child process in a temporary directory (60 s limit, repository size checked after fetch). Tokens are `env:`/`file:`
 references; rotate them like webhook secrets.
 
+## 10. Adding users from the command line
+
+Studio users can sign themselves up while `ORCHIVIO_ALLOW_REGISTRATION` is on; with it off (the recommended production setting) or for the very first
+administrator, create them on the server:
+
+```
+scripts/add-user.sh                                              # asks: e-mail, name, organization (optional), role, password (no echo)
+scripts/add-user.sh -e ann@example.com -n "Ann Lee" -o acme -r editor
+printf '%s
+' "$PW" | scripts/add-user.sh -e ann@example.com -n "Ann Lee" -p    # automation: password on stdin
+scriptsdd-user.bat ann@example.com "Ann Lee" acme editor       # Windows (uses PowerShell for the hidden password prompt)
+orchivio user add --email ann@example.com --name "Ann Lee" --org acme --role editor     # what the scripts call
+```
+
+The password is **never a command-line argument** (process lists, shell history): it is asked for twice without echo, read from stdin (`-p` /
+`--password-stdin`), or, for the scripts, taken from `ORCHIVIO_NEW_PASSWORD`. The same password rules as the API apply, e-mail addresses are unique case-insensitively,
+the organization must already exist (roles: owner, admin, editor, viewer), nothing is changed when anything is wrong, and an audit event `user.created_cli`
+is written (without the password). The database is `ORCHIVIO_DATABASE_URL` / `.env` like the API, or `--database-url`; `ORCHIVIO_BIN` overrides how the scripts start
+the CLI (e.g. `python3 -m orchivio.cli`). Application end users (not Studio users) are managed in the Studio or with `POST /applications/{id}/app-users`.
 ## 9. Serving the Studio as an installable app
 
 Serve `apps/web/dist` over HTTPS from the API's origin; `sw.js`, `index.html` and the manifest must not be HTTP-cached and `/assets/*` can be cached for a year

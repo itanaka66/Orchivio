@@ -39,7 +39,7 @@ def test_the_document_is_valid_openapi(spec):
     validate(spec)
     assert spec["openapi"] == "3.1.0" and spec["info"]["title"] == "Inventory Manager"
     assert {p: sorted(ops) for p, ops in spec["paths"].items()} == {
-        "/data/core.Product": ["get", "post"], "/data/core.Product/{id}": ["delete", "get", "patch"]}
+        "/data/core.Product": ["get", "post"], "/data/core.Product/{id}": ["delete", "get", "patch"], "/flows/core.ReorderLowStock/run": ["post"]}
 
 
 def test_roles_and_row_constraints_are_documented(spec):
@@ -57,7 +57,29 @@ def test_operations_nobody_may_perform_are_omitted(raw_model):
     raw["modules"][0]["pages"] = raw["modules"][0]["pages"][:1]
     spec = build_openapi(AppModel.model_validate(raw))
     assert {p: sorted(ops) for p, ops in spec["paths"].items()} == {
-        "/data/core.Product": ["get"], "/data/core.Product/{id}": ["get"]}
+        "/data/core.Product": ["get"], "/data/core.Product/{id}": ["get"], "/flows/core.ReorderLowStock/run": ["post"]}  # the flow's run_roles are separate
+    validate(spec)
+
+
+def test_only_flows_some_role_may_run_are_documented(raw_model):
+    raw = copy.deepcopy(raw_model)
+    assert "/flows/core.ReorderLowStock/run" in build_openapi(AppModel.model_validate(raw))["paths"]
+    for edit in (lambda f: f.pop("run_roles"), lambda f: f.update(run_roles=[]), lambda f: f.update(run_roles=["nobody"]), lambda f: f.update(kind="client", steps=[], edges=[])):
+        m = copy.deepcopy(raw_model)
+        edit(m["modules"][0]["flows"][0])
+        try:
+            doc = build_openapi(AppModel.model_validate(m))
+        except ValueError:
+            continue  # the edit made the model invalid, which is its own check
+        assert not any(p.startswith("/flows/") for p in doc["paths"]) and "FlowRunResult" not in doc["components"]["schemas"]
+
+
+def test_flow_operation_documents_its_arguments_and_roles(spec):
+    op = spec["paths"]["/flows/core.ReorderLowStock/run"]["post"]
+    assert op["x-orchivio-roles"] == ["viewer", "editor", "admin"] and op["operationId"] == "run_flow_core_ReorderLowStock"
+    assert op["requestBody"]["required"] is True and set(op["responses"]) == {"200", "404", "422"}
+    assert spec["components"]["schemas"]["ReorderLowStockArgs"] == {"type": "object", "properties": {"min_gap": {"type": "integer", "format": "int64"}},
+                                                                   "additionalProperties": False, "required": ["min_gap"]}
     validate(spec)
 
 
@@ -127,6 +149,22 @@ def test_real_responses_match_the_documented_schemas(ctx, spec):
     assert patched.status_code == 200 and problems(spec, "ProductUpdate", {"quantity": 0}) == []
     assert problems(spec, "Product", patched.json()) == [] and patched.json()["status"] == "out_of_stock"
     assert editor.delete(f"{url}/{row['id']}", headers=admin).status_code == 204
+
+
+def test_flow_runs_match_the_documented_schemas(ctx, spec):
+    app, editor, _ = ctx
+    base = f"/applications/{app['id']}/preview"
+    admin = acting("a", "admin")
+    editor.post(f"{base}/data/{PRODUCT}", json={"name": "L", "sku": "low", "quantity": 1, "reorder_level": 5}, headers=admin)
+    args = {"min_gap": 0}
+    assert problems(spec, "ReorderLowStockArgs", args) == [] and problems(spec, "ReorderLowStockArgs", {}) != []
+    assert problems(spec, "ReorderLowStockArgs", {"min_gap": "x"}) != [] and problems(spec, "ReorderLowStockArgs", {"min_gap": 1, "extra": 1}) != []
+    ok = editor.post(f"{base}/flows/core.ReorderLowStock/run", json={"args": args}, headers=admin)
+    assert ok.status_code == 200 and ok.json()["status"] == "succeeded" and problems(spec, "FlowRunResult", ok.json()) == []
+    failed = editor.post(f"{base}/flows/core.ReorderLowStock/run", json={"args": {"min_gap": 10**6}}, headers=admin)  # nothing qualifies: the flow raises
+    assert failed.status_code == 200 and problems(spec, "FlowRunResult", failed.json()) == []
+    for status, resp in {404: editor.post(f"{base}/flows/core.Nope/run", json={}, headers=admin)}.items():
+        assert resp.status_code == status and problems(spec, "Error", resp.json()) == []
 
 
 def test_every_error_the_api_returns_matches_the_error_schema(ctx, spec):

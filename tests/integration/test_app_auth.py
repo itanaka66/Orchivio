@@ -199,7 +199,7 @@ def test_roles_decide_what_end_users_can_do(world, app):
     assert editor.get("/data/core.Product").status_code == 403  # no role, no access (deny by default)
 
 
-def test_flows_run_as_the_signed_in_user(world, app):
+def test_flows_run_as_the_signed_in_user(world, app, raw_model):
     a, p, *_ = world
     o = p["owner"]
     admin = ready_client(app, o, a, "ada", ["admin"])
@@ -209,6 +209,14 @@ def test_flows_run_as_the_signed_in_user(world, app):
     assert denied.status_code == 200 and denied.json()["status"] == "failed"  # the flow's own writes are checked
     ran = admin.post("/flows/ReorderLowStock/run", json={"args": {"min_gap": 0}}).json()
     assert ran["status"] == "succeeded" and set(ran["trace"][0]) == {"step", "status"}
+    from jsonschema import Draft202012Validator
+
+    from orchivio.codegen import build_openapi
+    from orchivio.model import AppModel
+
+    doc = build_openapi(AppModel.model_validate(raw_model))
+    for answer in (ran, denied.json()):  # the end-user answer fits the documented result schema
+        assert list(Draft202012Validator({"$ref": "#/components/schemas/FlowRunResult", "components": doc["components"]}).iter_errors(answer)) == []
     assert admin.post("/flows/Nope/run", json={}).status_code == 404
 
 

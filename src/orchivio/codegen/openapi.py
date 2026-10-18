@@ -203,6 +203,38 @@ class _Gen:
                            "schema": {k: v for k, v in self.value_schema(mod.key, f, for_input=True).items() if k not in ("minimum", "maximum")}})
         return params
 
+    # -- flows --------------------------------------------------------------------------------------
+
+    def runnable_flows(self) -> list[tuple[str, Any, Any]]:
+        """Server flows that some role may run through the application API (``run_roles``), excluding entity hooks: ``(qualified, module, flow)``."""
+        hooks = {f"{m.key}.{h}" for m in self.model.modules for e in m.entities for h in e.hooks.values()}
+        out = []
+        for m in self.model.modules:
+            for f in m.flows:
+                q = f"{m.key}.{f.key}"
+                roles = [r for r in self.model.security.roles if r in (f.run_roles or [])]
+                if f.kind == "server" and roles and q not in hooks:
+                    out.append((q, m, f))
+        return out
+
+    def flow_operation(self, q: str, mod: Any, flow: Any, schema_name: str) -> dict[str, Any]:
+        err = lambda desc: {"description": desc, "content": {"application/json": {"schema": ERROR_REF}}}  # noqa: E731
+        body_schema = {"type": "object", "properties": {"args": {"$ref": f"#/components/schemas/{schema_name}"}}, "additionalProperties": False,
+                       **({"required": ["args"]} if flow.params else {})}
+        return {
+            "operationId": f"run_flow_{q.replace('.', '_')}",
+            "tags": ["flows"],
+            "summary": f"Run the flow {flow.key}" + (f": {flow.description}" if flow.description else ""),
+            "x-orchivio-roles": [r for r in self.model.security.roles if r in (flow.run_roles or [])],
+            "requestBody": {"required": bool(flow.params), "content": {"application/json": {"schema": body_schema}}},
+            "responses": {
+                "200": {"description": "The flow ran; ``status`` says whether it succeeded. A failed run changed nothing.",
+                        "content": {"application/json": {"schema": {"$ref": "#/components/schemas/FlowRunResult"}}}},
+                "404": err("No such flow, or the caller's roles may not run it."),
+                "422": err("The arguments are invalid or the flow cannot be run directly."),
+            },
+        }
+
     def build(self, title: str | None, version: str | None) -> dict[str, Any]:
         app = self.model.application
         paths: dict[str, Any] = {}
@@ -224,6 +256,19 @@ class _Gen:
                 path = base if kind in ("list", "create") else item
                 method = {"list": "get", "create": "post", "read": "get", "update": "patch", "delete": "delete"}[kind]
                 paths.setdefault(path, {})[method] = self.operation(q, kind, access, allowed[kind])
+        flows = self.runnable_flows()
+        if flows:
+            keys = [f.key for _, _, f in flows]
+            schemas["FlowRunResult"] = {"type": "object", "required": ["flow", "status", "steps_executed", "trace"], "additionalProperties": False, "properties": {
+                "flow": {"type": "string"}, "status": {"type": "string", "enum": ["succeeded", "failed"]}, "error": {"type": ["string", "null"]},
+                "error_step": {"type": ["string", "null"]}, "steps_executed": {"type": "integer", "minimum": 0},
+                "trace": {"type": "array", "items": {"type": "object", "required": ["step", "status"], "properties": {"step": {"type": "string"}, "status": {"type": "string"}}}}}}
+            tags.append({"name": "flows", "description": "Server flows the caller's roles may run"})
+            for q, mod, flow in flows:
+                name = f"{flow.key}Args" if keys.count(flow.key) == 1 else f"{mod.key}_{flow.key}Args"
+                props = {p.name: self.value_schema(mod.key, FieldDef(name=p.name, type=p.type), for_input=True) for p in flow.params}
+                schemas[name] = {"type": "object", "properties": props, "additionalProperties": False, **({"required": [p.name for p in flow.params]} if flow.params else {})}
+                paths[f"/flows/{q}/run"] = {"post": self.flow_operation(q, mod, flow, name)}
         return {
             "openapi": "3.1.0",
             "info": {"title": title or app.name, "version": version or app.version,
