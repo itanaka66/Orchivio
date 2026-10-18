@@ -20,6 +20,7 @@ from sqlalchemy import (
     ForeignKey,
     Index,
     Integer,
+    LargeBinary,
     MetaData,
     String,
     Text,
@@ -415,6 +416,85 @@ class AuditEvent(Base):
     target_type: Mapped[str | None] = mapped_column(String(64))
     target_id: Mapped[str | None] = mapped_column(String(64))
     meta: Mapped[dict[str, Any]] = mapped_column("metadata", PortableJSON, nullable=False, default=dict)
+    created_at: Mapped[datetime] = _created()
+
+
+REQUIREMENT_STATUS = ("draft", "accepted", "implemented", "rejected")
+STORY_STATUS = ("proposed", "backlog", "ready", "in_progress", "done", "rejected")
+ITEM_SOURCE = ("manual", "ai", "feedback")
+LINK_TYPES = ("requirement", "story", "element", "revision", "test")
+FEEDBACK_STATUS = ("new", "clustered", "dismissed")
+
+
+class Requirement(Base):
+    """A requirement of a project (FR-098); traced to stories, model elements, revisions and tests."""
+
+    __tablename__ = "requirements"
+    __table_args__ = (_in("status", REQUIREMENT_STATUS, "status"), _in("source", ITEM_SOURCE, "source"))
+
+    id: Mapped[uuid.UUID] = _id()
+    project_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"), nullable=False, index=True)
+    title: Mapped[str] = mapped_column(String(300), nullable=False)
+    body: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    status: Mapped[str] = mapped_column(String(16), nullable=False, default="draft")
+    source: Mapped[str] = mapped_column(String(16), nullable=False, default="manual")
+    created_by: Mapped[uuid.UUID | None] = mapped_column(Uuid)
+    created_at: Mapped[datetime] = _created()
+
+
+class Story(Base):
+    """A story on the board. AI-created stories start as ``proposed`` and need a person to move them to the backlog."""
+
+    __tablename__ = "stories"
+    __table_args__ = (_in("status", STORY_STATUS, "status"), _in("source", ITEM_SOURCE, "source"))
+
+    id: Mapped[uuid.UUID] = _id()
+    project_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"), nullable=False, index=True)
+    requirement_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("requirements.id", ondelete="SET NULL"))
+    title: Mapped[str] = mapped_column(String(300), nullable=False)
+    body: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    acceptance: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    status: Mapped[str] = mapped_column(String(16), nullable=False, default="backlog")
+    source: Mapped[str] = mapped_column(String(16), nullable=False, default="manual")
+    position: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    created_by: Mapped[uuid.UUID | None] = mapped_column(Uuid)
+    created_at: Mapped[datetime] = _created()
+
+
+class TraceLink(Base):
+    __tablename__ = "trace_links"
+    __table_args__ = (
+        UniqueConstraint("project_id", "from_type", "from_id", "to_type", "to_id", name="uq_trace_links_edge"),
+        _in("from_type", ("requirement", "story"), "from_type"),
+        _in("to_type", LINK_TYPES, "to_type"),
+    )
+
+    id: Mapped[uuid.UUID] = _id()
+    project_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"), nullable=False, index=True)
+    from_type: Mapped[str] = mapped_column(String(16), nullable=False)
+    from_id: Mapped[str] = mapped_column(String(200), nullable=False)
+    to_type: Mapped[str] = mapped_column(String(16), nullable=False)
+    to_id: Mapped[str] = mapped_column(String(200), nullable=False)
+    created_by: Mapped[uuid.UUID | None] = mapped_column(Uuid)
+    created_at: Mapped[datetime] = _created()
+
+
+class FeedbackItem(Base):
+    """Feedback captured while previewing an application (FR-099). The text is untrusted."""
+
+    __tablename__ = "feedback_items"
+    __table_args__ = (_in("status", FEEDBACK_STATUS, "status"),)
+
+    id: Mapped[uuid.UUID] = _id()
+    application_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("applications.id", ondelete="CASCADE"), nullable=False, index=True)
+    page_key: Mapped[str] = mapped_column(String(200), nullable=False)
+    element_id: Mapped[str | None] = mapped_column(String(64))
+    body: Mapped[str] = mapped_column(Text, nullable=False)
+    screenshot: Mapped[bytes | None] = mapped_column(LargeBinary)
+    screenshot_type: Mapped[str | None] = mapped_column(String(16))
+    status: Mapped[str] = mapped_column(String(10), nullable=False, default="new")
+    story_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("stories.id", ondelete="SET NULL"))
+    created_by: Mapped[uuid.UUID | None] = mapped_column(Uuid)
     created_at: Mapped[datetime] = _created()
 
 

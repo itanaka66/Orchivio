@@ -141,6 +141,29 @@ class LogAnalysisResult:
     dropped_findings: int = 0
 
 
+class ProposedStory(BaseModel):
+    title: str = Field(max_length=300)
+    body: str = Field(max_length=2000)
+    acceptance: str = Field(default="", max_length=2000)
+    feedback_numbers: list[int] = Field(min_length=1, max_length=100)
+    element_ids: list[str] = Field(default_factory=list, max_length=20)
+
+
+class StoryProposals(BaseModel):
+    stories: list[ProposedStory] = Field(default_factory=list, max_length=10)
+
+
+@dataclass(frozen=True)
+class ClusterResult:
+    stories: list[ProposedStory]
+    usage: Usage
+    attempts: int
+    provider: str
+    model_name: str
+    template: str
+    dropped: int = 0
+
+
 @dataclass(frozen=True)
 class AnalysisResult:
     analysis: Analysis
@@ -254,6 +277,30 @@ class AIBuilder:
                 dropped += 1
         r = v.last_response
         return LogAnalysisResult(LogAnalysis(summary=v.value.summary, findings=kept), v.usage, v.attempts, r.provider, r.model, tpl.ref, dropped)
+
+    @traced("cluster_feedback")
+    def cluster_feedback(self, items: list[dict[str, Any]], elements: dict[str, str]) -> ClusterResult:
+        """Group preview feedback into proposed stories. ``items`` carry a ``number`` the model must cite; stories that cite no
+        known item are dropped, an item is assigned to the first story that cites it, unknown element ids are removed."""
+        tpl = prompts.CLUSTER_FEEDBACK
+        known = {int(i["number"]) for i in items}
+        user = prompts.block("feedback", "\n".join(json.dumps(i, separators=(",", ":"), ensure_ascii=False) for i in items))
+        user += "\n\n" + prompts.block("elements", json.dumps(elements, separators=(",", ":"), ensure_ascii=False))
+        try:
+            v = generate_validated(self.provider, self._request(tpl, user), StoryProposals, max_attempts=self.max_validation_attempts)
+        except StructuredOutputError as e:
+            raise self._failed(e, tpl) from e
+        taken: set[int] = set()
+        kept, dropped = [], 0
+        for s in v.value.stories:
+            nums = [n for n in dict.fromkeys(s.feedback_numbers) if n in known and n not in taken]
+            if not nums:
+                dropped += 1
+                continue
+            taken.update(nums)
+            kept.append(s.model_copy(update={"feedback_numbers": nums, "element_ids": [e for e in s.element_ids if e in elements]}))
+        r = v.last_response
+        return ClusterResult(kept, v.usage, v.attempts, r.provider, r.model, tpl.ref, dropped)
 
     # -- model proposal ----------------------------------------------------------------------
 
