@@ -66,6 +66,11 @@ validation, proposal creation) outside the suite.
 - The bundle is about 138 kB gzipped; no code splitting yet.
 - A flow must exist in a module of an existing revision; creating the first module is not supported.
 
+## Installable app
+
+The Studio is a PWA (manifest, icons, a service worker that caches only the app shell and never the API, offline page, update prompt, offline bar); see
+docs/PWA.md. `public/` holds the static files, `src/pwa/` the registration and UI, `pwa-plugin.ts` stamps a build id into `sw.js`.
+
 ## Administration screens (`src/admin`)
 
 "Open administration" (after choosing an organization, project and application) opens a workspace with a side navigation. What a person
@@ -82,6 +87,7 @@ sees depends on their organization role; the server enforces the same rules agai
 | Single sign-on (OIDC) | admin | configure provider, role mapping, domains, auto-provisioning warning, connection test showing the redirect URI |
 | Webhooks | admin | create, pause/resume with the reason, test, delivery log with payloads and resend |
 | Destinations & API import | admin | destinations and credentials (missing-credential warning), OpenAPI import as a proposal |
+| Module registry | editor (admin publishes) | installed modules and updates, search, install with version range / module key and the resolved steps, upgrade, remove, templates, publish, withdraw, other servers' registries |
 | Git sync | admin | connect, push (optionally a pull request), pull as a proposal |
 | MCP servers | admin (organization) | register, discover tools, enable read-only tools |
 | Governance | admin (organization) | policy packs (JSON rules), compliance, inventory with risk flags, AI usage, audit export links |

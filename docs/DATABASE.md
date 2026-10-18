@@ -88,6 +88,8 @@ records which request started a run.
 
 `requirements`, `stories`, `trace_links` (from requirement/story to story/element/revision/test, unique edge), `feedback_items` (page, element, text, optional screenshot bytes, status, story).
 
+`registry_remotes` (other servers' registries an organization uses: address, token reference, remote organization id), `registry_entries` (published module/template versions: name, semver, kind, visibility, digest, signing key id, manifest, yank state; immutable), `registry_installs` (install and uninstall events per application: package, version, module key, original key if renamed, which package pulled it in, and the module hash used to detect local changes).
+
 `git_syncs` (per application: remote, branches, path, token reference, last push/pull commit).
 
 `app_logs` (per application: level, source, short message, request/trace ids, allow-listed scalar fields; pruned by age).

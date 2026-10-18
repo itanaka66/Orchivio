@@ -115,6 +115,18 @@ Status: ✅ implemented and tested · 🟡 partly / not verified end-to-end · �
 | A46 | Git becomes a way around approval | Pull only creates a proposal; push only writes a non-base branch | ✅ tested |
 | A47 | Orchivio overwrites people's files in the repository | Only canonical-shaped files under the path are replaced; the base branch is never written | ✅ tested |
 
+| A48 | A malicious or tampered package alters an application | Signature over a manifest that pins the model hash; trusted keys only; re-verified from storage on every install; the result is a proposal with the normal validation, policy packs and approval | ✅ tested |
+| A49 | A module smuggles extra permissions or roles | Roles and access rules it brings appear in the diff as security changes (A3); policy packs apply; nothing is applied without approval | ✅ tested |
+| A50 | A published version is silently replaced | Versions are immutable (unique name+version); yanking hides, never deletes | ✅ tested |
+| A51 | Private packages leak to other organizations | `org` visibility readable only by members; others get 404 | ✅ tested |
+| A52 | An upgrade overwrites local work or another module | Upgrades only replace an unmodified module that came from the same package; otherwise refused unless explicitly told | ✅ tested |
+
+| A53 | A remote registry feeds malicious packages or abuses the connection (SSRF, huge downloads, error-text injection) | Pinned transport with the webhook destination policy, size limit, only signed packages from trusted keys are stored, the remote's text is never returned | ✅ tested |
+| A54 | The remote token leaks | Reference only (`env:`/`file:`), sent only as a bearer header to the configured server, never stored or returned | ✅ tested |
+| A55 | A dependency pulls in code the installer did not expect | Dependencies are resolved into the same proposal and listed as steps; each is verified and policy-checked like the module itself; conflicts and cycles refuse | ✅ tested |
+| A56 | A rename hides a changed meaning | The result is validated as part of the proposal; a test requires the renamed module to pass the same generated tests as the original | ✅ tested |
+| A57 | Uninstall breaks or silently deletes things | A proposal only; refused while other modules require it or something else uses it; roles stay; data tables are not dropped by a revision | ✅ tested |
+
 ## 4. Assumptions
 
 - PostgreSQL, the host OS and the TLS terminator are operated securely.

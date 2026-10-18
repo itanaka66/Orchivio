@@ -159,6 +159,18 @@ one owner (`409 last_owner`). Any member may leave an organization.
 | POST | `/applications/{id}/git-sync/push` | commit a revision to the push branch, optionally open a pull request |
 | POST | `/applications/{id}/git-sync/pull` | read the base branch and create a proposal |
 | GET | `/revisions/{id}/client.ts`, `.py`, `.cs` | typed client (TypeScript, Python, C#) for the revision's data API (docs/CLIENTS.md) |
+| POST | `/applications/{id}/registry/publish` | publish a module or template version (admin; docs/REGISTRY.md) |
+| GET | `/registry/packages`, `/registry/packages/{org}/{name}` | search / versions |
+| GET | `/registry/packages/{org}/{name}/{version}/download` | the signed package |
+| POST | `/registry/packages/{org}/{name}/{version}/yank`, `/unyank` | withdraw / restore a version |
+| POST | `/organizations/{id}/registry/import` | add a package signed by a trusted key |
+| POST | `/applications/{id}/registry/uninstall` | propose removing an installed module |
+| GET/PUT/DELETE | `/organizations/{id}/registry/remotes[/{name}]` | other servers' registries |
+| GET | `/organizations/{id}/registry/remotes/{name}/packages` | search a remote registry |
+| POST | `/organizations/{id}/registry/remotes/{name}/pull`, `/push` | fetch from / send to a remote registry |
+| POST | `/applications/{id}/registry/install` | install or upgrade a module as a proposal |
+| GET | `/applications/{id}/registry/installs` | installed modules, state, updates |
+| POST | `/projects/{id}/registry/instantiate` | create an application from a template |
 | GET | `/healthz`, `/readyz` | liveness / readiness (unauthenticated; docs/OPERATIONS.md) |
 | GET | `/metrics` | Prometheus text; bearer `ORCHIVIO_METRICS_TOKEN`, disabled when unset |
 
