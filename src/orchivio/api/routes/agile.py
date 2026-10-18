@@ -12,8 +12,10 @@ import binascii
 import csv
 import io
 import json
+import re
 import uuid
 from collections import defaultdict
+from collections.abc import Callable
 from datetime import timedelta
 from typing import Any
 
@@ -82,7 +84,21 @@ class RequirementPatch(BaseModel):
 
 
 def req_out(r: Requirement) -> dict[str, Any]:
-    return {"id": str(r.id), "title": r.title, "body": r.body, "status": r.status, "source": r.source, "created_at": r.created_at.isoformat()}
+    return {"id": str(r.id), "title": r.title, "body": r.body, "status": r.status, "source": r.source, "version": r.version,
+            "created_at": r.created_at.isoformat()}
+
+
+def _check_version(row: Any, request: Request, out: Callable[[Any], dict[str, Any]]) -> None:
+    """Optimistic concurrency: with ``If-Match: "<version>"`` a change is only made to the version the client saw. Otherwise 409 with the current item, so the
+    client (the Studio's offline outbox) can merge or ask a person. Without the header the change is made as before (last write wins)."""
+    header = request.headers.get("if-match")
+    if header is None:
+        return
+    m = re.fullmatch(r'\s*(?:W/)?"?(\d{1,9})"?\s*', header)
+    if m is None:
+        raise api_error(400, "bad_if_match", "If-Match must be the version of the item, for example 3")
+    if int(m.group(1)) != row.version:
+        raise api_error(409, "version_conflict", "the item was changed by someone else", {"current": out(row)})
 
 
 def _owned(db: Session, model: type, project: Project, item_id: uuid.UUID, what: str):
@@ -124,9 +140,11 @@ def update_requirement(project_id: uuid.UUID, req_id: uuid.UUID, body: Requireme
                        principal: Principal = Depends(current_principal), db: Session = Depends(get_db)) -> dict[str, Any]:
     project = load_project(db, principal, project_id, "story.manage")
     r = _owned(db, Requirement, project, req_id, "requirement")
+    _check_version(r, request, req_out)
     changed = [k for k, v in body.model_dump(exclude_none=True).items()]
     for k in changed:
         setattr(r, k, getattr(body, k))
+    r.version += 1
     audit(db, request, "requirement.updated", actor_id=principal.user_id, org_id=project.organization_id, target_type="requirement", target_id=r.id,
           meta={"fields": changed})
     db.commit()
@@ -138,6 +156,7 @@ def delete_requirement(project_id: uuid.UUID, req_id: uuid.UUID, request: Reques
                        db: Session = Depends(get_db)) -> Response:
     project = load_project(db, principal, project_id, "story.manage")
     r = _owned(db, Requirement, project, req_id, "requirement")
+    _check_version(r, request, req_out)
     _drop_links(db, project, "requirement", r.id)
     db.delete(r)
     audit(db, request, "requirement.deleted", actor_id=principal.user_id, org_id=project.organization_id, target_type="requirement", target_id=r.id)
@@ -216,7 +235,7 @@ class StoryPatch(BaseModel):
 
 def story_out(s: Story) -> dict[str, Any]:
     return {"id": str(s.id), "title": s.title, "body": s.body, "acceptance": s.acceptance, "status": s.status, "source": s.source,
-            "position": s.position, "requirement_id": str(s.requirement_id) if s.requirement_id else None, "created_at": s.created_at.isoformat()}
+            "position": s.position, "version": s.version, "requirement_id": str(s.requirement_id) if s.requirement_id else None, "created_at": s.created_at.isoformat()}
 
 
 def _next_position(db: Session, project_id: uuid.UUID) -> int:
@@ -263,8 +282,10 @@ def update_story(project_id: uuid.UUID, story_id: uuid.UUID, body: StoryPatch, r
     given = body.model_fields_set
     if "requirement_id" in given and body.requirement_id is not None:
         _owned(db, Requirement, project, body.requirement_id, "requirement")
+    _check_version(s, request, story_out)
     for k in given:
         setattr(s, k, getattr(body, k))
+    s.version += 1
     audit(db, request, "story.updated", actor_id=principal.user_id, org_id=project.organization_id, target_type="story", target_id=s.id,
           meta={"fields": sorted(given), "status": s.status})
     db.commit()
@@ -276,6 +297,7 @@ def delete_story(project_id: uuid.UUID, story_id: uuid.UUID, request: Request, p
                  db: Session = Depends(get_db)) -> Response:
     project = load_project(db, principal, project_id, "story.manage")
     s = _owned(db, Story, project, story_id, "story")
+    _check_version(s, request, story_out)
     _drop_links(db, project, "story", s.id)
     db.delete(s)
     audit(db, request, "story.deleted", actor_id=principal.user_id, org_id=project.organization_id, target_type="story", target_id=s.id)

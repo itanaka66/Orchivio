@@ -19,7 +19,9 @@ function setOnline(value: boolean) {
   act(() => { window.dispatchEvent(new Event(value ? 'online' : 'offline')) })
 }
 
-afterEach(() => { vi.restoreAllMocks(); vi.unstubAllGlobals() })
+const stubbed: string[] = []
+function stubNav(name: string, value: unknown) { Object.defineProperty(navigator, name, { value, configurable: true }); stubbed.push(name) }
+afterEach(() => { vi.restoreAllMocks(); vi.unstubAllGlobals(); for (const n of stubbed.splice(0)) delete (navigator as unknown as Record<string, unknown>)[n] })
 
 let captured: Offline | null = null
 function Probe() { captured = useOffline(); return null }
@@ -212,7 +214,7 @@ describe('OfflinePanel', () => {
 function boardClient(over: Record<string, unknown> = {}) {
   return {
     request: vi.fn(async () => ({})),
-    stories: vi.fn(async () => ({ items: [{ id: 's1', title: 'Existing story', body: '', acceptance: '', status: 'backlog', source: 'manual', position: 1, requirement_id: null }] })),
+    stories: vi.fn(async () => ({ items: [{ id: '33333333-3333-4333-8333-333333333333', title: 'Existing story', body: '', acceptance: '', status: 'backlog', source: 'manual', position: 1, requirement_id: null }] })),
     requirements: vi.fn(async () => ({ items: [{ id: 'r1', title: 'Existing requirement', body: '', status: 'draft', source: 'manual' }] })),
     createStory: vi.fn(async (_p: string, title: string) => ({ id: 'new', title })),
     createRequirement: vi.fn(async () => ({ id: 'newr' })),
@@ -232,7 +234,7 @@ describe('Board offline', () => {
     expect(captured!.pending).toBe(0)
   })
 
-  it('keeps a new story on the device while offline, shows it as waiting, and forbids changing existing ones', async () => {
+  it('keeps new and changed stories on the device while offline', async () => {
     const client = boardClient({ stories: vi.fn(async () => { throw new TypeError('offline') }) })
     // a saved copy exists from an earlier visit
     const first = setup(<Board client={boardClient()} projectId={PROJECT} elements={[]} canEdit />)
@@ -246,7 +248,11 @@ describe('Board offline', () => {
     await act(async () => { await captured!.unlock(PASS) })
     expect(await screen.findByText(/You are looking at the copy saved/)).toBeInTheDocument()
     expect(screen.getByText('Existing story')).toBeInTheDocument()
-    expect(screen.queryByLabelText(/Move “Existing story” to/)).toBeNull() // no edits offline
+    // changing an existing story offline is kept on the device and shown as done
+    await userEvent.selectOptions(screen.getAllByRole('combobox')[0]!, 'done')
+    await waitFor(() => expect(captured!.items.map((i) => i.kind)).toEqual(['story_edit']))
+    expect(captured!.items[0]).toMatchObject({ body: { status: 'done', position: 2 }, base: { status: 'backlog', position: 1 } })
+    expect(client.updateStory).not.toHaveBeenCalled()
     await userEvent.type(screen.getByLabelText('New story'), 'Made offline')
     await userEvent.click(screen.getByRole('button', { name: 'Add story' }))
     expect(await screen.findByText('Saved on this device. It will be sent when you are online.')).toBeInTheDocument()
@@ -320,5 +326,63 @@ describe('App offline start', () => {
     render(<App client={client} offline={{ openDatabase: () => openDb(`app-${n++}`), kdfIterations: 1000, syncEveryMs: 0 }} />)
     expect(await screen.findByText(/Offline work was never set up on this device/)).toBeInTheDocument()
     expect(screen.queryByLabelText('Saved projects')).toBeNull()
+  })
+})
+
+describe('conflicts in the panel', () => {
+  it('shows both versions and applies the person’s choice', async () => {
+    const id = '33333333-3333-4333-8333-333333333333'
+    const path = `/projects/${PROJECT}/stories/${id}`
+    const request = vi.fn(async (..._a: unknown[]) => { throw new ApiError(409, 'version_conflict', 'changed', { current: { title: 'Theirs', status: 'in_progress', version: 4 } }) }) as never
+    setup(<OfflinePanel />, { request })
+    await enableOffline()
+    setOnline(false)
+    await waitFor(() => expect(captured!.online).toBe(false))
+    await act(async () => { await captured!.submit({ kind: 'story_edit', path, body: { status: 'done' }, base: { status: 'ready' }, ifMatch: 1, label: 'Pay invoice', project: PROJECT }, vi.fn()) })
+    setOnline(true)
+    expect(await screen.findByText('Someone else changed this item while you were offline.')).toBeInTheDocument()
+    const row = screen.getByRole('row', { name: /status/ })
+    expect(within(row).getByText('done')).toBeInTheDocument()
+    expect(within(row).getByText('in_progress')).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: 'Keep theirs' }))
+    await waitFor(() => expect(captured!.pending).toBe(0))
+  })
+})
+
+describe('storage and wake-ups', () => {
+  it('refuses to keep a change when the browser is nearly out of space, and says so', async () => {
+    stubNav('storage', { estimate: async () => ({ usage: 95, quota: 100 }), persisted: async () => false, persist: async () => true })
+    setup(null)
+    await enableOffline()
+    setOnline(false)
+    await waitFor(() => expect(captured!.online).toBe(false))
+    await expect(captured!.submit(story('x'), vi.fn())).rejects.toThrow(/almost out of storage/)
+    expect(captured!.pending).toBe(0)
+  })
+
+  it('sends what is waiting when the service worker says the connection is back', async () => {
+    const listeners: ((e: MessageEvent) => void)[] = []
+    stubNav('serviceWorker', { addEventListener: (_: string, l: never) => listeners.push(l), removeEventListener: () => undefined, ready: new Promise(() => undefined) })
+    const request = vi.fn(async (..._a: unknown[]) => ({})) as never
+    setup(null, { request })
+    await enableOffline()
+    setOnline(false)
+    await waitFor(() => expect(captured!.online).toBe(false))
+    await act(async () => { await captured!.submit(story('later'), vi.fn()) })
+    // the browser still says offline, but the worker knows better: send now
+    for (const l of listeners) act(() => l({ data: { type: 'OUTBOX_SYNC' } } as MessageEvent))
+    await waitFor(() => expect(request).toHaveBeenCalledTimes(1))
+  })
+
+  it('shows storage use and lets a person ask to keep it or clear saved copies', async () => {
+    const persist = vi.fn(async () => true)
+    stubNav('storage', { estimate: async () => ({ usage: 2 * 1_048_576, quota: 100 * 1_048_576 }), persisted: async () => false, persist })
+    setup(<OfflinePanel />)
+    await enableOffline()
+    await userEvent.click(await screen.findByText(/Offline work/))
+    expect(await screen.findByLabelText('Storage')).toHaveTextContent('2.0 MB of 100 MB')
+    await userEvent.click(screen.getByRole('button', { name: 'Ask the browser to keep it' }))
+    expect(persist).toHaveBeenCalled()
+    await userEvent.click(screen.getByRole('button', { name: 'Delete saved copies' }))
   })
 })

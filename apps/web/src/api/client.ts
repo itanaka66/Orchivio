@@ -1,6 +1,9 @@
 // Thin client for the Orchivio API (docs/API-SPEC.md). Cookie session + CSRF header.
 import type { Flow, Issue, RunResult } from '../flow/types'
 
+/** `If-Match` for a change to an item at the version the person saw (the server answers 409 with its current copy if the item has moved on). */
+const versionHeader = (v?: number): Record<string, string> => (v === undefined ? {} : { 'If-Match': `"${v}"` })
+
 export class ApiError extends Error {
   constructor(readonly status: number, readonly code: string, message: string, readonly details?: unknown) {
     super(message)
@@ -18,8 +21,8 @@ export interface ProposalSummary { id: string; status: string; approval_level: s
 
 export type RequirementStatus = 'draft' | 'accepted' | 'implemented' | 'rejected'
 export type StoryStatus = 'proposed' | 'backlog' | 'ready' | 'in_progress' | 'done' | 'rejected'
-export interface Requirement { id: string; title: string; body: string; status: RequirementStatus; source: string }
-export interface Story { id: string; title: string; body: string; acceptance: string; status: StoryStatus; source: string; position: number; requirement_id: string | null }
+export interface Requirement { id: string; title: string; body: string; status: RequirementStatus; source: string; version?: number }
+export interface Story { id: string; title: string; body: string; acceptance: string; status: StoryStatus; source: string; position: number; requirement_id: string | null; version?: number }
 export interface TraceLink { id: string; from_type: 'requirement' | 'story'; from_id: string; to_type: 'story' | 'element' | 'revision' | 'test'; to_id: string }
 export interface TraceTarget { id: string; name?: string | null; title?: string | null; exists: boolean }
 export interface TraceRow { id: string; title: string; status: string; stories?: string[]; elements: TraceTarget[]; tests: TraceTarget[]; revisions: string[] }
@@ -117,16 +120,16 @@ export class ApiClient {
   // --- requirements, stories, traceability (docs/AGILE.md)
   requirements = (projectId: string) => this.request<{ items: Requirement[] }>('GET', `/projects/${projectId}/requirements`)
   createRequirement = (projectId: string, title: string, body = '') => this.request<Requirement>('POST', `/projects/${projectId}/requirements`, { title, body })
-  updateRequirement = (projectId: string, id: string, patch: Partial<Pick<Requirement, 'title' | 'body' | 'status'>>) => this.request<Requirement>('PATCH', `/projects/${projectId}/requirements/${id}`, patch)
-  deleteRequirement = (projectId: string, id: string) => this.request<void>('DELETE', `/projects/${projectId}/requirements/${id}`)
+  updateRequirement = (projectId: string, id: string, patch: Partial<Pick<Requirement, 'title' | 'body' | 'status'>>, ifMatch?: number) => this.request<Requirement>('PATCH', `/projects/${projectId}/requirements/${id}`, patch, versionHeader(ifMatch))
+  deleteRequirement = (projectId: string, id: string, ifMatch?: number) => this.request<void>('DELETE', `/projects/${projectId}/requirements/${id}`, undefined, versionHeader(ifMatch))
   extractRequirements = (appId: string, text: string) =>
     this.request<{ requirements: Requirement[]; skipped_duplicates: number }>('POST', `/applications/${appId}/requirements/extract`, { text })
   stories = (projectId: string) => this.request<{ items: Story[] }>('GET', `/projects/${projectId}/stories`)
   createStory = (projectId: string, title: string, requirementId?: string) =>
     this.request<Story>('POST', `/projects/${projectId}/stories`, { title, ...(requirementId ? { requirement_id: requirementId } : {}) })
-  updateStory = (projectId: string, id: string, patch: Partial<Pick<Story, 'title' | 'body' | 'acceptance' | 'status' | 'position' | 'requirement_id'>>) =>
-    this.request<Story>('PATCH', `/projects/${projectId}/stories/${id}`, patch)
-  deleteStory = (projectId: string, id: string) => this.request<void>('DELETE', `/projects/${projectId}/stories/${id}`)
+  updateStory = (projectId: string, id: string, patch: Partial<Pick<Story, 'title' | 'body' | 'acceptance' | 'status' | 'position' | 'requirement_id'>>, ifMatch?: number) =>
+    this.request<Story>('PATCH', `/projects/${projectId}/stories/${id}`, patch, versionHeader(ifMatch))
+  deleteStory = (projectId: string, id: string, ifMatch?: number) => this.request<void>('DELETE', `/projects/${projectId}/stories/${id}`, undefined, versionHeader(ifMatch))
   traceLinks = (projectId: string) => this.request<{ items: TraceLink[] }>('GET', `/projects/${projectId}/trace-links`)
   createTraceLink = (projectId: string, link: Omit<TraceLink, 'id'>) => this.request<TraceLink>('POST', `/projects/${projectId}/trace-links`, link)
   deleteTraceLink = (projectId: string, id: string) => this.request<void>('DELETE', `/projects/${projectId}/trace-links/${id}`)

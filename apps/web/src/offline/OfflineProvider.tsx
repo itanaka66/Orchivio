@@ -3,6 +3,7 @@ import type { ApiClient } from '../api/client'
 import { useOnline } from '../pwa/useOnline'
 import { openDb, supported, type Db } from './idb'
 import { loadSnapshot, Outbox, saveSnapshot, syncOutbox, type OutboxItem, type QueuedRequest, type SyncResult } from './outbox'
+import { isFull, requestBackgroundSync, requestPersistent, storageInfo, type StorageInfo } from './storage'
 import { Vault, VaultError } from './vault'
 
 export type Submitted<T> = { queued: false; value: T } | { queued: true; id: number }
@@ -30,8 +31,16 @@ export interface Offline {
   syncNow(): Promise<void>
   retry(id: number): Promise<void>
   discard(id: number): Promise<void>
+  /** A conflict: keep my change (sent on top of the server's copy) or the server's (mine is dropped). */
+  resolve(id: number, keep: 'mine' | 'theirs'): Promise<void>
   /** Send now, or (offline, or when the server cannot be reached) keep it for later. Errors from the server are thrown as they are. */
   submit<T>(req: QueuedRequest, send: () => Promise<T>): Promise<Submitted<T>>
+  /** What the browser lets this site store, and whether it promised to keep it. */
+  storage: StorageInfo
+  /** Ask the browser to keep this data under storage pressure. */
+  keepStorage(): Promise<void>
+  /** Delete the saved copies for reading offline (waiting changes stay). */
+  clearSaved(): Promise<void>
   /** Keep a copy for reading offline (does nothing while locked). */
   snapshot<T>(key: string, data: T): Promise<void>
   /** The data from the server, or the saved copy when the server cannot be reached. */
@@ -62,6 +71,8 @@ export function OfflineProvider({ client, children, openDatabase = () => openDb(
   const [lastSync, setLastSync] = useState<SyncResult | null>(null)
   const [error, setError] = useState('')
   const [foreign, setForeign] = useState(false)
+  const [storage, setStorage] = useState<StorageInfo>({ usage: null, quota: null, persisted: null })
+  const measure = useCallback(async () => { const i = await storageInfo(); setStorage(i); return i }, [])
   const owner = useRef<string | null>(null)
   const busy = useRef(false)
 
@@ -74,6 +85,7 @@ export function OfflineProvider({ client, children, openDatabase = () => openDb(
       outbox.current = new Outbox(d, vault.current)
       setDb(d)
       setEnabled(await vault.current.exists())
+      void measure()
       setPending(await outbox.current.count())
     }, () => setError('Offline storage is not available in this browser.'))
     return () => { live = false }
@@ -101,6 +113,14 @@ export function OfflineProvider({ client, children, openDatabase = () => openDb(
 
   // send what is waiting when the connection comes back, when the vault is unlocked, and now and then while something is waiting
   useEffect(() => { if (online && unlocked && pending > 0) void syncNow() }, [online, unlocked, pending, syncNow])
+  // the service worker wakes the Studio when the browser reports the connection (Background Sync), and a tab coming back to the front tries again
+  useEffect(() => {
+    const wake = () => { if (document.visibilityState === 'visible') void syncNow() }
+    const onMessage = (e: MessageEvent) => { if ((e.data as { type?: string } | null)?.type === 'OUTBOX_SYNC') void syncNow() }
+    document.addEventListener('visibilitychange', wake)
+    navigator.serviceWorker?.addEventListener?.('message', onMessage)
+    return () => { document.removeEventListener('visibilitychange', wake); navigator.serviceWorker?.removeEventListener?.('message', onMessage) }
+  }, [syncNow])
   useEffect(() => {
     if (!online || !unlocked || pending === 0 || syncEveryMs <= 0) return
     const t = setInterval(() => void syncNow(), syncEveryMs)
@@ -108,7 +128,9 @@ export function OfflineProvider({ client, children, openDatabase = () => openDb(
   }, [online, unlocked, pending, syncNow, syncEveryMs])
 
   const api = useMemo<Offline>(() => ({
-    supported: canUse && db !== null, enabled, unlocked, online, pending, items, syncing, lastSync, error, foreign,
+    supported: canUse && db !== null, enabled, unlocked, online, pending, items, syncing, lastSync, error, foreign, storage,
+    async keepStorage() { await requestPersistent(); await measure() },
+    async clearSaved() { await db?.clear('snapshots'); await measure() },
     bindUser(id) { owner.current = id; void checkOwner() },
     async enable(passphrase) {
       setError('')
@@ -128,12 +150,15 @@ export function OfflineProvider({ client, children, openDatabase = () => openDb(
     syncNow,
     async retry(id) { await outbox.current?.retry(id); await refresh(); void syncNow() },
     async discard(id) { await outbox.current?.remove(id); await refresh() },
+    async resolve(id, keep) { await outbox.current?.resolve(id, keep); await refresh(); if (keep === 'mine') void syncNow() },
     async submit<T>(req: QueuedRequest, send: () => Promise<T>): Promise<Submitted<T>> {
       const queue = async (): Promise<Submitted<T>> => {
         if (!enabled) throw new OfflineError('You are offline. Turn on offline work to keep changes on this device until you are connected again.')
         if (!vault.current?.unlocked) throw new OfflineError('You are offline. Unlock offline work to keep this change on this device.')
+        if (isFull(await measure())) throw new OfflineError('This device is almost out of storage for the browser, so the change cannot be kept. Free some space, or delete saved copies under “Offline work”.')
         const id = await outbox.current!.enqueue(req)
         await refresh()
+        void requestBackgroundSync()
         return { queued: true, id }
       }
       if (!online) return queue()
@@ -142,11 +167,11 @@ export function OfflineProvider({ client, children, openDatabase = () => openDb(
         throw e
       }
     },
-    async snapshot(key, data) { if (db && vault.current?.unlocked) await saveSnapshot(db, vault.current, key, data) },
+    async snapshot(key, data) { if (db && vault.current?.unlocked && !isFull(storage)) await saveSnapshot(db, vault.current, key, data) },
     async readThrough<T>(key: string, load: () => Promise<T>) {
       try {
         const data = await load()
-        if (db && vault.current?.unlocked) await saveSnapshot(db, vault.current, key, data)
+        if (db && vault.current?.unlocked && !isFull(storage)) await saveSnapshot(db, vault.current, key, data)
         return { data, stale: false }
       } catch (e) {
         if (!isNetworkError(e) || !db || !vault.current?.unlocked) throw e
@@ -156,7 +181,7 @@ export function OfflineProvider({ client, children, openDatabase = () => openDb(
       }
     },
     async loadSaved<T>(key: string) { return db && vault.current?.unlocked ? loadSnapshot<T>(db, vault.current, key) : null },
-  }), [canUse, db, enabled, unlocked, online, pending, items, syncing, lastSync, error, foreign, checkOwner, refresh, syncNow])
+  }), [canUse, db, enabled, unlocked, online, pending, items, syncing, lastSync, error, foreign, storage, measure, checkOwner, refresh, syncNow])
 
   return <Ctx.Provider value={api}>{children}</Ctx.Provider>
 }

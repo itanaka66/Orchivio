@@ -552,6 +552,7 @@ class Requirement(Base):
     body: Mapped[str] = mapped_column(Text, nullable=False, default="")
     status: Mapped[str] = mapped_column(String(16), nullable=False, default="draft")
     source: Mapped[str] = mapped_column(String(16), nullable=False, default="manual")
+    version: Mapped[int] = mapped_column(Integer, nullable=False, default=1, server_default="1")
     created_by: Mapped[uuid.UUID | None] = mapped_column(Uuid)
     created_at: Mapped[datetime] = _created()
 
@@ -571,6 +572,7 @@ class Story(Base):
     status: Mapped[str] = mapped_column(String(16), nullable=False, default="backlog")
     source: Mapped[str] = mapped_column(String(16), nullable=False, default="manual")
     position: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    version: Mapped[int] = mapped_column(Integer, nullable=False, default=1, server_default="1")
     created_by: Mapped[uuid.UUID | None] = mapped_column(Uuid)
     created_at: Mapped[datetime] = _created()
 
