@@ -17,7 +17,6 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, Query, Request
 from pydantic import BaseModel, ConfigDict, Field
-from sqlalchemy.orm import Session
 
 from orchivio.expr import EvalError, ExprError
 from orchivio.logic import FlowError, FlowRunner
@@ -25,7 +24,7 @@ from orchivio.model.schema import PageAction, PageDef, qualify
 from orchivio.runtime import DataError
 from orchivio.security import STANDARD_ACTIONS, page_access, resolve_access
 
-from ..deps import api_error, get_db, not_found
+from ..deps import api_error, not_found
 from .appauth import Caller, _open, _run, usable
 
 router = APIRouter(tags=["pages"], prefix="/apps/{app_id}")

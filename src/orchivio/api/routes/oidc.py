@@ -25,13 +25,35 @@ from sqlalchemy.orm import Session
 
 from orchivio.auth import hash_token
 from orchivio.db import to_model
-from orchivio.db.models import AppOidcProvider, AppRevision, AppUser, AppUserIdentity, AppUserRole, OidcLoginState
-from orchivio.integrations import DestinationError, SecretUnavailable, check_url, destination_policy, resolve_secret
+from orchivio.db.models import (
+    AppOidcProvider,
+    AppRevision,
+    AppUser,
+    AppUserIdentity,
+    AppUserRole,
+    OidcLoginState,
+)
+from orchivio.integrations import (
+    DestinationError,
+    SecretUnavailable,
+    check_url,
+    destination_policy,
+    resolve_secret,
+)
 from orchivio.integrations.dispatcher import SECRET_REF
 from orchivio.integrations.oidc import OidcError, authorization_url, pkce_pair
 
-from ..deps import Principal, api_error, audit, current_principal, get_db, load_application, not_found, utcnow
-from .appauth import _app, _audit, cookie_path, issue_session
+from ..deps import (
+    Principal,
+    api_error,
+    audit,
+    current_principal,
+    get_db,
+    load_application,
+    not_found,
+    utcnow,
+)
+from .appauth import _app, _audit, issue_session
 
 router = APIRouter(tags=["oidc"])
 

@@ -19,7 +19,17 @@ from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
 from orchivio.db import to_model
-from orchivio.db.models import Application, AppRevision, AppUser, AppUserRole, AuditEvent, ProcessEvent, ProcessInstance, Project, UserTask
+from orchivio.db.models import (
+    Application,
+    AppRevision,
+    AppUser,
+    AppUserRole,
+    AuditEvent,
+    ProcessEvent,
+    ProcessInstance,
+    Project,
+    UserTask,
+)
 from orchivio.logic import FlowHooks, FlowRunner
 from orchivio.model import AppModel
 from orchivio.model.validate import literal_fits

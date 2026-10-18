@@ -71,7 +71,8 @@ def test_viewers_cannot_propose_or_analyze_but_can_explain(app, ctx, raw_model):
     use(app, raw_model)
     assert p["viewer"].post(f"/applications/{a['id']}/ai/propose", json={"requirements": "x"}).status_code == 403
     assert p["viewer"].post(f"/applications/{a['id']}/ai/analyze", json={"requirements": "x"}).status_code == 403
-    detail = p["viewer"].get(f"/revisions/{p['viewer'].get(f'/applications/{a['id']}').json()['current_revision_id']}").json()
+    revision_id = p["viewer"].get(f"/applications/{a['id']}").json()["current_revision_id"]
+    detail = p["viewer"].get(f"/revisions/{revision_id}").json()
     fields = {f["name"]: f["element_id"] for f in detail["model_json"]["modules"][0]["entities"][0]["fields"]}
     use(app, {"explanation": "Status is derived from quantity.", "cited_element_ids": [fields["quantity"]]})
     r = p["viewer"].post(f"/applications/{a['id']}/ai/explain", json={"element_id": fields["status"]})

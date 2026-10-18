@@ -1,8 +1,6 @@
 import copy
 import uuid
 
-import pytest
-
 from orchivio.db import make_engine
 from orchivio.model import AppModel, assign_element_ids, model_hash
 from orchivio.runtime import service as svc

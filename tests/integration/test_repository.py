@@ -2,11 +2,17 @@ import copy
 import uuid
 
 import pytest
-from tests_support import load_yaml
 
-from orchivio.db import ModelInvalid, NotFound, RevisionRepository, make_engine, make_session_factory
+from orchivio.db import (
+    ModelInvalid,
+    NotFound,
+    RevisionRepository,
+    make_engine,
+    make_session_factory,
+)
 from orchivio.db.models import Application, AppRevision, AuditEvent, Organization, Project, User
 from orchivio.model import AppModel, migrate_to_latest
+from tests_support import load_yaml
 
 
 @pytest.fixture

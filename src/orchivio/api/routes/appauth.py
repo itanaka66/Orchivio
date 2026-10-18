@@ -21,12 +21,30 @@ from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from orchivio.auth import DUMMY_HASH, hash_password, hash_token, matches, needs_rehash, new_token, password_problem, verify_password
+from orchivio.auth import (
+    DUMMY_HASH,
+    hash_password,
+    hash_token,
+    matches,
+    needs_rehash,
+    new_token,
+    password_problem,
+    verify_password,
+)
 from orchivio.db import to_model
-from orchivio.db.models import Application, AppRevision, AppSession, AppUser, AppUserRole, AuditEvent, Project
+from orchivio.db.models import (
+    Application,
+    AppRevision,
+    AppSession,
+    AppUser,
+    AppUserRole,
+    AuditEvent,
+    Project,
+)
 from orchivio.logic import FlowError, FlowHooks, FlowRunner
 from orchivio.model import AppModel
-from orchivio.runtime import AppData, AppUser as RuntimeUser, DataError, PreviewNotBuilt, PreviewStale
+from orchivio.runtime import AppData, DataError, PreviewNotBuilt, PreviewStale
+from orchivio.runtime import AppUser as RuntimeUser
 
 from ..deps import api_error, get_db, not_found, utcnow
 from ..observability import request_id_var

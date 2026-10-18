@@ -19,7 +19,7 @@ from orchivio.model.schema import FlowDef, FlowTestCase
 from orchivio.ports import MockIntegrations
 from orchivio.runtime import AppUser, DataError, PreviewStore
 
-from .engine import FlowResult, FlowRunner, Limits
+from .engine import DEFAULT_LIMITS, FlowResult, FlowRunner, Limits
 from .hooks import FlowHooks
 
 
@@ -32,7 +32,7 @@ class FlowTestOutcome:
 
 
 def run_flow_test(model: AppModel, model_hash: str, engine: Engine, flow_key: str, case: FlowTestCase,
-                  limits: Limits = Limits()) -> FlowTestOutcome:
+                  limits: Limits = DEFAULT_LIMITS) -> FlowTestOutcome:
     """Run one test. ``flow_key`` is the qualified key (``module.Flow``)."""
     app_id = uuid.uuid4()
     store = PreviewStore(engine)

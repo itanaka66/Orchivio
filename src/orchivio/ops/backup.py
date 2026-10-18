@@ -193,6 +193,7 @@ def restore(data: bytes, engine: Engine, *, artifacts_dir: Path | str | None = N
     report = RestoreReport(excluded=list(manifest.get("excluded_tables", [])))
     dialect = engine.dialect.name
     ordered = [known[t.name] for t in Base.metadata.sorted_tables if t.name in manifest["tables"]]
+    patches: list[tuple[Table, Any, Any, dict[str, Any]]] = []  # forward references, applied once every table is in
     with engine.begin() as conn:
         current = conn.execute(text("SELECT version_num FROM alembic_version")).scalar()
         if current != manifest["schema_revision"]:
@@ -219,14 +220,16 @@ def restore(data: bytes, engine: Engine, *, artifacts_dir: Path | str | None = N
                     batch = []
             if batch:
                 conn.execute(insert(t), batch)
-            for key, patch in later:
-                if patch:
-                    conn.execute(update(t).where(pk == key).values(**patch))
+            patches += [(t, pk, key, patch) for key, patch in later if patch]
             _resync_sequence(conn, t, dialect)
             report.tables[t.name] = manifest["tables"][t.name]["rows"]
             got = conn.execute(select(func.count()).select_from(t)).scalar_one()
             if got != report.tables[t.name]:
                 raise BackupError(f"{t.name}: restored {got} rows, expected {report.tables[t.name]}")
+        # PostgreSQL checks foreign keys at once, so a column pointing at a table restored later (applications ->
+        # app_revisions) can only be filled in after every table has its rows.
+        for t, pk, key, patch in patches:
+            conn.execute(update(t).where(pk == key).values(**patch))
     if artifacts_dir is not None and manifest["artifacts"]:
         store = LocalArtifactStore(artifacts_dir)
         for key in manifest["artifacts"]:

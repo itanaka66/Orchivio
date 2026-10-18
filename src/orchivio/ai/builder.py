@@ -14,6 +14,7 @@ from typing import Any
 from pydantic import BaseModel, ConfigDict, Field
 
 from orchivio.llm import (
+    NO_USAGE,
     LLMProvider,
     LLMRequest,
     Message,
@@ -40,7 +41,7 @@ from . import prompts
 class BuilderError(Exception):
     """The provider could not produce an acceptable result. ``issues`` explains why."""
 
-    def __init__(self, message: str, *, issues: list[Issue] | None = None, usage: Usage = Usage(),
+    def __init__(self, message: str, *, issues: list[Issue] | None = None, usage: Usage = NO_USAGE,
                  attempts: int = 0, template: str = "") -> None:
         super().__init__(message)
         self.issues = issues or []
@@ -238,7 +239,7 @@ class AIBuilder:
         known = {e["element_id"] for e in ctx["elements"]}
         req = self._request(tpl, user)
         total, attempts = Usage(), 0
-        for round_ in range(2):
+        for _round in range(2):
             try:
                 v = generate_validated(self.provider, req, Explanation, max_attempts=self.max_validation_attempts)
             except StructuredOutputError as e:
@@ -256,7 +257,7 @@ class AIBuilder:
                            template=tpl.ref)
 
     @staticmethod
-    def _failed(e: StructuredOutputError, tpl: prompts.Template, usage: Usage = Usage(), attempts: int = 0) -> BuilderError:
+    def _failed(e: StructuredOutputError, tpl: prompts.Template, usage: Usage = NO_USAGE, attempts: int = 0) -> BuilderError:
         for a in e.attempts:
             usage = usage + a.usage
         return BuilderError(f"no valid output from the model: {e.errors[-1] if e.errors else 'unknown'}",

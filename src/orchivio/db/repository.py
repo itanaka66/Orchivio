@@ -19,6 +19,7 @@ from sqlalchemy.orm import Session
 
 from orchivio.model import (
     AppModel,
+    Conflict,
     Finding,
     Issue,
     ModelDiff,
@@ -27,7 +28,6 @@ from orchivio.model import (
     build_refs,
     diff_models,
     has_errors,
-    Conflict,
     lint,
     merge,
     model_hash,
@@ -55,7 +55,7 @@ class MergeOutcome:
     all_conflicts: list[Conflict] = field(default_factory=list)
     issues: list[Issue] = field(default_factory=list)
     diff: ModelDiff | None = None
-    revision: "AppRevision | None" = None
+    revision: AppRevision | None = None
     merged_from_both: int = 0
 
 
@@ -327,7 +327,8 @@ class RevisionRepository:
             raise BranchError("a branch cannot be merged into itself", "same_branch")
         app = self._application(application_id)
         s_branch = self._branch(app, source) if source != MAIN else self._main_branch(app)
-        t_branch = self._branch(app, target) if target != MAIN else self._main_branch(app)
+        if target != MAIN:
+            self._branch(app, target)  # the target must exist
         s_head, t_head = self._head(app, source), self._head(app, target)
         if s_head is None or t_head is None:
             raise BranchError("both branches need at least one revision", "no_revision")

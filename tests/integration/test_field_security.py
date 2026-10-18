@@ -3,7 +3,7 @@
 import copy
 
 import pytest
-from test_app_auth import NEW_PW, PW, AppClient, add_user, ready_client
+from test_app_auth import ready_client
 from test_tenancy import make_org
 
 from orchivio.model import AppModel, assign_element_ids, diff_models, migrate_to_latest

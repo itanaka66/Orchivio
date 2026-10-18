@@ -26,7 +26,7 @@ from typing import Any
 
 from pydantic import ValidationError
 
-from .schema import AppModel, ApplicationInfo, LintSuppression, ModuleDef, SecurityModel
+from .schema import ApplicationInfo, AppModel, LintSuppression, ModuleDef, SecurityModel
 
 ROOT = "root"
 APP = "application"

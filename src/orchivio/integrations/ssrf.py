@@ -63,7 +63,10 @@ def is_public(address: str) -> bool:
     return ip.is_global and not (ip.is_multicast or ip.is_unspecified or ip.is_reserved or ip.is_loopback or ip.is_link_local)
 
 
-def check_url(url: str, policy: Policy = Policy()) -> Destination:
+DEFAULT_POLICY = Policy()
+
+
+def check_url(url: str, policy: Policy = DEFAULT_POLICY) -> Destination:
     if len(url) > 2000 or any(c in url for c in "\r\n\t "):
         raise DestinationError("the URL is malformed")
     try:
@@ -111,7 +114,7 @@ def system_resolver(host: str, port: int) -> list[str]:
     return seen
 
 
-def resolve_public(dest: Destination, policy: Policy = Policy(), resolver: Resolver = system_resolver) -> list[str]:
+def resolve_public(dest: Destination, policy: Policy = DEFAULT_POLICY, resolver: Resolver = system_resolver) -> list[str]:
     """Addresses to connect to. One non-public answer rejects the whole name (no 'pick the good one')."""
     addresses = [dest.literal_ip] if dest.literal_ip else resolver(dest.host, dest.port)
     if not addresses:

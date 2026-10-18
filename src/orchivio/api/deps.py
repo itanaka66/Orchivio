@@ -14,8 +14,8 @@ from sqlalchemy.orm import Session
 
 from orchivio.auth import API_TOKEN_PREFIX, hash_token, matches
 from orchivio.db.models import (
-    Application,
     ApiToken,
+    Application,
     AppRevision,
     AuditEvent,
     Membership,

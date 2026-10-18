@@ -2,10 +2,10 @@ import copy
 from datetime import UTC, datetime, timedelta
 
 import pytest
-from tests_support import with_process
 
 from orchivio.model import AppModel, assign_element_ids, migrate_to_latest, validate_model
 from orchivio.process import Machine, ProcessError, State, resolve_definition
+from tests_support import with_process
 
 T0 = datetime(2026, 1, 1, 9, 0, tzinfo=UTC)
 

@@ -270,7 +270,7 @@ def random_edits(model, rnd, count, *, additive=True):
     from orchivio.model.schema import FieldDef
 
     m = model.model_copy(deep=True)
-    for n in range(count):
+    for _n in range(count):
         kinds = ["field-prop", "entity-prop", "step-config", "label", "remove-field"]
         if additive:
             kinds += ["enum-value", "role", "move-step", "add-field", "reorder"]

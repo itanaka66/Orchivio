@@ -4,12 +4,12 @@ from datetime import timedelta
 
 from fastapi.testclient import TestClient
 from sqlalchemy import select
-from tests_support import Api
 
 from orchivio.api import create_app
 from orchivio.api.deps import utcnow
 from orchivio.api.settings import Settings
 from orchivio.db.models import AuditEvent, User, UserSession
+from tests_support import Api
 
 GOOD = {"email": "alice@example.com", "password": "correct horse battery", "display_name": "Alice"}
 

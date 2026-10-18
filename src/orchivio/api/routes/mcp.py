@@ -31,11 +31,18 @@ from sqlalchemy.orm import Session
 from orchivio import __version__
 from orchivio.db import ModelInvalid, ProposalRepository, to_model
 from orchivio.db.proposals import NoChanges
-from orchivio.model import flatten
+from orchivio.model import flatten, validate_model
 from orchivio.model import lint as lint_model
-from orchivio.model import validate_model
 
-from ..deps import Principal, api_error, audit, current_principal, get_db, load_application, load_revision
+from ..deps import (
+    Principal,
+    api_error,
+    audit,
+    current_principal,
+    get_db,
+    load_application,
+    load_revision,
+)
 from ..modelio import load_model
 from .projects import element_usages, list_applications, revision_lint
 from .proposals import proposal_detail

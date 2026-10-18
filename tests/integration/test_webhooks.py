@@ -10,8 +10,15 @@ import pytest
 from sqlalchemy import select
 from test_tenancy import add_member, make_org
 
-from orchivio.db.models import AuditEvent, WebhookDelivery, WebhookSubscription
-from orchivio.integrations import DestinationError, Dispatcher, PinnedTransport, Policy, Response, verify_signature
+from orchivio.db.models import AuditEvent, WebhookDelivery
+from orchivio.integrations import (
+    DestinationError,
+    Dispatcher,
+    PinnedTransport,
+    Policy,
+    Response,
+    verify_signature,
+)
 from orchivio.runtime import AppUser, outbox
 
 SECRET = "whsec_test_secret_value"
@@ -194,7 +201,7 @@ def test_delivery_is_signed_cloudevents_json_with_only_the_chosen_fields(world, 
     assert (res.relayed, res.created, res.delivered) == (2, 5, 5)
 
     by_url = {}
-    for url, headers, body in t.sent:
+    for _url, headers, body in t.sent:
         assert verify_signature(SECRET, headers["Orchivio-Signature"], body)
         ev = json.loads(body)
         assert headers["Orchivio-Event-Id"] == ev["id"] and headers["Orchivio-Event-Type"] == ev["type"]

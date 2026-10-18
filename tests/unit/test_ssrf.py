@@ -1,6 +1,14 @@
 import pytest
 
-from orchivio.integrations import DestinationError, Policy, check_url, is_public, resolve_public, sign, verify_signature
+from orchivio.integrations import (
+    DestinationError,
+    Policy,
+    check_url,
+    is_public,
+    resolve_public,
+    sign,
+    verify_signature,
+)
 
 
 @pytest.mark.parametrize("addr", ["8.8.8.8", "1.1.1.1", "93.184.216.34", "2606:4700:4700::1111"])

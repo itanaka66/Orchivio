@@ -15,7 +15,6 @@ from orchivio.model import (
     build_archive,
     diff_models,
     flatten,
-    has_errors,
     migrate_to_latest,
     read_archive,
     unflatten,

@@ -3,7 +3,13 @@ import copy
 import pytest
 
 from orchivio.integrations.openapi_import import ImportProblem, import_openapi, pascal, snake
-from orchivio.model import AppModel, assign_element_ids, has_errors, migrate_to_latest, validate_model
+from orchivio.model import (
+    AppModel,
+    assign_element_ids,
+    has_errors,
+    migrate_to_latest,
+    validate_model,
+)
 
 SPEC = {
     "openapi": "3.0.3",

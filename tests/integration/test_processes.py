@@ -1,19 +1,26 @@
 """Processes and the task inbox: starting, visibility, claiming, delegation, timers, escalation, failure and control."""
 
-import copy
 from datetime import timedelta
 
 import pytest
 from sqlalchemy import select
 from test_app_auth import AppClient, add_user, ready_client
 from test_tenancy import add_member, make_org
-from tests_support import with_process
 
-from orchivio.db.models import AuditEvent, ProcessInstance, UserTask
-from orchivio.model import AppModel, assign_element_ids, build_archive, diff_models, flatten, migrate_to_latest, read_archive, unflatten
-from orchivio.process import ProcessService, ServiceError
-from orchivio.process.service import aware
 from orchivio.api.deps import utcnow
+from orchivio.db.models import AuditEvent, ProcessInstance, UserTask
+from orchivio.model import (
+    AppModel,
+    assign_element_ids,
+    build_archive,
+    diff_models,
+    flatten,
+    migrate_to_latest,
+    read_archive,
+    unflatten,
+)
+from orchivio.process import ProcessService, ServiceError
+from tests_support import with_process
 
 
 @pytest.fixture
@@ -119,9 +126,10 @@ def test_delegation_goes_only_to_people_who_could_do_the_work(world, app):
     assert u["ed"].post(f"/tasks/{tid}/delegate", json={"username": "alice"}).json()["error"]["code"] == "invalid_delegate"  # lacks the role
     assert u["ed"].post(f"/tasks/{tid}/delegate", json={"username": "nobody"}).status_code == 404
     assert u["ed"].post(f"/tasks/{tid}/delegate", json={"username": "ed"}).json()["error"]["code"] == "invalid_delegate"
-    owner.patch(f"/app-users/{next(x['id'] for x in owner.get(f'/applications/{a['id']}/app-users').json()['items'] if x['username'] == 'bob')}", json={"status": "disabled"})
+    bob_id = next(x["id"] for x in owner.get(f"/applications/{a['id']}/app-users").json()["items"] if x["username"] == "bob")
+    owner.patch(f"/app-users/{bob_id}", json={"status": "disabled"})
     assert u["ed"].post(f"/tasks/{tid}/delegate", json={"username": "bob"}).status_code == 404  # disabled users are not delegates
-    owner.patch(f"/app-users/{next(x['id'] for x in owner.get(f'/applications/{a['id']}/app-users').json()['items'] if x['username'] == 'bob')}", json={"status": "active"})
+    owner.patch(f"/app-users/{bob_id}", json={"status": "active"})
     bob = AppClient(app, a["id"])
     bob.login("bob", "a much better pass phrase 2")
     r = u["ed"].post(f"/tasks/{tid}/delegate", json={"username": "bob"})

@@ -15,7 +15,15 @@ from orchivio.db.models import AppRevision, JobRun
 from orchivio.jobs import queue, scheduled_flows
 from orchivio.model.cron import CronError, parse_cron
 
-from ..deps import Principal, api_error, audit, current_principal, get_db, load_application, not_found
+from ..deps import (
+    Principal,
+    api_error,
+    audit,
+    current_principal,
+    get_db,
+    load_application,
+    not_found,
+)
 from ..schemas import Page
 
 router = APIRouter(tags=["jobs"])

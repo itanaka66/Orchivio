@@ -26,7 +26,13 @@ from sqlalchemy.dialects import postgresql, sqlite
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session, sessionmaker
 
-from orchivio.db.models import Application, AuditEvent, Project, WebhookDelivery, WebhookSubscription
+from orchivio.db.models import (
+    Application,
+    AuditEvent,
+    Project,
+    WebhookDelivery,
+    WebhookSubscription,
+)
 from orchivio.runtime import outbox
 
 from .ssrf import DestinationError

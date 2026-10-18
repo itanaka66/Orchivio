@@ -11,10 +11,17 @@ from sqlalchemy import desc, func, select
 from sqlalchemy.orm import Session
 
 from orchivio.db.models import ProcessEvent, ProcessInstance, UserTask
-from orchivio.process import ProcessService, ServiceError
+from orchivio.process import ServiceError
 from orchivio.process.service import aware
 
-from ..deps import Principal, api_error, current_principal, get_db, load_application, not_found, utcnow
+from ..deps import (
+    Principal,
+    current_principal,
+    get_db,
+    load_application,
+    not_found,
+    utcnow,
+)
 from ..schemas import Page
 from .tasks import failure, service, task_out
 

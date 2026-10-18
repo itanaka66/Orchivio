@@ -151,7 +151,7 @@ def _(c: _Ctx):
 @rule("sec-unconstrained-write", "warning", "security", "Write access without a row constraint on user-owned data",
       "The entity has a reference to the user but a role can change any user's rows.")
 def _(c: _Ctx):
-    for mod, ent, q, _p in c.entities():
+    for _mod, ent, q, _p in c.entities():
         owner_fields = [f for f in ent.fields if f.type == "ref:system.User"]
         if not owner_fields:
             continue
@@ -226,7 +226,7 @@ def _(c: _Ctx):
 @rule("perf-reference-without-index", "info", "performance", "Reference field without an index",
       "Joins and cascades on unindexed reference fields get slower as data grows.")
 def _(c: _Ctx):
-    for mod, ent, _q, path in c.entities():
+    for _mod, ent, _q, path in c.entities():
         indexed = _indexed_fields(ent)
         for fi, f in enumerate(ent.fields):
             parsed = parse_field_type(f.type)
@@ -313,7 +313,7 @@ def _(c: _Ctx):
 @rule("maint-long-expression", "info", "maintainability", "Very long expression",
       "Expressions over 300 characters are hard to review; consider computed fields.")
 def _(c: _Ctx):
-    for mod, ent, _q, path in c.entities():
+    for _mod, ent, _q, path in c.entities():
         for fi, f in enumerate(ent.fields):
             for attr, src in (("computed/expr", f.computed.expr if f.computed else None), ("default_expr", f.default_expr)):
                 if src and len(src) > 300:

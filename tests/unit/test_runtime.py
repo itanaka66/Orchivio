@@ -9,7 +9,6 @@ from orchivio.db import make_engine
 from orchivio.model import AppModel, assign_element_ids, model_hash
 from orchivio.ports import InMemoryAuditSink
 from orchivio.runtime import (
-    AppData,
     AppUser,
     Conflict,
     Forbidden,
@@ -214,17 +213,17 @@ def typed(tmp_path):
     return build(tmp_path, raw)[0]
 
 
-I = "m.Item"
+ITEM = "m.Item"
 
 
 def test_types_roundtrip_and_stored_computed(typed):
     s = typed.create("m.Supplier", ADMIN, {"name": "ACME"})
-    row = typed.create(I, ADMIN, {"name": "bolt", "qty": 4, "price": "2.50", "due": "2026-03-01",
+    row = typed.create(ITEM, ADMIN, {"name": "bolt", "qty": 4, "price": "2.50", "due": "2026-03-01",
                                   "seen": "2026-03-01T09:00:00+09:00", "meta": {"k": [1]}, "supplier": s["id"]})
     assert row["total"] == "10.00000000" and row["active"] is True and row["label"] == "bolt xy"
     assert row["due"] == "2026-03-01" and row["seen"].startswith("2026-03-01T00:00:00") and row["meta"] == {"k": [1]}
-    assert typed.update(I, ADMIN, row["id"], {"qty": 10})["total"] == "25.00000000"  # recomputed on update
-    assert typed.update(I, ADMIN, row["id"], {"price": 1})["total"] == "10.00000000"
+    assert typed.update(ITEM, ADMIN, row["id"], {"qty": 10})["total"] == "25.00000000"  # recomputed on update
+    assert typed.update(ITEM, ADMIN, row["id"], {"price": 1})["total"] == "10.00000000"
 
 
 @pytest.mark.parametrize("patch,field", [
@@ -234,17 +233,17 @@ def test_types_roundtrip_and_stored_computed(typed):
 ])
 def test_type_validation(typed, patch, field):
     with pytest.raises(Invalid) as e:
-        typed.create(I, ADMIN, {"name": "n", "qty": 1, "price": 1, **patch})
+        typed.create(ITEM, ADMIN, {"name": "n", "qty": 1, "price": 1, **patch})
     assert e.value.details[0]["field"] == field
 
 
 def test_composite_unique_and_reference_protection(typed):
     s = typed.create("m.Supplier", ADMIN, {"name": "ACME"})
     base = {"name": "bolt", "qty": 1, "price": 1, "supplier": s["id"]}
-    typed.create(I, ADMIN, base)
+    typed.create(ITEM, ADMIN, base)
     with pytest.raises(Conflict):
-        typed.create(I, ADMIN, base)
-    typed.create(I, ADMIN, {**base, "qty": 2})
+        typed.create(ITEM, ADMIN, base)
+    typed.create(ITEM, ADMIN, {**base, "qty": 2})
     with pytest.raises(Conflict):
         typed.delete("m.Supplier", ADMIN, s["id"])  # still referenced
 
@@ -274,7 +273,7 @@ def test_synthetic_references_respect_dependencies(typed):
     summary = generate(typed.schema, typed, rows_per_entity=8, seed=3)
     assert summary["m.Supplier"]["inserted"] == 8 and summary["m.Item"]["inserted"] > 0
     suppliers = {r["id"] for r in typed.list("m.Supplier", ADMIN, limit=200)["items"]}
-    items = typed.list(I, ADMIN, limit=200)["items"]
+    items = typed.list(ITEM, ADMIN, limit=200)["items"]
     assert all(i["supplier"] is None or i["supplier"] in suppliers for i in items)
     assert all(Decimal(i["total"]) == Decimal(i["price"]) * i["qty"] for i in items)
     assert generate(typed.schema, typed, rows_per_entity=10_000, seed=1)["m.Supplier"]["inserted"] <= 200

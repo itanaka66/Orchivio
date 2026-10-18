@@ -29,7 +29,6 @@ from orchivio.runtime import (
     generate,
     make_row,
 )
-
 from orchivio.security import resolve_access
 
 from .cases import Case, generate_cases
@@ -237,14 +236,14 @@ class Runner:
                         if not holds(self.data.eval_record(c.entity, current, user)):
                             continue  # this role cannot touch the fixture row; nothing to compare
                         expected = holds(self.data.eval_record(c.entity, {**current, f.name: value}, user))
-                        attempt = lambda: self.data.update(c.entity, user, target, {f.name: value})  # noqa: E731
+                        attempt = lambda target=target, f=f, value=value: self.data.update(c.entity, user, target, {f.name: value})  # noqa: E731
                     else:
                         row = self._row_for(c.entity, uid)
                         if row is None:
                             continue
                         row[f.name] = value
                         expected = holds(self.data.candidate_record(c.entity, user, row))
-                        attempt = lambda: self.data.create(c.entity, user, row)  # noqa: E731
+                        attempt = lambda row=row: self.data.create(c.entity, user, row)  # noqa: E731
                 except (_Skip, Invalid, Conflict, StopIteration):
                     continue
                 try:

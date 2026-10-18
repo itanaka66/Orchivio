@@ -12,9 +12,9 @@ from datetime import datetime
 from typing import Any
 
 from sqlalchemy import (
-    Boolean,
     JSON,
     BigInteger,
+    Boolean,
     CheckConstraint,
     DateTime,
     ForeignKey,
@@ -23,8 +23,8 @@ from sqlalchemy import (
     MetaData,
     String,
     Text,
-    UniqueConstraint,
     TypeDecorator,
+    UniqueConstraint,
     Uuid,
     func,
 )

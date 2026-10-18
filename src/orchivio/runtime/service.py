@@ -91,7 +91,7 @@ class Hooks(Protocol):
     """Runs the flow bound to an entity event. Implemented by ``orchivio.logic`` (inverted so that
     the runtime does not depend on the engine)."""
 
-    def run(self, data: "AppData", flow: str, event: str, entity: str, user: "AppUser | None",
+    def run(self, data: AppData, flow: str, event: str, entity: str, user: AppUser | None,
             record: dict[str, Any], previous: dict[str, Any] | None) -> None: ...
 
 
@@ -258,12 +258,12 @@ class AppData:
             order: list[str] = []
             seen: set[str] = set()
 
-            def visit(name: str) -> None:
+            def visit(name: str, seen: set[str] = seen, order: list[str] = order, computed: dict = computed) -> None:
                 if name in seen:
                     return
                 seen.add(name)
                 for dep in sorted(computed[name][1].fields & computed.keys()):
-                    visit(dep)
+                    visit(dep, seen, order, computed)
                 order.append(name)
 
             for name in sorted(computed):

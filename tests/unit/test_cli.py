@@ -1,9 +1,9 @@
 import io
 
 import yaml
-from tests_support import EXAMPLES
 
 from orchivio.cli import main
+from tests_support import EXAMPLES
 
 
 def run(*argv):

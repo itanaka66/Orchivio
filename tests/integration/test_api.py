@@ -4,10 +4,10 @@ import copy
 
 import pytest
 from fastapi.testclient import TestClient
-from tests_support import Api
 
 from orchivio.api import create_app
 from orchivio.api.settings import Settings
+from tests_support import Api
 
 
 def test_health_is_open_and_has_request_id(app):

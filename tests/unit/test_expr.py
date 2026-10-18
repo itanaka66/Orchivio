@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from decimal import Decimal
 
 import pytest
@@ -41,7 +41,7 @@ class FakeSchema:
 
 
 ENV = CheckEnv(FakeSchema(), PRODUCT)
-NOW = datetime(2026, 1, 1, tzinfo=timezone.utc)
+NOW = datetime(2026, 1, 1, tzinfo=UTC)
 
 
 def run(src, record=None, user=None, expected=None):

@@ -1,5 +1,6 @@
 """Runtime for generated applications: tables, data service, synthetic data, preview store."""
 
+from .csvio import CsvError, ImportResult, export_csv, import_csv
 from .service import (
     AppData,
     AppUser,
@@ -12,7 +13,6 @@ from .service import (
     RowNotFound,
     UnknownEntity,
 )
-from .csvio import CsvError, ImportResult, export_csv, import_csv
 from .store import PreviewNotBuilt, PreviewStale, PreviewStore
 from .synth import generate, make_row
 from .tables import EntityInfo, RuntimeSchema, SchemaBuildError, table_prefix
