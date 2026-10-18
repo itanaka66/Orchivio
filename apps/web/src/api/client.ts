@@ -16,6 +16,21 @@ export interface Application { id: string; project_id: string; key: string; name
 export interface Revision { id: string; revision_no: number; model_json: Record<string, unknown> }
 export interface ProposalSummary { id: string; status: string; approval_level: string; diff: { changes: unknown[]; level: string } }
 
+export type RequirementStatus = 'draft' | 'accepted' | 'implemented' | 'rejected'
+export type StoryStatus = 'proposed' | 'backlog' | 'ready' | 'in_progress' | 'done' | 'rejected'
+export interface Requirement { id: string; title: string; body: string; status: RequirementStatus; source: string }
+export interface Story { id: string; title: string; body: string; acceptance: string; status: StoryStatus; source: string; position: number; requirement_id: string | null }
+export interface TraceLink { id: string; from_type: 'requirement' | 'story'; from_id: string; to_type: 'story' | 'element' | 'revision' | 'test'; to_id: string }
+export interface TraceTarget { id: string; name?: string | null; title?: string | null; exists: boolean }
+export interface TraceRow { id: string; title: string; status: string; stories?: string[]; elements: TraceTarget[]; tests: TraceTarget[]; revisions: string[] }
+export interface Traceability {
+  requirements: TraceRow[]
+  stories: TraceRow[]
+  coverage: { requirements: number; with_stories: number; with_elements: number; with_tests: number; with_revisions: number; dangling_elements: number; dangling_tests: number }
+}
+export interface FeedbackItem { id: string; page_key: string; element_id: string | null; body: string; status: 'new' | 'clustered' | 'dismissed'; has_screenshot: boolean; story_id: string | null; created_at: string }
+export interface FeedbackInput { page_key: string; body: string; element_id?: string | null; screenshot_base64?: string | null }
+
 const CSRF_KEY = 'orchivio.csrf'
 
 export class ApiClient {
@@ -85,6 +100,32 @@ export class ApiClient {
     return this.request<RunResult>('POST', `/applications/${appId}/preview/flows/${encodeURIComponent(flowKey)}/run`,
       { args }, { 'X-Preview-User': asUser, 'X-Preview-Roles': roles.join(',') })
   }
+
+  // --- requirements, stories, traceability (docs/AGILE.md)
+  requirements = (projectId: string) => this.request<{ items: Requirement[] }>('GET', `/projects/${projectId}/requirements`)
+  createRequirement = (projectId: string, title: string, body = '') => this.request<Requirement>('POST', `/projects/${projectId}/requirements`, { title, body })
+  updateRequirement = (projectId: string, id: string, patch: Partial<Pick<Requirement, 'title' | 'body' | 'status'>>) => this.request<Requirement>('PATCH', `/projects/${projectId}/requirements/${id}`, patch)
+  deleteRequirement = (projectId: string, id: string) => this.request<void>('DELETE', `/projects/${projectId}/requirements/${id}`)
+  extractRequirements = (appId: string, text: string) =>
+    this.request<{ requirements: Requirement[]; skipped_duplicates: number }>('POST', `/applications/${appId}/requirements/extract`, { text })
+  stories = (projectId: string) => this.request<{ items: Story[] }>('GET', `/projects/${projectId}/stories`)
+  createStory = (projectId: string, title: string, requirementId?: string) =>
+    this.request<Story>('POST', `/projects/${projectId}/stories`, { title, ...(requirementId ? { requirement_id: requirementId } : {}) })
+  updateStory = (projectId: string, id: string, patch: Partial<Pick<Story, 'title' | 'body' | 'acceptance' | 'status' | 'position' | 'requirement_id'>>) =>
+    this.request<Story>('PATCH', `/projects/${projectId}/stories/${id}`, patch)
+  deleteStory = (projectId: string, id: string) => this.request<void>('DELETE', `/projects/${projectId}/stories/${id}`)
+  traceLinks = (projectId: string) => this.request<{ items: TraceLink[] }>('GET', `/projects/${projectId}/trace-links`)
+  createTraceLink = (projectId: string, link: Omit<TraceLink, 'id'>) => this.request<TraceLink>('POST', `/projects/${projectId}/trace-links`, link)
+  deleteTraceLink = (projectId: string, id: string) => this.request<void>('DELETE', `/projects/${projectId}/trace-links/${id}`)
+  traceability = (projectId: string) => this.request<Traceability>('GET', `/projects/${projectId}/traceability`)
+  testCases = (projectId: string, q = '') => this.request<{ items: { id: string; title: string }[]; total: number }>('GET', `/projects/${projectId}/test-cases?q=${encodeURIComponent(q)}&limit=100`)
+
+  // --- preview feedback
+  feedback = (appId: string, status?: FeedbackItem['status']) => this.request<{ items: FeedbackItem[] }>('GET', `/applications/${appId}/feedback${status ? `?status=${status}` : ''}`)
+  submitFeedback = (appId: string, input: FeedbackInput) => this.request<FeedbackItem>('POST', `/applications/${appId}/feedback`, input)
+  dismissFeedback = (appId: string, id: string) => this.request<FeedbackItem>('PATCH', `/applications/${appId}/feedback/${id}`, { status: 'dismissed' })
+  clusterFeedback = (appId: string) => this.request<{ stories: Story[]; unclustered: number }>('POST', `/applications/${appId}/feedback/cluster`)
+  screenshotUrl = (appId: string, id: string) => `${this.base}/applications/${appId}/feedback/${id}/screenshot`
 
   createProposal(appId: string, model: unknown, title: string) {
     return this.request<ProposalSummary>('POST', `/applications/${appId}/proposals`, { model, title })

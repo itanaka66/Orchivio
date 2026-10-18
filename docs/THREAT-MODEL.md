@@ -106,6 +106,9 @@ Status: ✅ implemented and tested · 🟡 partly / not verified end-to-end · �
 | A39 | Trace links point at another project's data | Every link target is resolved inside the same project (stories, revisions, elements of its applications) | ✅ tested |
 | A40 | Requirement text executes in a spreadsheet | Cells starting with `= + - @` are prefixed in CSV export | ✅ tested |
 
+| A41 | A document steers the requirement extraction or floods the project | Document is wrapped as untrusted data; output is draft requirements only, titles de-duplicated, at most 20 per call | ✅ tested |
+| A42 | The widget captures more than the person intends | Screen capture goes through the browser's share prompt and takes one frame on a click; element picking swallows exactly one click; nothing is sent until Send | ✅ tested (picking, validation); capture needs a manual check |
+
 ## 4. Assumptions
 
 - PostgreSQL, the host OS and the TLS terminator are operated securely.

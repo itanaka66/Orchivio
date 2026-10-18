@@ -164,6 +164,26 @@ class ClusterResult:
     dropped: int = 0
 
 
+class ExtractedRequirement(BaseModel):
+    title: str = Field(min_length=1, max_length=300)
+    body: str = Field(default="", max_length=2000)
+
+
+class RequirementExtraction(BaseModel):
+    requirements: list[ExtractedRequirement] = Field(default_factory=list, max_length=20)
+
+
+@dataclass(frozen=True)
+class ExtractResult:
+    requirements: list[ExtractedRequirement]
+    usage: Usage
+    attempts: int
+    provider: str
+    model_name: str
+    template: str
+    skipped_duplicates: int = 0
+
+
 @dataclass(frozen=True)
 class AnalysisResult:
     analysis: Analysis
@@ -277,6 +297,27 @@ class AIBuilder:
                 dropped += 1
         r = v.last_response
         return LogAnalysisResult(LogAnalysis(summary=v.value.summary, findings=kept), v.usage, v.attempts, r.provider, r.model, tpl.ref, dropped)
+
+    @traced("extract_requirements")
+    def extract_requirements(self, text: str, existing_titles: list[str]) -> ExtractResult:
+        """Requirements stated in ``text``. Titles that repeat an existing one (or an earlier one in the answer) are dropped."""
+        tpl = prompts.EXTRACT_REQUIREMENTS
+        user = prompts.block("document", text) + "\n\n" + prompts.block("existing_titles", json.dumps(existing_titles[:200], ensure_ascii=False))
+        try:
+            v = generate_validated(self.provider, self._request(tpl, user), RequirementExtraction, max_attempts=self.max_validation_attempts)
+        except StructuredOutputError as e:
+            raise self._failed(e, tpl) from e
+        seen = {t.strip().casefold() for t in existing_titles}
+        kept, skipped = [], 0
+        for r in v.value.requirements:
+            key = r.title.strip().casefold()
+            if not key or key in seen:
+                skipped += 1
+                continue
+            seen.add(key)
+            kept.append(r)
+        r_ = v.last_response
+        return ExtractResult(kept, v.usage, v.attempts, r_.provider, r_.model, tpl.ref, skipped)
 
     @traced("cluster_feedback")
     def cluster_feedback(self, items: list[dict[str, Any]], elements: dict[str, str]) -> ClusterResult:
