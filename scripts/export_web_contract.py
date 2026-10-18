@@ -33,11 +33,15 @@ def generate() -> dict[str, str]:
     dumped = json.loads(model.model_dump_json(exclude_none=True))
     _pin_ids(dumped)
     flow = dumped["modules"][0]["flows"][0]
+    from orchivio.codegen import build_client
+
+    client_ts = build_client(AppModel.model_validate(dumped))
     dump = lambda o: json.dumps(o, indent=2, ensure_ascii=False, sort_keys=True) + "\n"  # noqa: E731
     return {
         "contract.json": dump(flow_contract()),
         "sample-flow.json": dump(flow),
         "sample-model.json": dump(dumped),
+        "../generated/inventory-client.ts": client_ts,
     }
 
 
@@ -57,5 +61,6 @@ def _pin_ids(node, counter=None) -> None:
 if __name__ == "__main__":
     OUT.mkdir(parents=True, exist_ok=True)
     for name, text in generate().items():
+        (OUT / name).parent.mkdir(parents=True, exist_ok=True)
         (OUT / name).write_text(text, encoding="utf-8", newline="\n")
         print("wrote", OUT / name)

@@ -26,7 +26,7 @@ from typing import TextIO
 import yaml
 from pydantic import ValidationError
 
-from .codegen import build_openapi
+from .codegen import build_client, build_openapi
 from .model import (
     AppModel,
     CanonicalError,
@@ -163,6 +163,14 @@ def run(args: argparse.Namespace, out: TextIO) -> int:
         else:
             out.write(spec)
         return EXIT_OK
+    if args.command == "client":
+        text = build_client(load(args.path))
+        if args.out:
+            Path(args.out).write_text(text, encoding="utf-8", newline="\n")
+            print(f"wrote {args.out}", file=out)
+        else:
+            out.write(text)
+        return EXIT_OK
     if args.command == "diff":
         a, b = assign_element_ids(load(args.before)), None
         b = assign_element_ids(load(args.after), previous=a)
@@ -281,6 +289,9 @@ def parser() -> argparse.ArgumentParser:
     o = sub.add_parser("openapi", help="OpenAPI 3.1 document of the application's data API")
     o.add_argument("path")
     o.add_argument("-o", "--out")
+    c = sub.add_parser("client", help="typed TypeScript client for the application's data API")
+    c.add_argument("path")
+    c.add_argument("-o", "--out")
     b = sub.add_parser("backup", help="logical backup of the platform database and artifacts")
     b.add_argument("file")
     b.add_argument("--database-url")

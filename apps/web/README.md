@@ -66,6 +66,11 @@ validation, proposal creation) outside the suite.
 - The bundle is about 138 kB gzipped; no code splitting yet.
 - A flow must exist in a module of an existing revision; creating the first module is not supported.
 
+## Installable app
+
+The Studio is a PWA (manifest, icons, a service worker that caches only the app shell and never the API, offline page, update prompt, offline bar); see
+docs/PWA.md. `public/` holds the static files, `src/pwa/` the registration and UI, `pwa-plugin.ts` stamps a build id into `sw.js`.
+
 ## Administration screens (`src/admin`)
 
 "Open administration" (after choosing an organization, project and application) opens a workspace with a side navigation. What a person

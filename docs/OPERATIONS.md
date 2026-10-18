@@ -185,6 +185,10 @@ The password is **never a command-line argument** (process lists, shell history)
 the organization must already exist (roles: owner, admin, editor, viewer), nothing is changed when anything is wrong, and an audit event `user.created_cli`
 is written (without the password). The database is `ORCHIVIO_DATABASE_URL` / `.env` like the API, or `--database-url`; `ORCHIVIO_BIN` overrides how the scripts start
 the CLI (e.g. `python3 -m orchivio.cli`). Application end users (not Studio users) are managed in the Studio or with `POST /applications/{id}/app-users`.
+## 9. Serving the Studio as an installable app
+
+Serve `apps/web/dist` over HTTPS from the API's origin; `sw.js`, `index.html` and the manifest must not be HTTP-cached and `/assets/*` can be cached for a year
+(docs/PWA.md has the header table). The service worker never caches API responses.
 
 ## 6. Known gaps
 
