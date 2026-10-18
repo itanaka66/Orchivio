@@ -17,6 +17,7 @@ from orchivio.expr.ast import BOOL, DATETIME, DECIMAL, INT, STRING, Type, enum_t
 
 from .cron import CronError, parse_cron
 from .flows import FlowChecker, call_cycles
+from .processes import ProcessChecker
 from .hooks import HOOK_EVENTS
 from .ids import iter_elements
 from .schema import (
@@ -414,6 +415,15 @@ class _Validator:
                 self.check_flow(mod, mi, fl, flows, self.implicit_for(bound, f"{mod.key}.{fl.key}"))
         for cycle in call_cycles(flows, module_of):
             self.err("flow-call-cycle", "/modules", "flows call each other in a cycle: " + " -> ".join(cycle))
+        hook_flows = set(bound)
+        roles = set(self.model.security.roles)
+        for mi, mod in enumerate(self.model.modules):
+            self.dupes([p.key for p in mod.processes or []], "duplicate-process", f"/modules/{mi}/processes", "process key")
+            for pr in mod.processes or []:
+                def report(code: str, path: str, msg: str, sev: str, pr=pr) -> None:
+                    self.add(sev, code, path, msg, pr.element_id)  # type: ignore[arg-type]
+
+                ProcessChecker(self.index, mod, pr, flows, hook_flows, roles, report, f"/modules/{mi}/processes/{pr.key}").run()
 
     def check_flow(self, mod: ModuleDef, mi: int, fl: FlowDef, flows: dict[str, FlowDef],
                    implicit: dict[str, Type] | None = None) -> None:

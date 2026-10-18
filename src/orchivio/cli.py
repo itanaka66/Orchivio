@@ -181,15 +181,17 @@ def run_worker(args: argparse.Namespace, out: TextIO) -> int:
     from .db import make_engine, make_session_factory
     from .integrations import dispatcher_from_settings, integration_client_factory
     from .jobs import Worker
+    from .process import ticker
     from .runtime import PreviewStore
 
     settings = get_settings()
     sessions = make_session_factory(make_engine(settings.database_url))
     preview = PreviewStore(make_engine(settings.preview_database_url))
     dispatcher = dispatcher_from_settings(settings, sessions, preview.engine)
+    clients = integration_client_factory(settings, sessions)
     worker = Worker(sessions, preview, audit=DbAuditSink(sessions),
                     lease_seconds=settings.worker_lease_seconds, per_app_limit=settings.worker_per_app_limit,
-                    extra_steps=(dispatcher.tick,), integrations=integration_client_factory(settings, sessions))
+                    extra_steps=(dispatcher.tick, ticker(sessions, preview, audit=DbAuditSink(sessions), integrations=clients)), integrations=clients)
     if args.once:
         t = worker.tick()
         print(f"planned {t.planned}, ran {t.claimed}: {t.succeeded} succeeded, {t.retried} to retry, {t.dead} dead", file=out)

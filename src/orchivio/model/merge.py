@@ -84,6 +84,15 @@ def flatten(m: AppModel) -> Flat:
             f.add(Node(_need(pg.element_id, pg.key), "page", mid, "pages", _dump(pg, set())))
         for ig in mod.integrations or []:
             f.add(Node(_need(ig.element_id, ig.key), "integration", mid, "integrations", _dump(ig, set())))
+        for pr in mod.processes or []:
+            pid = _need(pr.element_id, pr.key)
+            f.add(Node(pid, "process", mid, "processes", _dump(pr, {"steps", "edges", "params"})))
+            for s in pr.steps:
+                f.add(Node(f"{pid}:pstep:{s.id}", "pstep", pid, "steps", _dump(s, set())))
+            for e in pr.edges:
+                f.add(Node(f"{pid}:pedge:{e.id}", "pedge", pid, "edges", _dump(e, set())))
+            for p in pr.params:
+                f.add(Node(f"{pid}:pparam:{p.name}", "pparam", pid, "params", _dump(p, set())))
         for fl in mod.flows:
             fid = _need(fl.element_id, fl.key)
             f.add(Node(fid, "flow", mid, "flows", _dump(fl, {"steps", "edges", "params", "tests"})))
@@ -115,7 +124,7 @@ def unflatten(f: Flat, *, schema_version: str = "1.1") -> AppModel:
         return [f.nodes[i] for i in f.order.get((parent, slot), []) if i in f.nodes]
 
     def with_id(n: Node, extra: Mapping[str, Any] | None = None) -> dict[str, Any]:
-        return {**n.props, **(extra or {}), **({"element_id": n.id} if n.kind in ("module", "enum", "entity", "field", "page", "flow", "access", "integration") else {})}
+        return {**n.props, **(extra or {}), **({"element_id": n.id} if n.kind in ("module", "enum", "entity", "field", "page", "flow", "access", "integration", "process") else {})}
 
     modules = []
     for mn in kids(ROOT, "modules"):
@@ -125,6 +134,9 @@ def unflatten(f: Flat, *, schema_version: str = "1.1") -> AppModel:
             "entities": [with_id(e, {"fields": [with_id(x) for x in kids(e.id, "fields")]}) for e in kids(mn.id, "entities")],
             "pages": [with_id(p) for p in kids(mn.id, "pages")],
             **({"integrations": [with_id(i) for i in kids(mn.id, "integrations")]} if kids(mn.id, "integrations") else {}),
+            **({"processes": [with_id(pr, {"steps": [x.props for x in kids(pr.id, "steps")], "edges": [x.props for x in kids(pr.id, "edges")],
+                                           "params": [x.props for x in kids(pr.id, "params")]}) for pr in kids(mn.id, "processes")]}
+               if kids(mn.id, "processes") else {}),
             "flows": [with_id(fl, {"steps": [x.props for x in kids(fl.id, "steps")], "edges": [x.props for x in kids(fl.id, "edges")],
                                    "params": [x.props for x in kids(fl.id, "params")], "tests": [x.props for x in kids(fl.id, "tests")]})
                       for fl in kids(mn.id, "flows")]}))

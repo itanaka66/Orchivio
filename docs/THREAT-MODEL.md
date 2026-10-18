@@ -79,6 +79,10 @@ Status: ✅ implemented and tested · 🟡 partly / not verified end-to-end · �
 | A18 | A malicious tool description or schema manipulates the planner or the admin's view | Descriptions are bounded and cleaned, shown to the model only as data, new tools start disabled, schema reduced to simple facts, names validated | ✅ |
 | A19 | The Builder is used to reach internal services or leak data through tool arguments | Registered URLs pass the SSRF checks and are pinned; arguments are validated against the tool's schema and limited to 2 000 bytes; refused calls are not sent; only hashes are audited | ✅ |
 
+| A20 | A person acts on a task that is not theirs, or two people complete the same task | Visibility limited to assignee/role holders (others get 404); completion re-reads the stored task, checks the token still waits on exactly that task, and updates the instance by compare-and-set | ✅ tested |
+| A21 | A process is used to escalate privilege (start rights, system tasks) | `start_roles` and `run_as_role` are model elements: widening either is A3; system tasks run with only `run_as_role`; delegation only to active users who hold the task's role | ✅ |
+| A22 | A process spins forever or floods the worker | Static refusal of cycles without a waiting step, per-advance and per-instance step limits, bounded form and result sizes | ✅ |
+
 ## 4. Assumptions
 
 - PostgreSQL, the host OS and the TLS terminator are operated securely.

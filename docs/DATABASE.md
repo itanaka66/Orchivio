@@ -76,6 +76,10 @@ records which request started a run.
 
 `mcp_servers` (per organization: name, URL, credential *reference*, status, last discovered tools, per-tool policy).
 
+### Processes
+`process_instances` (pinned revision, JSON state with a version for compare-and-set, `next_wake_at` for timers),
+`user_tasks` (the inbox: role or user assignment, outcomes, form, due/escalation), `process_events` (the trail).
+
 ### Audit
 `audit_events` — append-only. `plane` (platform/application) and `channel`
 (studio/api/mcp) separate streams. **No foreign keys on purpose:** audit history must outlive

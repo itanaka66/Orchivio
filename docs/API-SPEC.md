@@ -125,6 +125,12 @@ one owner (`409 last_owner`). Any member may leave an organization.
 | GET/PATCH/DELETE | `/organizations/{id}/mcp-servers/{name}` | read / change URL, credential reference, status / remove |
 | POST | `/organizations/{id}/mcp-servers/{name}/discover` | list the server's tools (new ones start disabled) |
 | PUT | `/organizations/{id}/mcp-servers/{name}/tools/{tool}` | `{enabled, level}`; only `A0` can be enabled |
+| GET / POST | `/apps/{app_id}/processes`, `/apps/{app_id}/processes/{key}/start` | processes the signed-in user may start / start one |
+| GET | `/apps/{app_id}/tasks`, `/apps/{app_id}/tasks/{id}` | the task inbox (`scope=mine|available|all`, `status`) |
+| POST | `/apps/{app_id}/tasks/{id}/claim`, `/release`, `/delegate`, `/complete` | act on a task (docs/PROCESS-SPEC.md §3) |
+| GET | `/apps/{app_id}/process-instances/{id}` | progress of an instance you started |
+| GET | `/applications/{id}/process-instances`, `/process-instances/{id}`, `/applications/{id}/user-tasks` | monitoring (viewer and up) |
+| POST | `/applications/{id}/processes/{key}/start`, `/process-instances/{id}/cancel`, `/process-instances/{id}/retry` | start for testing / cancel / retry a failed step (editor) |
 | GET | `/healthz`, `/readyz` | liveness / readiness (unauthenticated; docs/OPERATIONS.md) |
 | GET | `/metrics` | Prometheus text; bearer `ORCHIVIO_METRICS_TOKEN`, disabled when unset |
 
