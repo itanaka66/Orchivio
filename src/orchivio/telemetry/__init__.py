@@ -16,6 +16,7 @@ Design rules, because telemetry leaves the process:
 
 from __future__ import annotations
 
+import contextvars
 import logging
 import os
 from collections.abc import Iterator, Mapping
@@ -24,6 +25,8 @@ from dataclasses import dataclass, field
 from typing import Any
 
 log = logging.getLogger("orchivio.telemetry")
+
+request_id_var: contextvars.ContextVar[str] = contextvars.ContextVar("request_id", default="-")
 
 try:  # the SDK is an optional extra
     from opentelemetry import trace
@@ -56,6 +59,8 @@ INSTRUMENTS: dict[str, tuple[str, str, frozenset[str]]] = {
     "orchivio.integration.calls": ("counter", "{call}", frozenset({"status_class"})),
     "orchivio.integration.call.duration": ("histogram", "s", frozenset({"status_class"})),
     "orchivio.mcp.tool_calls": ("counter", "{call}", frozenset({"outcome"})),
+    "orchivio.ai.calls": ("counter", "{call}", frozenset({"operation", "outcome"})),
+    "orchivio.ai.tokens": ("counter", "{token}", frozenset({"operation", "direction"})),
 }
 
 
@@ -66,8 +71,12 @@ class Telemetry:
     meter_provider: Any
     instruments: dict[str, Any] = field(default_factory=dict)
     trust_incoming: bool = False
+    propagate_outbound: bool = False
+    log_handler: Any = None
 
     def shutdown(self) -> None:
+        if self.log_handler is not None:
+            self.log_handler.close()
         for p in (self.tracer_provider, self.meter_provider):
             try:
                 p.shutdown()
@@ -125,7 +134,13 @@ def setup(settings: Any, *, version: str = "0", span_exporter: Any = None, metri
     instruments: dict[str, Any] = {}
     for name, (kind, unit, _keys) in INSTRUMENTS.items():
         instruments[name] = meter.create_histogram(name, unit=unit) if kind == "histogram" else meter.create_counter(name, unit=unit)
-    _active = Telemetry(tp.get_tracer("orchivio", version), tp, mp, instruments, bool(settings.otel_trust_incoming_context))
+    _active = Telemetry(tp.get_tracer("orchivio", version), tp, mp, instruments, bool(settings.otel_trust_incoming_context),
+                        bool(settings.otel_propagate_outbound))
+    if endpoint and getattr(settings, "otel_logs", True) and settings.otel_exporter == "otlp":
+        from .logs import attach_log_export
+
+        _active.log_handler = attach_log_export(f"{endpoint.rstrip('/')}/v1/logs", resource_attrs={"service.name": settings.otel_service_name,
+                                                "service.version": version, "deployment.environment.name": settings.env})
     return _active
 
 
@@ -208,6 +223,31 @@ def extract(headers: Mapping[str, str]) -> Any:
     return ctx if trace.get_current_span(ctx).get_span_context().is_valid else None
 
 
+def inject(headers: dict[str, str]) -> dict[str, str]:
+    """``headers`` plus a W3C ``traceparent`` for the current span, only when outbound propagation is switched on.
+
+    Off by default: a trace id handed to a third party is harmless on its own but is information about us; enable it for
+    partners you trust (webhook receivers and consumed APIs, never identity providers or MCP servers)."""
+    t = _active
+    if t is None or not t.propagate_outbound:
+        return headers
+    ctx = trace.get_current_span().get_span_context()
+    if not ctx.is_valid or not ctx.trace_flags.sampled:
+        return headers
+    return {**headers, "traceparent": f"00-{ctx.trace_id:032x}-{ctx.span_id:016x}-01"}
+
+
+APP_LOGGER = "orchivio.app"
+
+
+def applog(application_id: Any, level: int, source: str, message: str, **fields: Any) -> None:
+    """One operational log line about a running application, shown to its builders in Studio (docs/OPERATIONS.md §7).
+
+    ``message`` must be a fixed phrase and ``fields`` short scalars (flow, outcome, status ...): never record data, URLs or
+    error texts. The API layer stores allow-listed fields only."""
+    logging.getLogger(APP_LOGGER).log(level, message, extra={"fields": {"application_id": str(application_id), "source": source, **fields}})
+
+
 def current_ids() -> tuple[str, str] | None:
     """(trace_id, span_id) in hex of the current span, for correlating log lines."""
     if _active is None:
@@ -236,4 +276,4 @@ def record(name: str, value: float, **attrs: Any) -> None:
     _metric(name, value, attrs, "record")
 
 
-__all__ = ["AVAILABLE", "INSTRUMENTS", "Telemetry", "count", "current_ids", "enabled", "extract", "record", "setup", "shutdown", "span"]
+__all__ = ["AVAILABLE", "INSTRUMENTS", "APP_LOGGER", "Telemetry", "applog", "count", "current_ids", "enabled", "extract", "inject", "record", "setup", "shutdown", "span"]

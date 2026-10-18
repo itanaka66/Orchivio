@@ -125,6 +125,8 @@ class Worker:
                                      meta={"flow": job.flow, "attempts": job.attempt, "error": error[:300]}))
             s.commit()
             telemetry.count("orchivio.job.runs", outcome=outcome, trigger=job.trigger)
+            telemetry.applog(job.application_id, logging.ERROR if outcome == "dead" else logging.WARNING if outcome in ("retry", "lost") else logging.INFO,
+                             "job", f"job {outcome}", flow=job.flow, trigger=job.trigger, outcome=outcome, attempt=job.attempt)
             return outcome
 
     def _run(self, s: Session, job: JobRun) -> dict[str, Any]:

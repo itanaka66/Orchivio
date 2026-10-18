@@ -33,6 +33,7 @@ from orchivio.ports import LocalArtifactStore
 from orchivio.process import ticker
 from orchivio.runtime import PreviewStore
 
+from . import app_log
 from .audit_sink import DbAuditSink
 from .metrics import Metrics
 from .observability import configure_logging, logger, new_request_id, request_id_var
@@ -112,6 +113,7 @@ def create_app(
     app.state.session_factory = session_factory
     app.state.preview_store = PreviewStore(preview_engine or make_engine(settings.preview_database_url))
     app.state.audit_sink = DbAuditSink(session_factory)
+    app_log.install(session_factory, settings.app_log_retention_days)
     app.state.artifacts = LocalArtifactStore(settings.artifact_dir)
     app.state.llm_provider = llm_provider or _provider_from_settings(settings)
     app.state.metrics = Metrics()

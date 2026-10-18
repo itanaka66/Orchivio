@@ -114,6 +114,9 @@ ORCHIVIO_OTEL_SERVICE_NAME=orchivio                # default
 ORCHIVIO_OTEL_SAMPLE_RATIO=1.0                     # head sampling of new traces
 ORCHIVIO_OTEL_EXPORTER=otlp                        # otlp | console (debugging) | none
 ORCHIVIO_OTEL_TRUST_INCOMING_CONTEXT=false         # honour a caller's traceparent (see below)
+ORCHIVIO_OTEL_PROPAGATE_OUTBOUND=false             # send traceparent to webhook receivers and consumed APIs
+ORCHIVIO_OTEL_LOGS=true                            # ship the platform's log lines over OTLP when the exporter is otlp
+ORCHIVIO_APP_LOG_RETENTION_DAYS=30                 # application log lines kept for the Studio log viewer
 ```
 
 Credentials for the collector go in the standard `OTEL_EXPORTER_OTLP_HEADERS` environment variable. Without the SDK installed,
@@ -123,23 +126,36 @@ or without an endpoint, enabling telemetry only logs a warning; nothing breaks. 
 child spans for flow runs (`flow.run`: flow key, status, step count), background jobs (`job.run`: flow, trigger, attempt,
 outcome), webhook deliveries (`webhook.deliver`, client span: event type, HTTP status), consumed API calls
 (`integration.call`: integration, operation, method, status), MCP tool calls (`mcp.tool_call`) and process work
-(`process.start`, `process.task.complete`, `process.tick`). 5xx responses and failed operations set the span status to error.
+(`process.start`, `process.task.complete`, `process.tick`) and AI Builder calls (`ai.analyze`, `ai.propose_model`, `ai.explain`,
+`ai.plan_tool_calls`, `ai.analyze_logs`; client spans with operation, provider, model, token counts, cost and attempts, never prompts or output). 5xx responses and failed operations set the span status to error.
 
 **Metrics.** `orchivio.http.server.duration` (histogram, by method, route template and status class),
 `orchivio.flow.runs`, `orchivio.job.runs`, `orchivio.webhook.deliveries`, `orchivio.process.events`,
-`orchivio.integration.calls` and `.call.duration`, `orchivio.mcp.tool_calls`. Attributes are restricted per instrument to
+`orchivio.integration.calls` and `.call.duration`, `orchivio.mcp.tool_calls`, `orchivio.ai.calls` (by operation and outcome) and
+`orchivio.ai.tokens` (by operation and direction). Attributes are restricted per instrument to
 low-cardinality keys. The Prometheus `/metrics` endpoint (§1) is unaffected and can be used alongside.
 
 **Logs.** JSON log lines (`ORCHIVIO_LOG_JSON=true`) carry `trace_id` and `span_id` while a span is active, next to the existing
-`request_id`, so log lines join to traces. OTLP log export is not implemented.
+`request_id`, so log lines join to traces. With the `otlp` exporter and an endpoint, the `orchivio` log lines are also sent to `{endpoint}/v1/logs` (OTLP/HTTP
+JSON, standard library only): level, logger, message, request id, trace and span ids, scalar `fields`, and the exception *type*
+(never the traceback). Delivery is best effort on a background thread with a bounded queue; a dead collector drops lines and never
+slows or breaks a request.
+
+**Application logs and the Studio viewer.** Background jobs, webhook deliveries and consumed-API calls also write short lines to the
+`app_logs` table (fixed message, allow-listed scalar fields such as flow, outcome, status, attempt; no record data, URLs or error
+texts), pruned by age. Editors and up read them with `GET /applications/{id}/logs` (filters `level`, `source`, `q`, `since`, `until`;
+paged with `before_id`). `POST /applications/{id}/logs/analyze` asks the AI Builder what a recent window shows: it sends only the
+selected lines, follows the usual consent and budget rules, is recorded as an AI job, and keeps only findings that cite lines that
+were really sent.
 
 **What is never recorded.** Request and response bodies, headers (including `Authorization` and cookies), query strings, SQL,
 record values, AI prompts and outputs, e-mail addresses, URLs of webhooks, destinations or MCP servers, and secrets. Spans carry
 only the short scalar attributes listed above; an exception is recorded by *type* only, because its message may contain data.
 
 **Trace context.** An incoming `traceparent` is ignored by default: otherwise any caller could force sampling or pick trace ids.
-Turn `ORCHIVIO_OTEL_TRUST_INCOMING_CONTEXT` on only behind a gateway that you control. Outgoing requests (webhooks, consumed
-APIs, MCP) do not propagate trace context.
+Turn `ORCHIVIO_OTEL_TRUST_INCOMING_CONTEXT` on only behind a gateway that you control. Outgoing requests do not propagate trace context unless
+`ORCHIVIO_OTEL_PROPAGATE_OUTBOUND` is on, and then only to webhook receivers and consumed APIs (a `traceparent` header on sampled
+traces); never to identity providers or MCP servers.
 
 **Cost.** With telemetry off, instrumented code paths call no-op functions. With it on, use `ORCHIVIO_OTEL_SAMPLE_RATIO` to bound
 volume; metrics are not sampled.

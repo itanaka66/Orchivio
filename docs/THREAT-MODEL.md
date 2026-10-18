@@ -97,6 +97,10 @@ Status: ✅ implemented and tested · 🟡 partly / not verified end-to-end · �
 | A32 | A model change bypasses organization policy through another route (AI, import, branch merge, rollback) | Packs are evaluated in the one place all routes plan models, plus the merge path; violations fail like validation errors | ✅ tested (revision, proposal, merge) |
 | A33 | Audit export leaks other organizations' events or is used to hide activity | Scoped by organization, admin-only, literal filters, every export audited with its hash, CSV formula-safe | ✅ tested |
 
+| A34 | Telemetry or logs leak data to the collector or to the AI | Attribute allow-list, fixed log messages with allow-listed fields, exception types only, no prompts in AI spans; log analysis sends only those stored lines | ✅ tested |
+| A35 | Trace context lets a caller force sampling, or tells a third party about us | Incoming context ignored by default; outbound `traceparent` opt-in and only for webhooks and consumed APIs | ✅ tested |
+| A36 | The AI invents evidence in a log analysis | Findings must cite line ids that were sent; others are dropped and counted | ✅ tested |
+
 ## 4. Assumptions
 
 - PostgreSQL, the host OS and the TLS terminator are operated securely.

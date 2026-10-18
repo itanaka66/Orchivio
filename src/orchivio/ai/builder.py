@@ -13,6 +13,7 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from orchivio import telemetry
 from orchivio.llm import (
     NO_USAGE,
     LLMProvider,
@@ -36,6 +37,41 @@ from orchivio.model import (
 )
 
 from . import prompts
+
+
+def traced(operation: str):
+    """Wrap an AIBuilder method in a span and count it. Only the operation, provider, model, tokens, cost and attempts are
+    recorded: never prompts, requirements, model text or element names."""
+
+    def deco(fn):
+        def run(self, *args, **kwargs):
+            with telemetry.span(f"ai.{operation}", kind="client", operation=operation) as sp:
+                try:
+                    out = fn(self, *args, **kwargs)
+                except BuilderError as e:
+                    sp.set_attributes(_usage_attrs(e.usage, getattr(e, "attempts", 0)))
+                    sp.set_error("builder error")
+                    telemetry.count("orchivio.ai.calls", operation=operation, outcome="invalid_output")
+                    raise
+                except Exception:
+                    telemetry.count("orchivio.ai.calls", operation=operation, outcome="error")
+                    raise
+                usage = getattr(out, "usage", NO_USAGE)
+                sp.set_attributes({**_usage_attrs(usage, getattr(out, "attempts", 0)), "ai.provider": getattr(out, "provider", "") or "",
+                                   "ai.model": getattr(out, "model_name", None) or getattr(out, "model", "") or ""})
+                telemetry.count("orchivio.ai.calls", operation=operation, outcome="ok")
+                telemetry.count("orchivio.ai.tokens", usage.input_tokens, operation=operation, direction="input")
+                telemetry.count("orchivio.ai.tokens", usage.output_tokens, operation=operation, direction="output")
+                return out
+
+        run.__name__, run.__doc__ = fn.__name__, fn.__doc__
+        return run
+
+    return deco
+
+
+def _usage_attrs(u, attempts: int) -> dict:
+    return {"ai.input_tokens": u.input_tokens, "ai.output_tokens": u.output_tokens, "ai.cost_usd": u.cost_usd, "ai.attempts": attempts}
 
 
 class BuilderError(Exception):
@@ -79,6 +115,30 @@ class Analysis(BaseModel):
 class Explanation(BaseModel):
     explanation: str = Field(max_length=3000)
     cited_element_ids: list[str] = Field(min_length=1, max_length=30)
+
+
+class LogFinding(BaseModel):
+    title: str = Field(max_length=200)
+    severity: str = Field(pattern="^(low|medium|high)$")
+    explanation: str = Field(max_length=1500)
+    suggestion: str = Field(default="", max_length=1000)
+    evidence_ids: list[int] = Field(min_length=1, max_length=50)
+
+
+class LogAnalysis(BaseModel):
+    summary: str = Field(max_length=2000)
+    findings: list[LogFinding] = Field(default_factory=list, max_length=8)
+
+
+@dataclass(frozen=True)
+class LogAnalysisResult:
+    analysis: LogAnalysis
+    usage: Usage
+    attempts: int
+    provider: str
+    model_name: str
+    template: str
+    dropped_findings: int = 0
 
 
 @dataclass(frozen=True)
@@ -163,6 +223,7 @@ class AIBuilder:
 
     # -- requirements analysis ---------------------------------------------------------------
 
+    @traced("analyze")
     def analyze(self, requirements: str) -> AnalysisResult:
         req = self._request(prompts.ANALYZE, prompts.block("requirements", requirements))
         try:
@@ -172,8 +233,31 @@ class AIBuilder:
         return AnalysisResult(v.value, v.usage, v.attempts, v.last_response.provider, v.last_response.model,
                               prompts.ANALYZE.ref)
 
+    @traced("analyze_logs")
+    def analyze_logs(self, entries: list[dict[str, Any]], question: str | None = None) -> LogAnalysisResult:
+        """Explain a window of application log lines. Findings must cite ids that are in ``entries``; a finding whose citations
+        are all unknown is dropped, unknown ids are removed from the rest."""
+        tpl = prompts.ANALYZE_LOGS
+        known = {int(e["id"]) for e in entries}
+        user = prompts.block("logs", "\n".join(json.dumps(e, separators=(",", ":"), ensure_ascii=False) for e in entries))
+        user += "\n\n" + prompts.block("requirements", question or "What went wrong, and what should the operator look at first?")
+        try:
+            v = generate_validated(self.provider, self._request(tpl, user), LogAnalysis, max_attempts=self.max_validation_attempts)
+        except StructuredOutputError as e:
+            raise self._failed(e, tpl) from e
+        kept, dropped = [], 0
+        for f in v.value.findings:
+            ids = [i for i in f.evidence_ids if i in known]
+            if ids:
+                kept.append(f.model_copy(update={"evidence_ids": ids}))
+            else:
+                dropped += 1
+        r = v.last_response
+        return LogAnalysisResult(LogAnalysis(summary=v.value.summary, findings=kept), v.usage, v.attempts, r.provider, r.model, tpl.ref, dropped)
+
     # -- model proposal ----------------------------------------------------------------------
 
+    @traced("plan_tool_calls")
     def plan_tool_calls(self, requirements: str, tools: list[ToolInfo], max_calls: int = 3) -> PlanResult:
         """Ask which of the allowed tools to call for background. The answer is only a *request*: the caller must
         check every call against the allowlist and the tool's schema before running anything."""
@@ -189,6 +273,7 @@ class AIBuilder:
             raise self._failed(e, tpl) from e
         return PlanResult(v.value.calls[:max_calls], v.usage, v.attempts, tpl.ref)
 
+    @traced("propose_model")
     def propose_model(self, requirements: str, current: AppModel | None = None,
                       context: list[ToolContext] | None = None) -> BuildResult:
         tpl = prompts.PROPOSE_MODEL_WITH_CONTEXT if context else prompts.PROPOSE_MODEL
@@ -229,6 +314,7 @@ class AIBuilder:
 
     # -- explain -----------------------------------------------------------------------------
 
+    @traced("explain")
     def explain(self, model: AppModel, element_id: str, question: str | None = None) -> ExplanationResult:
         tpl = prompts.EXPLAIN
         ctx = element_context(model, element_id)
