@@ -380,6 +380,31 @@ class _Validator:
                 src = getattr(act, attr)
                 if src:
                     self.expr(src, env, BOOL, f"{path}/actions/{ai}/{attr}", pg.element_id)
+            self.page_action_flow(mod, qualified, pg, ai, act, env, path)
+
+    def page_action_flow(self, mod: ModuleDef, entity: str, pg: PageDef, ai: int, act, env: CheckEnv, path: str) -> None:
+        p = f"{path}/actions/{ai}"
+        if act.flow is None:
+            if act.args:
+                self.err("page-action-flow", p, "args need a flow", pg.element_id)
+            return
+        q = qualify(mod.key, act.flow)
+        flow = next((f for m in self.model.modules for f in m.flows if f"{m.key}.{f.key}" == q), None)
+        if flow is None or flow.kind != "server":
+            self.err("page-action-flow", p, f"action '{act.key}' names '{act.flow}', which is not a server flow", pg.element_id)
+            return
+        if any(q == qualify(m.key, h) for m in self.model.modules for e in m.entities for h in e.hooks.values()):
+            self.err("page-action-flow", p, "an entity hook flow runs on its event and cannot be a page action", pg.element_id)
+        args = act.args or {}
+        owner = q.split(".", 1)[0]
+        for prm in flow.params:
+            pt = self.index.types_for(owner).expr_type(FieldDef(name="v", type=prm.type, required=True), owner)
+            if prm.name not in args:
+                self.err("page-action-flow", p, f"missing argument '{prm.name}' for flow '{act.flow}'", pg.element_id)
+            elif pt is not None:
+                self.expr(args[prm.name], env, pt, f"{p}/args/{prm.name}", pg.element_id)
+        for extra in sorted(set(args) - {x.name for x in flow.params}):
+            self.err("page-action-flow", f"{p}/args/{extra}", f"flow '{act.flow}' has no parameter '{extra}'", pg.element_id)
 
     # -- flows
     def hook_bindings(self, flows: dict[str, FlowDef]) -> dict[str, str]:
@@ -431,6 +456,13 @@ class _Validator:
             self.add(sev, code, path, msg, fl.element_id)  # type: ignore[arg-type]
 
         FlowChecker(self.index, mod, fl, flows, report, f"/modules/{mi}/flows/{fl.key}", implicit).run()
+        if fl.run_roles is not None:
+            for r in fl.run_roles:
+                if r not in self.model.security.roles:
+                    self.err("unknown-role", f"/modules/{mi}/flows/{fl.key}/run_roles", f"unknown role '{r}'", fl.element_id)
+            if fl.kind != "server" or implicit is not None:
+                self.err("run-roles-not-runnable", f"/modules/{mi}/flows/{fl.key}/run_roles",
+                         "only a server flow that is not an entity hook can be run directly", fl.element_id)
         if fl.schedule is not None:
             self.check_schedule(fl, f"/modules/{mi}/flows/{fl.key}/schedule", implicit is not None)
 
