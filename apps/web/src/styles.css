@@ -88,6 +88,21 @@ fieldset { border: 1px solid var(--line); border-radius: 8px; margin: .6rem 0; p
 .react-flow__node:focus-visible .step { outline: 3px solid var(--focus); }
 .react-flow__edge-textbg { fill: var(--panel); } .react-flow__edge-text { fill: var(--ink); font-size: 11px; }
 
+/* administration */
+.admin { display: grid; grid-template-columns: 230px 1fr; gap: 1rem; align-items: start; }
+.admin-nav { position: sticky; top: 0; } .admin-nav h3 { font-size: .8rem; text-transform: uppercase; color: var(--muted); margin: .9rem 0 .3rem; }
+.admin-nav button { width: 100%; text-align: left; }
+.admin-body { min-width: 0; }
+.panel-head { display: flex; justify-content: space-between; align-items: center; gap: .75rem; flex-wrap: wrap; } .panel-head h2 { margin: 0; }
+.row { display: flex; gap: .5rem; align-items: center; flex-wrap: wrap; margin: .25rem 0; }
+.card.slim { padding: .6rem .8rem; margin-bottom: .6rem; }
+.pill { border-radius: 10px; padding: 0 .5rem; font-size: .8rem; font-weight: 600; background: var(--line); }
+.pill-ok { background: color-mix(in srgb, var(--ok) 25%, transparent); color: var(--ok); } .pill-bad { background: var(--error-bg); color: var(--error); } .pill-warn { background: var(--warn-bg); color: var(--warn); }
+.json { background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: .5rem; overflow: auto; max-height: 20rem; }
+.danger-link { color: var(--error); } .grow { flex: 1; } .grow input { width: 100%; } textarea.mono { font-family: ui-monospace, Consolas, monospace; }
+.logs tr.hl { background: var(--warn-bg); } .logs td { vertical-align: top; }
+@media (max-width: 900px) { .admin { grid-template-columns: 1fr; } .admin-nav { position: static; } }
+
 /* story board and feedback */
 .page.wide { max-width: 1280px; width: 100%; overflow: auto; }
 .tabs { display: flex; gap: .4rem; margin-bottom: .75rem; }
