@@ -149,24 +149,22 @@ class ExtractIn(BaseModel):
     text: str = Field(min_length=1, max_length=MAX_DOCUMENT)
 
 
-@router.post("/applications/{app_id}/requirements/extract", status_code=201)
-def extract_requirements(app_id: uuid.UUID, body: ExtractIn, request: Request, principal: Principal = Depends(current_principal),
-                         db: Session = Depends(get_db)) -> dict[str, Any]:
-    """Turn a document (notes, a brief, an e-mail thread) into *draft* requirements. Titles already on the project are skipped."""
-    provider, app, project = _guard(request, db, principal, app_id, "story.manage")
+def register_requirements(db: Session, request: Request, provider, principal: Principal, app: Application, project: Project, text: str) -> dict[str, Any]:  # noqa: ANN001
+    """Ask the AI for the requirements ``text`` states and store them as draft rows. The AI job is recorded and committed; on failure it
+    is marked failed and ``BuilderError`` / ``LLMError`` propagate (nothing is stored)."""
     existing = [t for (t,) in db.execute(select(Requirement.title).where(Requirement.project_id == project.id))]
     job = start_ai_job(db, project_id=project.id, application_id=app.id, type="extract_requirements", created_by=principal.user_id,
-                       input_text=body.text, template="extract_requirements@1")
+                       input_text=text, template="extract_requirements@1")
     try:
-        r = AIBuilder(provider).extract_requirements(body.text, existing)
+        r = AIBuilder(provider).extract_requirements(text, existing)
     except BuilderError as e:
         finish_ai_job(job, ok=False, usage=_usage(e.usage, e.attempts), error=str(e))
         db.commit()
-        raise api_error(422, "ai_output_invalid", "the AI did not produce usable requirements") from e
+        raise
     except LLMError as e:
         finish_ai_job(job, ok=False, error=str(e))
         db.commit()
-        raise _provider_failed(e) from e
+        raise
     rows = [Requirement(project_id=project.id, title=x.title, body=x.body, status="draft", source="ai", created_by=principal.user_id) for x in r.requirements]
     db.add_all(rows)
     db.flush()
@@ -177,6 +175,19 @@ def extract_requirements(app_id: uuid.UUID, body: ExtractIn, request: Request, p
     db.commit()
     return {"job_id": str(job.id), "requirements": [req_out(x) for x in rows], "skipped_duplicates": r.skipped_duplicates, "usage": usage,
             "note": "AI-extracted requirements are drafts; review, edit or reject them."}
+
+
+@router.post("/applications/{app_id}/requirements/extract", status_code=201)
+def extract_requirements(app_id: uuid.UUID, body: ExtractIn, request: Request, principal: Principal = Depends(current_principal),
+                         db: Session = Depends(get_db)) -> dict[str, Any]:
+    """Turn a document (notes, a brief, an e-mail thread) into *draft* requirements. Titles already on the project are skipped."""
+    provider, app, project = _guard(request, db, principal, app_id, "story.manage")
+    try:
+        return register_requirements(db, request, provider, principal, app, project, body.text)
+    except BuilderError as e:
+        raise api_error(422, "ai_output_invalid", "the AI did not produce usable requirements") from e
+    except LLMError as e:
+        raise _provider_failed(e) from e
 
 
 # --- stories ----------------------------------------------------------------------------------------

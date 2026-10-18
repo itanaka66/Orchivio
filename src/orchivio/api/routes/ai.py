@@ -9,7 +9,7 @@ from __future__ import annotations
 import uuid
 from typing import Any
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.orm import Session
 
@@ -19,7 +19,15 @@ from orchivio.db.models import Application, AppRevision
 from orchivio.db.proposals import NoChanges, finish_ai_job, month_cost_usd, start_ai_job
 from orchivio.llm import NO_USAGE, LLMError, LLMProvider, Usage
 
-from ..deps import Principal, api_error, audit, current_principal, get_db, load_application
+from ..deps import (
+    Principal,
+    api_error,
+    audit,
+    authorize,
+    current_principal,
+    get_db,
+    load_application,
+)
 from .proposals import ProposalDetail, proposal_detail
 
 router = APIRouter(tags=["ai"])
@@ -30,6 +38,7 @@ MAX_TEXT = 20_000
 class RequirementsIn(BaseModel):
     model_config = ConfigDict(extra="forbid")
     requirements: str = Field(min_length=1, max_length=MAX_TEXT)
+    register_requirements: bool = Field(default=False, description="also store the requirements the text states as draft requirement rows (needs story.manage)")
 
 
 class ProposeIn(RequirementsIn):
@@ -47,6 +56,7 @@ class ProposeOut(BaseModel):
     job_id: uuid.UUID
     proposal: ProposalDetail
     usage: dict[str, Any]
+    registered_requirements: dict[str, Any] | None = None
 
 
 def _usage(u: Usage, attempts: int) -> dict[str, Any]:
@@ -69,6 +79,25 @@ def _guard(request: Request, db: Session, principal: Principal, app_id: uuid.UUI
     if isinstance(budget, (int, float)) and not isinstance(budget, bool) and month_cost_usd(db, project.id) >= budget:
         raise api_error(429, "ai_budget_exceeded", "the project's monthly AI budget is used up")
     return provider, app, project
+
+
+def auto_register(request: Request, db: Session, provider: LLMProvider, principal: Principal, app: Application, project, text: str) -> dict[str, Any]:
+    """The optional second step of analyze/propose: failure here never fails the call that already succeeded."""
+    from .agile import register_requirements  # local import: agile imports this module's guard
+
+    try:
+        authorize_story(db, principal, project)
+        return register_requirements(db, request, provider, principal, app, project, text)
+    except BuilderError:
+        return {"error": "ai_output_invalid", "requirements": []}
+    except LLMError:
+        return {"error": "ai_provider_error", "requirements": []}
+    except HTTPException as e:
+        return {"error": "forbidden" if e.status_code == 403 else "failed", "requirements": []}
+
+
+def authorize_story(db: Session, principal: Principal, project) -> None:
+    authorize(db, principal, project.organization_id, "story.manage", project_id=project.id)
 
 
 def _current_model(db: Session, app: Application):
@@ -99,7 +128,10 @@ def analyze(app_id: uuid.UUID, body: RequirementsIn, request: Request,
         raise _provider_failed(e) from e
     finish_ai_job(job, ok=True, provider=r.provider, model=r.model_name, usage=_usage(r.usage, r.attempts))
     db.commit()
-    return {"job_id": str(job.id), "analysis": r.analysis.model_dump(), "usage": _usage(r.usage, r.attempts)}
+    out = {"job_id": str(job.id), "analysis": r.analysis.model_dump(), "usage": _usage(r.usage, r.attempts)}
+    if body.register_requirements:
+        out["registered_requirements"] = auto_register(request, db, provider, principal, app, project, body.requirements)
+    return out
 
 
 @router.post("/applications/{app_id}/ai/propose", status_code=201, response_model=ProposeOut)
@@ -114,8 +146,11 @@ def propose(app_id: uuid.UUID, body: ProposeIn, request: Request,
             context, calls, plan_usage = gather_tool_context(request, db, provider, principal, project, body.requirements)
         except LLMError as e:
             raise _provider_failed(e) from e
-    return run_proposal(db, provider, principal, app, project, body.requirements, body.title,
-                        context=context, tool_calls=calls, extra_usage=plan_usage)
+    out = run_proposal(db, provider, principal, app, project, body.requirements, body.title,
+                       context=context, tool_calls=calls, extra_usage=plan_usage)
+    if body.register_requirements:
+        out.registered_requirements = auto_register(request, db, provider, principal, app, project, body.requirements)
+    return out
 
 
 def gather_tool_context(request: Request, db: Session, provider: LLMProvider, principal: Principal, project,

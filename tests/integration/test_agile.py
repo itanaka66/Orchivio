@@ -283,3 +283,37 @@ def test_extraction_guards(app, world):
     assert p["editor"].post(url, json={"text": "x"}).json()["error"]["code"] == "ai_output_invalid"
     assert p["editor"].post(url, json={"text": ""}).status_code == 422
     assert p["editor"].get(f"/projects/{proj['id']}/requirements").json()["items"] == []
+
+
+def test_analyze_can_register_the_requirements_it_was_given(app, world):
+    proj, a, p = world
+    ed = p["editor"]
+    use(app, {"summary": "A stock tracker"}, {"requirements": [{"title": "Track stock", "body": "per location"}]})
+    r = ed.post(f"/applications/{a['id']}/ai/analyze", json={"requirements": "We must track stock per location.", "register_requirements": True})
+    assert r.status_code == 200, r.text
+    reg = r.json()["registered_requirements"]
+    assert [x["title"] for x in reg["requirements"]] == ["Track stock"] and reg["requirements"][0]["source"] == "ai"
+    assert [x["title"] for x in ed.get(f"/projects/{proj['id']}/requirements").json()["items"]] == ["Track stock"]
+    assert sorted(j.type for j in jobs(app)) == ["analyze_requirements", "extract_requirements"]
+
+
+def test_registration_is_off_by_default_and_never_fails_the_main_call(app, world, raw_model):
+    proj, a, p = world
+    ed = p["editor"]
+    use(app, {"summary": "x"})
+    assert "registered_requirements" not in ed.post(f"/applications/{a['id']}/ai/analyze", json={"requirements": "r"}).json()
+    use(app, {"summary": "x"}, "bad", "bad", "bad")
+    r = ed.post(f"/applications/{a['id']}/ai/analyze", json={"requirements": "r", "register_requirements": True})
+    assert r.status_code == 200 and r.json()["registered_requirements"] == {"error": "ai_output_invalid", "requirements": []}
+    assert ed.get(f"/projects/{proj['id']}/requirements").json()["items"] == []
+
+
+def test_propose_can_register_requirements_too(app, world, raw_model):
+    proj, a, p = world
+    ed = p["editor"]
+    changed = json.loads(json.dumps(raw_model))
+    changed["modules"][0]["entities"][0]["display_name"] = "Renamed product"
+    use(app, changed, {"requirements": [{"title": "Rename the app"}]})
+    r = ed.post(f"/applications/{a['id']}/ai/propose", json={"requirements": "Rename the app", "register_requirements": True})
+    assert r.status_code == 201, r.text
+    assert [x["title"] for x in r.json()["registered_requirements"]["requirements"]] == ["Rename the app"]

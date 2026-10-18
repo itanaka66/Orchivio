@@ -31,6 +31,8 @@ export interface Traceability {
 export interface FeedbackItem { id: string; page_key: string; element_id: string | null; body: string; status: 'new' | 'clustered' | 'dismissed'; has_screenshot: boolean; story_id: string | null; created_at: string }
 export interface FeedbackInput { page_key: string; body: string; element_id?: string | null; screenshot_base64?: string | null }
 
+export interface PreviewActor { user: string; roles: string[] }
+
 const CSRF_KEY = 'orchivio.csrf'
 
 export class ApiClient {
@@ -119,6 +121,16 @@ export class ApiClient {
   deleteTraceLink = (projectId: string, id: string) => this.request<void>('DELETE', `/projects/${projectId}/trace-links/${id}`)
   traceability = (projectId: string) => this.request<Traceability>('GET', `/projects/${projectId}/traceability`)
   testCases = (projectId: string, q = '') => this.request<{ items: { id: string; title: string }[]; total: number }>('GET', `/projects/${projectId}/test-cases?q=${encodeURIComponent(q)}&limit=100`)
+
+  // --- preview data, as a simulated end user
+  private asActor = (a: PreviewActor) => ({ 'X-Preview-User': a.user, 'X-Preview-Roles': a.roles.join(',') })
+  previewList = (appId: string, entity: string, actor: PreviewActor) =>
+    this.request<{ items: Record<string, unknown>[]; total: number }>('GET', `/applications/${appId}/preview/data/${entity}?limit=50`, undefined, this.asActor(actor))
+  previewCreate = (appId: string, entity: string, values: Record<string, unknown>, actor: PreviewActor) =>
+    this.request<Record<string, unknown>>('POST', `/applications/${appId}/preview/data/${entity}`, values, this.asActor(actor))
+  previewUpdate = (appId: string, entity: string, id: string, values: Record<string, unknown>, actor: PreviewActor) =>
+    this.request<Record<string, unknown>>('PATCH', `/applications/${appId}/preview/data/${entity}/${encodeURIComponent(id)}`, values, this.asActor(actor))
+  previewReset = (appId: string) => this.request<unknown>('POST', `/applications/${appId}/preview/reset`, { seed: { rows_per_entity: 8, seed: 1, users: ['preview-user'] } })
 
   // --- preview feedback
   feedback = (appId: string, status?: FeedbackItem['status']) => this.request<{ items: FeedbackItem[] }>('GET', `/applications/${appId}/feedback${status ? `?status=${status}` : ''}`)

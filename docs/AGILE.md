@@ -25,6 +25,11 @@ an entity renamed) leave the link in place; the report marks them `exists: false
 
 ## 2a. Requirement extraction
 
+**Automatic registration.** `POST /applications/{id}/ai/analyze` and `/ai/propose` accept `register_requirements: true`: after the call succeeds, the same
+requirements text is run through the extraction below and the draft rows are returned as `registered_requirements`. It needs `story.manage` as
+well, is a separate recorded AI job, and never fails the main call: if extraction cannot run (no permission, unusable output, provider error) the
+field holds `{error, requirements: []}` and the analysis or proposal is returned as usual.
+
 `POST /applications/{id}/requirements/extract` with `{text}` (up to 20 000 characters; notes, a brief, an e-mail thread) asks the AI Builder for the
 requirements the text states and stores them as **draft** requirements with `source: ai`. The document is wrapped as untrusted data; titles
 that repeat an existing one (case-insensitively) or an earlier one in the answer are skipped and counted. Same consent, budget and AI-job rules as
@@ -66,9 +71,19 @@ PNG/JPEG (file chooser, paste, or **Capture screen**, which uses the browser's o
 (type by content, 512 KiB) before sending. It is mounted in the Studio's board and flow-editor views; any host that renders model-driven UI can
 mount it and mark its elements with the two attributes.
 
+## 5a. Preview screen
+
+"Open the preview" (Studio, after choosing an application) renders the application's **pages from its model** against the preview database: lists
+with the page's columns, create/edit forms built from the entity's typed-in fields (no generated, computed or key fields; enumerations as selects;
+numbers sent as numbers), and "Reset sample data". The toolbar sets the simulated end user and roles, so what is shown is exactly what the
+runtime's access rules allow that user; refusals from the server are shown as they are. Page, table, column and form-field elements carry
+`data-orchivio-page` and `data-orchivio-element` (the model's element ids), and the **feedback widget** is mounted on it, so a comment picked on
+a column header or a cell is stored against that field's element id and the page key.
+
 ## 6. Not built
 
-A generated-application preview renderer that puts the two `data-orchivio-*` attributes on its elements (the Studio has none, so the widget
-there reports the Studio page and no element), a Studio screen for editing a story's body and acceptance criteria, comments and assignees, sprints,
-and notifications. Live-model behaviour of the AI features is covered by `tests/live` (skipped unless `ORCHIVIO_LIVE_LLM=1` and an API key are set);
-it has not been run by the authors of this change.
+The preview screen is a faithful *rendering of the model*, not the generated production UI: no detail pages, page actions beyond create and edit,
+delete, filters or sorting, relations pickers (references are typed as ids), or file fields. A Studio screen for editing a story's body and
+acceptance criteria, comments and assignees, sprints, and notifications. Live-model behaviour of the AI features is covered by `tests/live`
+(skipped unless `ORCHIVIO_LIVE_LLM=1` and an API key are set); it has not been run by the authors of this change. Screen capture in the widget needs
+a manual check in a real browser.
