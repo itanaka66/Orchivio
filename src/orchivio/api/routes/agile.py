@@ -50,9 +50,10 @@ from ..deps import (
     not_found,
     utcnow,
 )
+from ..idempotency import IdempotentRoute
 from .ai import _guard, _provider_failed, _usage
 
-router = APIRouter(tags=["agile"])
+router = APIRouter(tags=["agile"], route_class=IdempotentRoute)
 
 REQ_STATUS = "^(draft|accepted|implemented|rejected)$"
 STORY_STATUS = "^(proposed|backlog|ready|in_progress|done|rejected)$"

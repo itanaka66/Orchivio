@@ -1,10 +1,14 @@
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
+import { useCallback, useEffect, useMemo, useState, type ComponentProps, type ReactNode } from 'react'
 import { ApiClient, ApiError, type Application, type Org, type Project, type User } from './api/client'
 import { AdminWorkspace } from './admin/AdminWorkspace'
 import { Board } from './board/Board'
 import { collectElements } from './board/elements'
 import { FeedbackWidget } from './board/FeedbackWidget'
 import { FlowEditor } from './components/FlowEditor'
+import { remember, saveModel, PROFILE_KEY } from './offline'
+import { OfflineGate } from './offline/OfflineGate'
+import { OfflinePanel } from './offline/OfflinePanel'
+import { OfflineProvider, useOffline } from './offline/OfflineProvider'
 import { Preview } from './preview/Preview'
 import { PwaBar } from './pwa/PwaBar'
 import { clearShellCaches } from './pwa/register'
@@ -21,10 +25,16 @@ interface AdminTarget { org: Org; project: Project; application?: Application; m
 interface PreviewTarget { application: Application; model: Json; roles: string[]; canEdit: boolean }
 interface Open { model: Json; module: string; flow: Flow; application?: Application; readOnly: boolean; demo: boolean }
 
-export default function App({ client: injected }: { client?: ApiClient }) {
+export default function App({ client: injected, offline }: { client?: ApiClient; offline?: Omit<ComponentProps<typeof OfflineProvider>, 'client' | 'children'> }) {
   const client = useMemo(() => injected ?? new ApiClient(), [injected])
+  return <OfflineProvider client={client} {...offline}><Studio client={client} /></OfflineProvider>
+}
+
+function Studio({ client }: { client: ApiClient }) {
+  const off = useOffline()
   const [user, setUser] = useState<User | null>(null)
   const [booting, setBooting] = useState(client.signedIn)
+  const [offlineStart, setOfflineStart] = useState(false) // signed in before, but the server cannot be reached
   const [open, setOpen] = useState<Open | null>(null)
   const [board, setBoard] = useState<BoardTarget | null>(null)
   const [preview, setPreview] = useState<PreviewTarget | null>(null)
@@ -32,8 +42,18 @@ export default function App({ client: injected }: { client?: ApiClient }) {
 
   useEffect(() => {
     if (!client.signedIn) return
-    client.me().then((m) => setUser(m.user), () => undefined).finally(() => setBooting(false))
+    client.me().then((m) => setUser(m.user), (e: unknown) => { if (e instanceof TypeError) setOfflineStart(true) }).finally(() => setBooting(false))
   }, [client])
+
+  // offline data belongs to one account; remember who is signed in, and a name to greet them with while offline
+  useEffect(() => { off?.bindUser(user?.id ?? null) }, [off, user?.id])
+  useEffect(() => { if (user && off?.unlocked) void off.snapshot(PROFILE_KEY, { displayName: user.display_name }) }, [user, off?.unlocked]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const signOut = () => {
+    if (off && off.pending > 0 && !window.confirm(`${off.pending} change${off.pending === 1 ? ' is' : 's are'} not sent yet. They stay encrypted on this device and are sent after you sign in again. Sign out now?`)) return
+    off?.lock()
+    void client.logout().finally(() => { clearShellCaches(); setUser(null) })
+  }
 
   if (booting) return <main className="page"><p>Loading…</p></main>
 
@@ -103,8 +123,12 @@ export default function App({ client: injected }: { client?: ApiClient }) {
           validate={user ? (f) => client.validateFlow(model, module, f) : undefined}
           run={user && application ? (args, asUser, roles) => client.runFlow(application.id, `${module}.${flow.key}`, args, asUser, roles) : undefined}
           runnable={listFlows(model).some((f) => f.module === module && f.flow.key === flow.key)}
-          onSave={application && user && !readOnly ? async (f) => {
-            const p = await client.createProposal(application.id, withFlow(model, module, f), `Edit flow ${f.key}`)
+          onSave={application && (user || offlineStart) && !readOnly ? async (f) => {
+            const next = withFlow(model, module, f)
+            const send = () => client.createProposal(application.id, next, `Edit flow ${f.key}`)
+            const r = off ? await off.submit({ kind: 'proposal', path: `/applications/${application.id}/proposals`, body: { model: next, title: `Edit flow ${f.key}` }, label: `Edit flow ${f.key}` }, send) : { queued: false as const, value: await send() }
+            if (r.queued) return 'Saved on this device. The proposal is created when you are online (and signed in); it is checked against the then-current model like any other.'
+            const p = r.value
             return `Proposal created (${p.approval_level}, ${p.diff.changes.length} change${p.diff.changes.length === 1 ? '' : 's'}). It takes effect when someone with the right role approves it.`
           } : undefined}
         />
@@ -116,11 +140,25 @@ export default function App({ client: injected }: { client?: ApiClient }) {
     <>
     <PwaBar />
     {overlay}
+    {!user && offlineStart ? (
+      <div hidden={overlay !== null}>
+        <OfflineGate
+          onBoard={(b) => setBoard({ project: b.project, application: b.application, elements: [], canEdit: b.canEdit })}
+          onOpenFlow={(o) => setOpen({ model: o.model, module: o.module, flow: o.flow, application: o.application, readOnly: false, demo: false })}>
+          <section aria-label="Sign in">
+            <h2>Back online?</h2>
+            <p className="hint">Sign in to send what is waiting and to work with the live data.</p>
+            <Login client={client} onUser={(u) => { setUser(u); setOfflineStart(false) }} />
+          </section>
+        </OfflineGate>
+      </div>
+    ) : (
     <main className="page" hidden={overlay !== null}>
       <h1>Orchivio Studio · Flow builder</h1>
+      {user && <OfflinePanel />}
       {user ? (
         <Browser client={client} user={user} onOpen={setOpen} onBoard={setBoard} onPreview={setPreview} onAdmin={setAdmin}
-                 onLogout={() => { void client.logout().finally(() => { clearShellCaches(); setUser(null) }) }} />
+                 onLogout={signOut} />
       ) : (
         <Login client={client} onUser={setUser} />
       )}
@@ -133,6 +171,7 @@ export default function App({ client: injected }: { client?: ApiClient }) {
         }}>Open the demo flow</button>
       </section>
     </main>
+    )}
     </>
   )
 }
@@ -182,6 +221,8 @@ function Browser({ client, user, onOpen, onBoard, onPreview, onAdmin, onLogout }
   const revision = useLoad(() => (app?.current_revision_id ? client.revision(app.current_revision_id) : Promise.resolve(null)), [app])
   const [newKey, setNewKey] = useState('')
   const [error, setError] = useState('')
+  const off = useOffline()
+  useEffect(() => { if (app && revision.data) void saveModel(off, app.id, { name: app.name, model: revision.data.model_json }) }, [app, revision.data, off?.unlocked]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const flows = revision.data ? listFlows(revision.data.model_json) : []
   const canEdit = org ? ['owner', 'admin', 'editor'].includes(org.role) : false
@@ -209,7 +250,10 @@ function Browser({ client, user, onOpen, onBoard, onPreview, onAdmin, onLogout }
       )}
       {project && (
         <p>
-          <button type="button" onClick={() => onBoard({ project, application: app ?? undefined, canEdit, elements: revision.data ? collectElements(revision.data.model_json) : [] })}>
+          <button type="button" onClick={() => {
+            onBoard({ project, application: app ?? undefined, canEdit, elements: revision.data ? collectElements(revision.data.model_json) : [] })
+            if (org) void remember(off, { projectId: project.id, projectName: project.name, organization: org.name, canEdit, applications: (apps.data?.items ?? []).map((a) => ({ id: a.id, name: a.name, hasModel: a.id === app?.id && !!revision.data })) })
+          }}>
             Open the story board
           </button>
         </p>

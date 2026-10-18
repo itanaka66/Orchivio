@@ -2,7 +2,7 @@
 
 The Studio (`apps/web`) is a **progressive web app**: it can be installed from the browser ("Install Studio as an app"), starts in its own
 window, adapts to small screens and safe areas, opens its shell without a connection, and tells people when it is offline or when a new version is
-ready. This is the **PWA** half of FR-129; offline *data* and sync (P2) are not built.
+ready. This is the **PWA** half of FR-129; offline *data* and sync (P2) are described in [OFFLINE.md](OFFLINE.md).
 
 ## What is cached, and what never is
 
