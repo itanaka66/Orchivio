@@ -83,6 +83,11 @@ Status: ✅ implemented and tested · 🟡 partly / not verified end-to-end · �
 | A21 | A process is used to escalate privilege (start rights, system tasks) | `start_roles` and `run_as_role` are model elements: widening either is A3; system tasks run with only `run_as_role`; delegation only to active users who hold the task's role | ✅ |
 | A22 | A process spins forever or floods the worker | Static refusal of cycles without a waiting step, per-advance and per-instance step limits, bounded form and result sizes | ✅ |
 
+| A26 | Forged or replayed ID tokens (alg none, HMAC confusion, wrong key/audience/issuer/nonce, expiry) | Allow-listed asymmetric algorithms, key from the issuer's JWKS, full claim checks, nonce bound to the attempt, 2048-bit RSA minimum | ✅ tested |
+| A27 | Login CSRF / session fixation / state replay in the OIDC redirect flow | Single-use server-side state, browser-binding cookie, 10-minute expiry, PKCE | ✅ tested |
+| A28 | Account takeover through e-mail claims or username collisions | Identity is (issuer, subject); matching local usernames are never merged; domain allowlists need verified e-mail; local accounts untouched | ✅ tested |
+| A29 | Open redirect after sign-in; SSRF through provider-supplied endpoints | `next` limited to site paths; discovery endpoints checked and every fetch pinned | ✅ tested |
+
 ## 4. Assumptions
 
 - PostgreSQL, the host OS and the TLS terminator are operated securely.

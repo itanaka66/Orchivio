@@ -148,6 +148,20 @@ def _user_json(c: Caller) -> dict[str, Any]:
             "roles": sorted(c.roles), "must_change_password": c.user.must_change_password, "anonymous": False}
 
 
+def issue_session(db: Session, request: Request, response: Response, app: Application, user: AppUser) -> tuple[str, Any, AppSession]:
+    """A new session for ``user`` (cookie on the response, CSRF token returned). The caller commits."""
+    settings = request.app.state.settings
+    tok, tok_hash = new_token("oas_")
+    csrf, csrf_hash = new_token()
+    expires = utcnow() + timedelta(hours=settings.session_ttl_hours)
+    sess = AppSession(app_user_id=user.id, application_id=app.id, token_hash=tok_hash, csrf_hash=csrf_hash, expires_at=expires)
+    db.add(sess)
+    user.last_login_at = utcnow()
+    response.set_cookie(cookie_name(request), tok, max_age=settings.session_ttl_hours * 3600, httponly=True,
+                        secure=settings.secure_cookies, samesite="lax", path=cookie_path(app.id))
+    return csrf, expires, sess
+
+
 @router.post("/auth/login")
 def login(app_id: uuid.UUID, body: LoginIn, request: Request, response: Response, db: Session = Depends(get_db)) -> dict[str, Any]:
     settings = request.app.state.settings
@@ -168,16 +182,9 @@ def login(app_id: uuid.UUID, body: LoginIn, request: Request, response: Response
     throttle.succeed(user_key)
     if needs_rehash(user.password_hash or ""):
         user.password_hash = hash_password(body.password)
-    tok, tok_hash = new_token("oas_")
-    csrf, csrf_hash = new_token()
-    expires = utcnow() + timedelta(hours=settings.session_ttl_hours)
-    sess = AppSession(app_user_id=user.id, application_id=app.id, token_hash=tok_hash, csrf_hash=csrf_hash, expires_at=expires)
-    db.add(sess)
-    user.last_login_at = utcnow()
+    csrf, expires, sess = issue_session(db, request, response, app, user)
     _audit(db, request, "appauth.login", app, project, user.id)
     db.commit()
-    response.set_cookie(cookie_name(request), tok, max_age=settings.session_ttl_hours * 3600, httponly=True,
-                        secure=settings.secure_cookies, samesite="lax", path=cookie_path(app.id))
     c = Caller(app, project, model, mhash, user, _roles(db, user, model), sess)
     return {"user": _user_json(c), "csrf_token": csrf, "expires_at": expires.isoformat()}
 
@@ -191,6 +198,17 @@ def logout(request: Request, response: Response, c: Caller = Depends(signed_in),
     response.delete_cookie(cookie_name(request), path=cookie_path(c.application.id))
     response.status_code = 204
     return response
+
+
+@router.get("/auth/csrf")
+def csrf_token(c: Caller = Depends(signed_in), db: Session = Depends(get_db)) -> dict[str, str]:
+    """A fresh CSRF token for the current session (the previous one stops working). Needed after a sign-in that ended in a
+    redirect, such as OIDC, where there was no response body to carry it. A safe method: cross-site pages cannot read it."""
+    assert c.session is not None
+    csrf, csrf_hash = new_token()
+    c.session.csrf_hash = csrf_hash
+    db.commit()
+    return {"csrf_token": csrf}
 
 
 @router.get("/auth/me")

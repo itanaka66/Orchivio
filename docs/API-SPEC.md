@@ -131,6 +131,9 @@ one owner (`409 last_owner`). Any member may leave an organization.
 | GET | `/apps/{app_id}/process-instances/{id}` | progress of an instance you started |
 | GET | `/applications/{id}/process-instances`, `/process-instances/{id}`, `/applications/{id}/user-tasks` | monitoring (viewer and up) |
 | POST | `/applications/{id}/processes/{key}/start`, `/process-instances/{id}/cancel`, `/process-instances/{id}/retry` | start for testing / cancel / retry a failed step (editor) |
+| PUT/GET/DELETE | `/applications/{id}/oidc`; POST `/applications/{id}/oidc/test` | the application's OIDC provider (admin); check discovery and keys |
+| GET | `/apps/{app_id}/auth/oidc/login`, `/auth/oidc/callback` | start / finish an OIDC sign-in (redirects; session cookie as for local login) |
+| GET | `/apps/{app_id}/auth/csrf` | a fresh CSRF token for the current session |
 | GET | `/healthz`, `/readyz` | liveness / readiness (unauthenticated; docs/OPERATIONS.md) |
 | GET | `/metrics` | Prometheus text; bearer `ORCHIVIO_METRICS_TOKEN`, disabled when unset |
 

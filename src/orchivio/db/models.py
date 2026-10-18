@@ -828,3 +828,65 @@ class ProcessEvent(Base):
     step_id: Mapped[str | None] = mapped_column(String(40))
     actor: Mapped[str | None] = mapped_column(String(64))
     data: Mapped[dict[str, Any]] = mapped_column(PortableJSON, nullable=False, default=dict)
+
+
+class AppOidcProvider(Base):
+    """OpenID Connect sign-in for the end users of one application (FR-067, P1). One provider per application."""
+
+    __tablename__ = "app_oidc_providers"
+    __table_args__ = (UniqueConstraint("application_id", name="uq_app_oidc_providers_app"), _in("status", ("active", "disabled"), "status"))
+
+    id: Mapped[uuid.UUID] = _id()
+    application_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("applications.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    issuer: Mapped[str] = mapped_column(String(500), nullable=False)
+    client_id: Mapped[str] = mapped_column(String(300), nullable=False)
+    client_secret_ref: Mapped[str | None] = mapped_column(String(300))  # reference only; None = public client (PKCE)
+    scopes: Mapped[str] = mapped_column(String(300), nullable=False, default="openid email profile")
+    username_claim: Mapped[str] = mapped_column(String(64), nullable=False, default="email")
+    role_claim: Mapped[str] = mapped_column(String(64), nullable=False, default="groups")
+    role_mapping: Mapped[dict[str, Any]] = mapped_column(PortableJSON, nullable=False, default=dict)  # claim value -> app role
+    default_roles: Mapped[list[Any]] = mapped_column(PortableJSON, nullable=False, default=list)
+    auto_provision: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    allowed_email_domains: Mapped[list[Any] | None] = mapped_column(PortableJSON)
+    post_login_url: Mapped[str] = mapped_column(String(500), nullable=False, default="/")
+    status: Mapped[str] = mapped_column(String(10), nullable=False, default="active")
+    created_by: Mapped[uuid.UUID | None] = mapped_column(Uuid)
+    created_at: Mapped[datetime] = _created()
+
+
+class OidcLoginState(Base):
+    """One pending sign-in: state, nonce and PKCE verifier, single use, bound to the browser by a cookie."""
+
+    __tablename__ = "oidc_login_states"
+    __table_args__ = (UniqueConstraint("state_hash", name="uq_oidc_login_states_state"),)
+
+    id: Mapped[uuid.UUID] = _id()
+    application_id: Mapped[uuid.UUID] = mapped_column(Uuid, nullable=False, index=True)
+    state_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    browser_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    nonce: Mapped[str] = mapped_column(String(64), nullable=False)
+    code_verifier: Mapped[str] = mapped_column(String(128), nullable=False)
+    next_path: Mapped[str | None] = mapped_column(String(300))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class AppUserIdentity(Base):
+    """Links an application user to an identity at an external provider; the pair (issuer, subject) is the identity."""
+
+    __tablename__ = "app_user_identities"
+    __table_args__ = (UniqueConstraint("application_id", "issuer", "subject", name="uq_app_user_identities_subject"),)
+
+    id: Mapped[uuid.UUID] = _id()
+    application_id: Mapped[uuid.UUID] = mapped_column(Uuid, nullable=False)
+    app_user_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("app_users.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    issuer: Mapped[str] = mapped_column(String(500), nullable=False)
+    subject: Mapped[str] = mapped_column(String(255), nullable=False)
+    email: Mapped[str | None] = mapped_column(String(320))
+    created_at: Mapped[datetime] = _created()
+    last_login_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
