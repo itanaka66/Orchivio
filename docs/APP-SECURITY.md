@@ -164,7 +164,32 @@ next to or instead of local accounts.
   quote so spreadsheets do not execute them. The file is UTF-8 with a BOM for Excel.
 * Excel (`.xlsx`) files are not supported; save as CSV.
 
-## 8. Not yet implemented
+## 8. Pages, actions and flows (FR-065, FR-073)
+
+A UI is a convenience; the server decides. The page API under `/apps/{id}/pages` enforces:
+
+* **Navigation.** A page is open to a caller only if one of their roles is listed for it in `security.pages` (deny by
+  default) **and** their roles hold the entity operations the page type implies: list/detail need `read`, a create form
+  `create`, an edit form `read` and `update`. A page that fails either test is indistinguishable from one that does not
+  exist (`404`), in the menu (`GET /pages`) and on every route below it.
+* **Fields.** A page that declares `columns` exposes exactly those fields: list and detail rows contain only them (plus
+  the key), forms accept only them (`422 unknown field` otherwise), and list filters and sorting are limited to them.
+  Field-level security (§3) still applies underneath.
+* **Row actions.** Each row carries `_actions`: the actions the caller may use on that row. An action appears if it is
+  declared on the page, its standard verb is allowed by entity access (`view`=read, `create`, `edit`=update, `delete`)
+  and its `visible_expr` holds for the row; `editable_expr` says whether the row can be edited. An expression that cannot
+  be evaluated hides the action. Invoking an action (`POST /pages/{page}/actions/{key} {row_id}`) re-checks all of that.
+  `delete` deletes the record (entity access applies); an action with `flow` and `args` (expressions over the row) runs
+  that server flow **as the caller**, so their data permissions still apply to every step; other actions are links and
+  answer `409 no_behaviour`.
+* **Edit forms.** `PATCH /pages/{page}/rows/{id}` checks the page's `edit` action (`visible_expr` and `editable_expr`)
+  against the stored row before the update, then the usual entity rules.
+* **Flows.** `POST /apps/{id}/flows/{flow}/run` runs a flow only for a role in the flow's `run_roles`; with none, the flow
+  cannot be run directly at all (deny by default) and answers `404`, like a flow that does not exist. Page actions,
+  processes, schedules and webhooks have their own grants.
+* **Risk.** Giving a flow `run_roles`, or binding a flow to a page action, is a permission expansion (A3).
+
+## 9. Not yet implemented
 
 Page and action enforcement in a running app, OIDC and SAML sign-in, self-service
 registration and password reset by email, MFA, a shared (multi-replica) login throttle, "view as role" preview, generated positive/negative tests

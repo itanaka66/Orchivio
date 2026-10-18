@@ -86,9 +86,15 @@ class EnumDef(Element):
 
 
 class PageAction(_Strict):
+    """A button or link on a page. ``visible_expr``/``editable_expr`` see the row as ``record`` and are enforced by the
+    server. With ``flow`` the action runs that server flow as the user, with ``args`` evaluated against the row; the
+    standard keys ``view``, ``create``, ``edit`` and ``delete`` stand for the entity operation of that name."""
+
     key: PageKey
     visible_expr: Expr | None = None
     editable_expr: Expr | None = None
+    flow: str | None = None
+    args: dict[str, Expr] | None = None
 
 
 class PageDef(Element):
@@ -202,6 +208,7 @@ class FlowDef(Element):
     edges: list[FlowEdge] = Field(default_factory=list, max_length=400)
     tests: list[FlowTestCase] = Field(default_factory=list, max_length=50)
     schedule: ScheduleDef | None = None
+    run_roles: list[KeyName] | None = None  # roles that may run this flow directly through the application API
 
 
 PROCESS_STEP_TYPES = ("start", "user_task", "system_task", "decision", "parallel_split", "parallel_join", "timer", "end")

@@ -134,6 +134,10 @@ one owner (`409 last_owner`). Any member may leave an organization.
 | PUT/GET/DELETE | `/applications/{id}/oidc`; POST `/applications/{id}/oidc/test` | the application's OIDC provider (admin); check discovery and keys |
 | GET | `/apps/{app_id}/auth/oidc/login`, `/auth/oidc/callback` | start / finish an OIDC sign-in (redirects; session cookie as for local login) |
 | GET | `/apps/{app_id}/auth/csrf` | a fresh CSRF token for the current session |
+| GET | `/apps/{app_id}/pages`, `/apps/{app_id}/pages/{key}` | the menu and one page definition, only for pages the caller may open |
+| GET | `/apps/{app_id}/pages/{key}/rows[/{id}]` | rows with only the page's columns and per-row `_actions` |
+| POST / PATCH | `/apps/{app_id}/pages/{key}/rows[/{id}]` | submit a create / edit form (declared columns only; `editable_expr` enforced) |
+| POST | `/apps/{app_id}/pages/{key}/actions/{action}` | invoke a page action (`{row_id}`); flow-bound actions run as the caller |
 | GET | `/healthz`, `/readyz` | liveness / readiness (unauthenticated; docs/OPERATIONS.md) |
 | GET | `/metrics` | Prometheus text; bearer `ORCHIVIO_METRICS_TOKEN`, disabled when unset |
 
