@@ -146,6 +146,8 @@ one owner (`409 last_owner`). Any member may leave an organization.
 | GET | `/applications/{id}/logs` | application log lines (editor+): filters, newest first, `before_id` paging |
 | POST | `/applications/{id}/logs/analyze` | AI analysis of a recent window of log lines; findings cite line ids |
 | GET/POST | `/projects/{id}/requirements`, `/stories` | requirements and stories (docs/AGILE.md) |
+| POST | `/applications/{id}/requirements/extract` | AI extracts draft requirements from a document |
+| GET | `/projects/{id}/test-cases` | generated test cases that can be linked |
 | GET/PATCH/DELETE | `/projects/{id}/requirements/{rid}`, `/stories/{sid}` | read / change / delete |
 | GET/POST | `/projects/{id}/trace-links` | trace links; `DELETE .../{link}` |
 | GET | `/projects/{id}/traceability?format=json\|csv` | coverage and links report |

@@ -12,7 +12,6 @@ import binascii
 import csv
 import io
 import json
-import re
 import uuid
 from collections import defaultdict
 from datetime import timedelta
@@ -38,6 +37,7 @@ from orchivio.db.models import (
 from orchivio.db.proposals import finish_ai_job, start_ai_job
 from orchivio.llm import LLMError
 from orchivio.model.ids import iter_elements
+from orchivio.testgen import generate_cases
 
 from ..deps import (
     Principal,
@@ -59,7 +59,7 @@ STORY_STATUS = "^(proposed|backlog|ready|in_progress|done|rejected)$"
 MAX_SCREENSHOT = 512 * 1024
 FEEDBACK_PER_HOUR = 30
 MAX_CLUSTERED = 100
-_TEST_ID = re.compile(r"^[A-Za-z0-9_.:/ \-]{1,200}$")
+MAX_DOCUMENT = 20_000
 _IMAGES = ((b"\x89PNG\r\n\x1a\n", "image/png"), (b"\xff\xd8\xff", "image/jpeg"))
 
 
@@ -142,6 +142,41 @@ def delete_requirement(project_id: uuid.UUID, req_id: uuid.UUID, request: Reques
     audit(db, request, "requirement.deleted", actor_id=principal.user_id, org_id=project.organization_id, target_type="requirement", target_id=r.id)
     db.commit()
     return Response(status_code=204)
+
+
+class ExtractIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    text: str = Field(min_length=1, max_length=MAX_DOCUMENT)
+
+
+@router.post("/applications/{app_id}/requirements/extract", status_code=201)
+def extract_requirements(app_id: uuid.UUID, body: ExtractIn, request: Request, principal: Principal = Depends(current_principal),
+                         db: Session = Depends(get_db)) -> dict[str, Any]:
+    """Turn a document (notes, a brief, an e-mail thread) into *draft* requirements. Titles already on the project are skipped."""
+    provider, app, project = _guard(request, db, principal, app_id, "story.manage")
+    existing = [t for (t,) in db.execute(select(Requirement.title).where(Requirement.project_id == project.id))]
+    job = start_ai_job(db, project_id=project.id, application_id=app.id, type="extract_requirements", created_by=principal.user_id,
+                       input_text=body.text, template="extract_requirements@1")
+    try:
+        r = AIBuilder(provider).extract_requirements(body.text, existing)
+    except BuilderError as e:
+        finish_ai_job(job, ok=False, usage=_usage(e.usage, e.attempts), error=str(e))
+        db.commit()
+        raise api_error(422, "ai_output_invalid", "the AI did not produce usable requirements") from e
+    except LLMError as e:
+        finish_ai_job(job, ok=False, error=str(e))
+        db.commit()
+        raise _provider_failed(e) from e
+    rows = [Requirement(project_id=project.id, title=x.title, body=x.body, status="draft", source="ai", created_by=principal.user_id) for x in r.requirements]
+    db.add_all(rows)
+    db.flush()
+    usage = _usage(r.usage, r.attempts)
+    finish_ai_job(job, ok=True, provider=r.provider, model=r.model_name, usage=usage, result_ref=f"requirements:{len(rows)}")
+    audit(db, request, "requirement.extracted", actor_id=principal.user_id, org_id=project.organization_id, target_type="application", target_id=app.id,
+          meta={"created": len(rows), "skipped_duplicates": r.skipped_duplicates, "ai_job": str(job.id)})
+    db.commit()
+    return {"job_id": str(job.id), "requirements": [req_out(x) for x in rows], "skipped_duplicates": r.skipped_duplicates, "usage": usage,
+            "note": "AI-extracted requirements are drafts; review, edit or reject them."}
 
 
 # --- stories ----------------------------------------------------------------------------------------
@@ -264,6 +299,26 @@ def project_elements(db: Session, project_id: uuid.UUID) -> dict[str, str]:
     return out
 
 
+def project_tests(db: Session, project_id: uuid.UUID) -> dict[str, str]:
+    """Generated test case id -> title, for the current models of the project's applications."""
+    out: dict[str, str] = {}
+    for app in db.scalars(select(Application).where(Application.project_id == project_id)):
+        rev = db.get(AppRevision, app.current_revision_id) if app.current_revision_id else None
+        if rev is not None:
+            out.update({c.id: c.title for c in generate_cases(to_model(rev))})
+    return out
+
+
+@router.get("/projects/{project_id}/test-cases")
+def list_test_cases(project_id: uuid.UUID, q: str | None = Query(None, max_length=100), limit: int = Query(200, ge=1, le=1000),
+                    principal: Principal = Depends(current_principal), db: Session = Depends(get_db)) -> dict[str, Any]:
+    """The generated test cases a story or requirement can be linked to (ids are stable while the model keeps the element)."""
+    project = load_project(db, principal, project_id, "project.read")
+    needle = (q or "").casefold()
+    items = [{"id": k, "title": v} for k, v in sorted(project_tests(db, project.id).items()) if needle in k.casefold() or needle in v.casefold()]
+    return {"items": items[:limit], "total": len(items)}
+
+
 def _drop_links(db: Session, project: Project, kind: str, item_id: uuid.UUID) -> None:
     for link in db.scalars(select(TraceLink).where(TraceLink.project_id == project.id)):
         if (link.from_type == kind and link.from_id == str(item_id)) or (link.to_type == kind and link.to_id == str(item_id)):
@@ -294,8 +349,8 @@ def create_link(project_id: uuid.UUID, body: LinkIn, request: Request, principal
     elif body.to_type == "element":
         if to_id not in project_elements(db, project.id):
             raise api_error(422, "unknown_element", "no application of this project has an element with this id in its current model")
-    elif not _TEST_ID.match(to_id):
-        raise api_error(422, "invalid_link", "a test id is 1-200 letters, digits or . _ : / - and spaces")
+    elif to_id not in project_tests(db, project.id):
+        raise api_error(422, "unknown_test", "no generated test case of this project has this id (see GET /projects/{id}/test-cases)")
     link = TraceLink(project_id=project.id, from_type=body.from_type, from_id=str(body.from_id), to_type=body.to_type, to_id=to_id,
                      created_by=principal.user_id)
     db.add(link)
@@ -344,6 +399,7 @@ def traceability(project_id: uuid.UUID, format: str = Query("json", pattern="^(j
     """Every requirement and story with what it is linked to, whether linked elements still exist, and coverage counts."""
     project = load_project(db, principal, project_id, "project.read")
     elements = project_elements(db, project.id)
+    cases = project_tests(db, project.id)
     reqs = list(db.scalars(select(Requirement).where(Requirement.project_id == project.id).order_by(Requirement.created_at, Requirement.id)))
     stories = list(db.scalars(select(Story).where(Story.project_id == project.id).order_by(Story.position, Story.id)))
     by_from: dict[tuple[str, str], list[TraceLink]] = defaultdict(list)
@@ -361,8 +417,10 @@ def traceability(project_id: uuid.UUID, format: str = Query("json", pattern="^(j
             elif link.to_type == "story":
                 if link.to_id not in out["stories"]:
                     out["stories"].append(link.to_id)
+            elif link.to_type == "test":
+                out["tests"].append({"id": link.to_id, "title": cases.get(link.to_id), "exists": link.to_id in cases})
             else:
-                out[link.to_type + "s"].append(link.to_id)
+                out["revisions"].append(link.to_id)
         return out
 
     by_req: dict[uuid.UUID, list[str]] = defaultdict(list)
@@ -376,7 +434,8 @@ def traceability(project_id: uuid.UUID, format: str = Query("json", pattern="^(j
     doc = {"requirements": req_rows, "stories": story_rows,
            "coverage": {"requirements": len(live), "with_stories": covered("stories"), "with_elements": covered("elements"),
                         "with_tests": covered("tests"), "with_revisions": covered("revisions"),
-                        "dangling_elements": sum(1 for r in req_rows + story_rows for e in r["elements"] if not e["exists"])}}
+                        "dangling_elements": sum(1 for r in req_rows + story_rows for e in r["elements"] if not e["exists"]),
+                        "dangling_tests": sum(1 for r in req_rows + story_rows for t in r["tests"] if not t["exists"])}}
     if format == "json":
         return Response(json.dumps(doc), media_type="application/json")
     buf = io.StringIO()
@@ -386,7 +445,7 @@ def traceability(project_id: uuid.UUID, format: str = Query("json", pattern="^(j
         for r in rows:
             w.writerow([kind, r["id"], _cell(r["title"]), r["status"], len(r.get("stories", [])),
                         _cell("; ".join(e["name"] or e["id"] for e in r["elements"] if e["exists"])),
-                        _cell("; ".join(e["id"] for e in r["elements"] if not e["exists"])), _cell("; ".join(r["revisions"])), _cell("; ".join(r["tests"]))])
+                        _cell("; ".join(e["id"] for e in r["elements"] if not e["exists"])), _cell("; ".join(r["revisions"])), _cell("; ".join(t["id"] for t in r["tests"]))])
     return Response("﻿" + buf.getvalue(), media_type="text/csv; charset=utf-8", headers={"Content-Disposition": 'attachment; filename="traceability.csv"'})
 
 

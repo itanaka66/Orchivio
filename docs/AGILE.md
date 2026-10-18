@@ -19,9 +19,16 @@ requirement keeps the story. `source` says where an item came from (`manual`, `a
 | story | element, revision, test |
 
 Links are checked when created: stories and revisions must belong to the project, an element id must exist in the **current model** of one of
-the project's applications, and a test id is an opaque name (`tests/test_stock.py::test_low`, 1-200 letters, digits and `. _ : / -`) that is
-not looked up. Duplicates are refused. Deleting a requirement or story removes its links. Elements removed from a model later leave the link in
-place; the report shows it as missing.
+the project's applications, and a test id must be one of the project's **generated test cases** (`GET /projects/{id}/test-cases?q=`, ids such
+as `crud:core.Product` or `validation:core.Product:sku:required`; refused with `unknown_test`). Duplicates are refused. Deleting a requirement or story removes its links. Elements or test cases that disappear from a model later (a rule removed,
+an entity renamed) leave the link in place; the report marks them `exists: false` and counts `dangling_elements` / `dangling_tests`.
+
+## 2a. Requirement extraction
+
+`POST /applications/{id}/requirements/extract` with `{text}` (up to 20 000 characters; notes, a brief, an e-mail thread) asks the AI Builder for the
+requirements the text states and stores them as **draft** requirements with `source: ai`. The document is wrapped as untrusted data; titles
+that repeat an existing one (case-insensitively) or an earlier one in the answer are skipped and counted. Same consent, budget and AI-job rules as
+every AI call; needs `story.manage`. Nothing is linked or applied automatically.
 
 ## 3. Traceability report
 
@@ -42,8 +49,26 @@ if it cites feedback numbers that were sent and not already used by an earlier s
 its story and the story links to the named elements. It uses the normal AI consent and budget rules, records an AI job, and never changes a
 model. A person moves a proposed story onto the backlog.
 
-## 5. Not built
+## 5. Studio screens
 
-The widget itself (a Studio/preview overlay that captures the page, element and screenshot and calls the API), a board UI with drag and drop,
-automatic requirement extraction into requirement rows, links from tests that the platform ran (test ids are opaque names), assignees, sprints,
-comments, and e-mail or chat notifications.
+The Studio (`apps/web`) has a **story board** per project (open it from the project/application picker):
+
+* **Board**: columns Proposed, Backlog, Ready, In progress, Done, Rejected. Cards move by drag and drop or, for keyboard and touch users, by the
+  "Move to" select on each card. Viewers see the board read-only.
+* **Requirements**: list, add, change status, delete, and "Extract from a document" (editors, needs an application).
+* **Feedback**: new feedback of the chosen application with screenshot links, dismiss, and "Group into proposed stories".
+* **Traceability**: coverage, a table of requirements and stories with their elements and tests (missing ones highlighted), and forms to add or
+  remove links (elements from the current model, tests from the generated catalogue).
+
+**Feedback widget** (`FeedbackWidget`). A floating "Feedback" button opens a form: text, **Pick an element** (the next click is captured and not
+passed to the page; the element and page come from `data-orchivio-element` / `data-orchivio-page` attributes on the rendered UI), an attached
+PNG/JPEG (file chooser, paste, or **Capture screen**, which uses the browser's own screen-share prompt and takes one frame). Images are checked
+(type by content, 512 KiB) before sending. It is mounted in the Studio's board and flow-editor views; any host that renders model-driven UI can
+mount it and mark its elements with the two attributes.
+
+## 6. Not built
+
+A generated-application preview renderer that puts the two `data-orchivio-*` attributes on its elements (the Studio has none, so the widget
+there reports the Studio page and no element), a Studio screen for editing a story's body and acceptance criteria, comments and assignees, sprints,
+and notifications. Live-model behaviour of the AI features is covered by `tests/live` (skipped unless `ORCHIVIO_LIVE_LLM=1` and an API key are set);
+it has not been run by the authors of this change.
