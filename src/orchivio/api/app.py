@@ -18,6 +18,7 @@ from sqlalchemy.orm import Session, sessionmaker
 from orchivio import __version__, telemetry
 from orchivio.db import make_engine, make_session_factory
 from orchivio.db.schema_revision import SCHEMA_REVISION
+from orchivio.gitsync import GitSyncService
 from orchivio.integrations import (
     PinnedTransport,
     check_url,
@@ -113,6 +114,8 @@ def create_app(
     app.state.session_factory = session_factory
     app.state.preview_store = PreviewStore(preview_engine or make_engine(settings.preview_database_url))
     app.state.audit_sink = DbAuditSink(session_factory)
+    app.state.git_sync = GitSyncService(allowed_hosts=tuple(settings.git_sync_allowed_hosts), allow_private=settings.webhook_allow_private_networks,
+                                        timeout=settings.git_sync_timeout_seconds, git=settings.git_executable)
     app_log.install(session_factory, settings.app_log_retention_days)
     app.state.artifacts = LocalArtifactStore(settings.artifact_dir)
     app.state.llm_provider = llm_provider or _provider_from_settings(settings)

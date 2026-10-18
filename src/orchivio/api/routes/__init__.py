@@ -8,6 +8,7 @@ from . import (
     auth,
     csvdata,
     delivery,
+    git_sync,
     governance,
     inbound,
     integrations,
@@ -30,4 +31,4 @@ from . import (
 )
 
 ALL = (auth, orgs, projects, proposals, ai, preview, testruns, tokens, tools, mcp, jobs, delivery, governance, appusers, appauth, webhooks, csvdata, inbound,
-       integrations, mcpservers, processes, tasks, pages, oidc, logs, agile)
+       integrations, mcpservers, processes, tasks, pages, oidc, logs, agile, git_sync)

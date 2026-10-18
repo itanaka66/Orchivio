@@ -88,6 +88,8 @@ records which request started a run.
 
 `requirements`, `stories`, `trace_links` (from requirement/story to story/element/revision/test, unique edge), `feedback_items` (page, element, text, optional screenshot bytes, status, story).
 
+`git_syncs` (per application: remote, branches, path, token reference, last push/pull commit).
+
 `app_logs` (per application: level, source, short message, request/trace ids, allow-listed scalar fields; pruned by age).
 
 ### Audit

@@ -1,6 +1,13 @@
 """Application model: schema, validation, diff, migration (see docs/MODEL-SPEC.md)."""
 
-from .canonical import CanonicalError, build_archive, from_files, read_archive, to_files
+from .canonical import (
+    CanonicalError,
+    build_archive,
+    from_files,
+    is_canonical_path,
+    read_archive,
+    to_files,
+)
 from .diff import Change, MissingElementId, ModelDiff, diff_models
 from .ids import assign_element_ids, iter_elements
 from .lint import RULES, Finding, Rule, blocking, catalog_markdown, lint
@@ -35,6 +42,7 @@ __all__ = [
     "diff_models",
     "flatten",
     "from_files",
+    "is_canonical_path",
     "has_errors",
     "iter_elements",
     "lint",

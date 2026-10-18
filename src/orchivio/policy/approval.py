@@ -30,6 +30,7 @@ _MIN_ROLE: dict[str, PlatformRole] = {
     "model.read": PlatformRole.VIEWER,
     "audit.read": PlatformRole.ADMIN,
     "logs.read": PlatformRole.EDITOR,  # operational log lines of an application and their AI analysis
+    "gitsync.manage": PlatformRole.ADMIN,  # connect an application to a Git repository
     "story.manage": PlatformRole.EDITOR,  # requirements, stories, trace links, feedback triage
     "model.propose": PlatformRole.EDITOR,
     "model.apply": PlatformRole.EDITOR,
@@ -64,6 +65,7 @@ _RANK = {
 _ACTION_LEVEL: dict[str, ApprovalLevel] = {
     "model.read": ApprovalLevel.A0,
     "logs.read": ApprovalLevel.A0,
+    "gitsync.manage": ApprovalLevel.A3,
     "story.manage": ApprovalLevel.A1,
     "model.propose": ApprovalLevel.A1,
     "model.apply": ApprovalLevel.A2,

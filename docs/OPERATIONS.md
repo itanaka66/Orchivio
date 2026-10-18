@@ -160,6 +160,12 @@ traces); never to identity providers or MCP servers.
 **Cost.** With telemetry off, instrumented code paths call no-op functions. With it on, use `ORCHIVIO_OTEL_SAMPLE_RATIO` to bound
 volume; metrics are not sampled.
 
+## 8. Git sync
+
+Optional; off until `ORCHIVIO_GIT_SYNC_ALLOWED_HOSTS` lists hosts (docs/GIT-SYNC.md). Needs `git` on the API server's PATH. Each push or pull
+runs git as a short-lived child process in a temporary directory (60 s limit, repository size checked after fetch). Tokens are `env:`/`file:`
+references; rotate them like webhook secrets.
+
 ## 6. Known gaps
 
 No retention jobs for sessions, audit events or conversations; no automatic scheduling of backups (use cron

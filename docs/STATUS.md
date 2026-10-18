@@ -13,7 +13,7 @@ service), **Schema** (data structures only), **Planned**.
 | FR-003 | Platform RBAC | Done | owner/admin/editor/viewer enforced on every platform endpoint |
 | FR-004 | Project activity history | Done | `GET /organizations/{id}/audit-events` (admin) |
 | FR-005 | Project export/import | Done (model scope) | Canonical per-element files, reproducible zip archive with manifest and hashes; export is admin-only and audited; import becomes a proposal. Does not include data, users or history |
-| FR-093 | Git-native canonical file format | Done | One file per element, stable ordering, lossless round trip (property-tested); the Git synchronisation / pull-request generation itself is not built |
+| FR-093 | Git-native canonical file format | Done | One file per element, stable ordering, lossless round trip (property-tested); Git sync pushes a revision to a branch (and opens a GitHub pull request) and pulls the base branch as a proposal (docs/GIT-SYNC.md); API only, GitHub PRs only |
 | FR-010 | Accept natural-language requirements | Partial | Sent per request to `ai/analyze` / `ai/propose`; only a hash is stored, no conversation history |
 | FR-011 | Structured decomposition | Done | `Analysis` and `AppModel` outputs validated against schemas |
 | FR-012 | Implementation plan | Planned | No task/dependency plan yet |
