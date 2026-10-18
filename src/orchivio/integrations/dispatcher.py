@@ -26,6 +26,7 @@ from sqlalchemy.dialects import postgresql, sqlite
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session, sessionmaker
 
+from orchivio import telemetry
 from orchivio.db.models import (
     Application,
     AuditEvent,
@@ -198,9 +199,14 @@ class Dispatcher:
             with self.sessions() as s:
                 d = s.get(WebhookDelivery, did)
                 sub = s.get(WebhookSubscription, d.subscription_id)
-                ok, status, error, permanent = self._send(sub, d)
+                with telemetry.span("webhook.deliver", kind="client", **{"webhook.event_type": d.event_type, "webhook.attempt": d.attempt}) as sp:
+                    ok, status, error, permanent = self._send(sub, d)
+                    sp.set_attribute("http.response.status_code", status or 0)
+                    if not ok:
+                        sp.set_error("delivery failed")
                 result = self._finish(s, d, ok=ok, status=status, error=error, now=self.clock(), worker=self.id, permanent=permanent)
                 s.commit()
+                telemetry.count("orchivio.webhook.deliveries", outcome=result)
             out.delivered += result == "delivered"
             out.retried += result == "retry"
             out.dead += result == "dead"

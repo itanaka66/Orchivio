@@ -18,6 +18,7 @@ from typing import Any
 from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
+from orchivio import telemetry
 from orchivio.db import to_model
 from orchivio.db.models import (
     Application,
@@ -74,6 +75,7 @@ class _Hooks(Hooks):
     def event(self, type_: str, step_id: str | None, data: dict[str, Any]) -> None:
         self.svc.session.add(ProcessEvent(instance_id=self.inst.id, at=self.svc.clock(), type=type_, step_id=step_id,
                                           actor=self.actor, data=data))
+        telemetry.count("orchivio.process.events", type=type_)
 
 
 class ProcessService:
@@ -112,6 +114,11 @@ class ProcessService:
     def start(self, app: Application, process: str, args: dict[str, Any], *, initiator: str, roles: frozenset[str] | None,
               actor: str | None = None) -> ProcessInstance:
         """``roles=None`` means a builder in the Studio, who may start any process (preview); end users need a start role."""
+        with telemetry.span("process.start", process=process[:100]):
+            return self._start(app, process, args, initiator=initiator, roles=roles, actor=actor)
+
+    def _start(self, app: Application, process: str, args: dict[str, Any], *, initiator: str, roles: frozenset[str] | None,
+               actor: str | None) -> ProcessInstance:
         if app.current_revision_id is None:
             raise ServiceError(409, "no_revision", "the application has no model yet")
         model = self._model(app.current_revision_id)
@@ -194,6 +201,10 @@ class ProcessService:
         self._event(task, "task_delegated", user_id, {"to": str(target.id)})
 
     def complete(self, task: UserTask, user_id: str, roles: frozenset[str], outcome: str, result: dict[str, Any]) -> ProcessInstance:
+        with telemetry.span("process.task.complete", outcome=outcome[:31]):
+            return self._complete(task, user_id, roles, outcome, result)
+
+    def _complete(self, task: UserTask, user_id: str, roles: frozenset[str], outcome: str, result: dict[str, Any]) -> ProcessInstance:
         self.session.refresh(task)  # act on what is stored now, not on what this session saw earlier
         self._open_task(task)
         if not self.visible(task, user_id, roles):
@@ -277,6 +288,12 @@ class ProcessService:
 
     def tick(self) -> dict[str, int]:
         """Fire due timers and escalate overdue tasks. Safe to run from several workers: updates are compare-and-set."""
+        with telemetry.span("process.tick") as sp:
+            out = self._tick()
+            sp.set_attributes({"process.timers_fired": out["timers"], "process.escalations": out["escalations"]})
+        return out
+
+    def _tick(self) -> dict[str, int]:
         now = self.clock()
         fired = escalated = 0
         due = self.session.scalars(select(ProcessInstance).where(ProcessInstance.status == "running", ProcessInstance.next_wake_at <= now)).all()

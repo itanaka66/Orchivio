@@ -12,12 +12,13 @@ ALLOWED: dict[str, set[str]] = {
     "ai": {"llm", "model"},
     "auth": set(),
     "ops": {"db", "ports"},
-    "process": {"db", "expr", "logic", "model", "ports", "runtime"},
-    "integrations": {"db", "model", "ports", "runtime"},
+    "telemetry": set(),
+    "process": {"telemetry", "db", "expr", "logic", "model", "ports", "runtime"},
+    "integrations": {"telemetry", "db", "model", "ports", "runtime"},
     "delivery": {"model"},
-    "jobs": {"db", "logic", "model", "ports", "runtime"},
+    "jobs": {"telemetry", "db", "logic", "model", "ports", "runtime"},
     "codegen": {"model", "security"},
-    "logic": {"expr", "model", "ports", "runtime"},
+    "logic": {"telemetry", "expr", "model", "ports", "runtime"},
     "testgen": {"expr", "logic", "model", "runtime", "security"},
     "runtime": {"expr", "model", "policy", "ports", "security"},
     "expr": set(),
@@ -27,7 +28,7 @@ ALLOWED: dict[str, set[str]] = {
     "model": {"expr", "policy"},
     "security": {"expr", "model", "policy"},
     "db": {"model", "policy"},
-    "api": {"process", "integrations", "delivery", "jobs", "ai", "auth", "codegen", "logic", "runtime", "testgen", "expr", "model", "security", "policy", "db", "llm", "ports"},
+    "api": {"telemetry", "process", "integrations", "delivery", "jobs", "ai", "auth", "codegen", "logic", "runtime", "testgen", "expr", "model", "security", "policy", "db", "llm", "ports"},
 }
 
 

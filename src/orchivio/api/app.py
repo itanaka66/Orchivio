@@ -15,7 +15,7 @@ from fastapi.responses import JSONResponse, PlainTextResponse
 from sqlalchemy import Engine, text
 from sqlalchemy.orm import Session, sessionmaker
 
-from orchivio import __version__
+from orchivio import __version__, telemetry
 from orchivio.db import make_engine, make_session_factory
 from orchivio.db.schema_revision import SCHEMA_REVISION
 from orchivio.integrations import (
@@ -100,6 +100,7 @@ def create_app(
         try:
             yield
         finally:
+            telemetry.shutdown()
             stop.set()
             if thread is not None:
                 thread.join(timeout=5)
@@ -107,6 +108,7 @@ def create_app(
     app = FastAPI(title="Orchivio API", version=__version__, docs_url="/api/docs", openapi_url="/api/openapi.json",
                   lifespan=lifespan)
     app.state.settings = settings
+    app.state.telemetry = telemetry.setup(settings, version=__version__)
     app.state.session_factory = session_factory
     app.state.preview_store = PreviewStore(preview_engine or make_engine(settings.preview_database_url))
     app.state.audit_sink = DbAuditSink(session_factory)
@@ -129,12 +131,22 @@ def create_app(
         try:
             declared = request.headers.get("content-length")
             limit = settings.max_import_bytes if request.url.path.endswith("/import") else settings.max_body_bytes
-            if declared and declared.isdigit() and int(declared) > limit:
-                response = JSONResponse(error_body("payload_too_large", "request body too large"), status_code=413)
-            else:
-                response = await call_next(request)
-            app.state.metrics.observe(request.method, route_template(request), response.status_code,
-                                      time.perf_counter() - started)
+            with telemetry.span(f"{request.method} {request.url.path}", kind="server", parent=telemetry.extract(request.headers),
+                                **{"http.request.method": request.method, "request.id": rid}) as sp:
+                if declared and declared.isdigit() and int(declared) > limit:
+                    response = JSONResponse(error_body("payload_too_large", "request body too large"), status_code=413)
+                else:
+                    response = await call_next(request)
+                template = route_template(request)
+                sp.update_name(f"{request.method} {template}")  # the route template, never the raw path (it holds ids)
+                sp.set_attributes({"http.route": template, "http.response.status_code": response.status_code})
+                if response.status_code >= 500:
+                    sp.set_error(f"HTTP {response.status_code}")
+            elapsed = time.perf_counter() - started
+            telemetry.record("orchivio.http.server.duration", elapsed, **{
+                "http.request.method": request.method, "http.route": template,
+                "http.response.status_class": f"{response.status_code // 100}xx"})
+            app.state.metrics.observe(request.method, template, response.status_code, elapsed)
             response.headers["X-Request-ID"] = rid
             response.headers.setdefault("X-Content-Type-Options", "nosniff")
             response.headers.setdefault("Cache-Control", "no-store")

@@ -91,6 +91,9 @@ Status: ✅ implemented and tested · 🟡 partly / not verified end-to-end · �
 | A24 | A page is used to read or write fields it does not display | Declared columns bound reads, writes, filters and sorting; field-level security applies underneath | ✅ |
 | A25 | Any signed-in user runs any server flow | Direct runs need a role in `run_roles` (deny by default); flows run as the caller; exposing a flow is A3 | ✅ tested |
 
+| A30 | Telemetry leaks data (bodies, tokens, record values, URLs) to the collector or its operators | Attributes are an explicit allow-list of short scalars set at call sites; no bodies, headers, queries, SQL or URLs; exceptions by type only; metric attributes restricted per instrument | ✅ tested (secrets searched for in every span) |
+| A31 | A caller forces tracing on or injects trace ids | Incoming `traceparent` ignored unless explicitly trusted; head sampling applies to new traces | ✅ tested |
+
 ## 4. Assumptions
 
 - PostgreSQL, the host OS and the TLS terminator are operated securely.

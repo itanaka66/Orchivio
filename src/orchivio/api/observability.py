@@ -8,6 +8,8 @@ import logging
 import re
 import uuid
 
+from orchivio import telemetry
+
 request_id_var: contextvars.ContextVar[str] = contextvars.ContextVar("request_id", default="-")
 _SAFE_ID = re.compile(r"^[A-Za-z0-9._\-]{8,64}$")
 
@@ -28,6 +30,9 @@ class JsonFormatter(logging.Formatter):
             "message": record.getMessage(),
             "request_id": request_id_var.get(),
         }
+        ids = telemetry.current_ids()
+        if ids is not None:
+            data["trace_id"], data["span_id"] = ids
         extra = getattr(record, "fields", None)
         if isinstance(extra, dict):
             data.update(extra)
