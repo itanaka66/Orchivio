@@ -4,6 +4,7 @@ import { Board } from './board/Board'
 import { collectElements } from './board/elements'
 import { FeedbackWidget } from './board/FeedbackWidget'
 import { FlowEditor } from './components/FlowEditor'
+import { Preview } from './preview/Preview'
 import { FLOW_KEY_RE } from './flow/catalog'
 import { listFlows, viewOf, withFlow } from './flow/model'
 import { newFlow } from './flow/ops'
@@ -13,6 +14,7 @@ import type { Flow } from './flow/types'
 type Json = Record<string, unknown>
 
 interface BoardTarget { project: Project; application?: Application; elements: { id: string; label: string }[]; canEdit: boolean }
+interface PreviewTarget { application: Application; model: Json; roles: string[]; canEdit: boolean }
 interface Open { model: Json; module: string; flow: Flow; application?: Application; readOnly: boolean; demo: boolean }
 
 export default function App({ client: injected }: { client?: ApiClient }) {
@@ -21,6 +23,7 @@ export default function App({ client: injected }: { client?: ApiClient }) {
   const [booting, setBooting] = useState(client.signedIn)
   const [open, setOpen] = useState<Open | null>(null)
   const [board, setBoard] = useState<BoardTarget | null>(null)
+  const [preview, setPreview] = useState<PreviewTarget | null>(null)
 
   useEffect(() => {
     if (!client.signedIn) return
@@ -28,6 +31,22 @@ export default function App({ client: injected }: { client?: ApiClient }) {
   }, [client])
 
   if (booting) return <main className="page"><p>Loading…</p></main>
+
+  if (preview) {
+    return (
+      <div className="shell">
+        <header className="topbar">
+          <button type="button" className="link" onClick={() => setPreview(null)}>← Back</button>
+          <span>{preview.application.name} · Preview</span>
+          <span className="spacer" />
+          {user && <span>{user.display_name}</span>}
+        </header>
+        <main className="page wide">
+          <Preview client={client} applicationId={preview.application.id} model={preview.model} roles={preview.roles} canEdit={preview.canEdit} />
+        </main>
+      </div>
+    )
+  }
 
   if (board) {
     return (
@@ -79,7 +98,7 @@ export default function App({ client: injected }: { client?: ApiClient }) {
     <main className="page">
       <h1>Orchivio Studio · Flow builder</h1>
       {user ? (
-        <Browser client={client} user={user} onOpen={setOpen} onBoard={setBoard}
+        <Browser client={client} user={user} onOpen={setOpen} onBoard={setBoard} onPreview={setPreview}
                  onLogout={() => { void client.logout().finally(() => setUser(null)) }} />
       ) : (
         <Login client={client} onUser={setUser} />
@@ -131,7 +150,7 @@ function useLoad<T>(load: () => Promise<T>, deps: unknown[]): { data: T | null; 
   return state
 }
 
-function Browser({ client, user, onOpen, onBoard, onLogout }: { client: ApiClient; user: User; onOpen: (o: Open) => void; onBoard: (b: BoardTarget) => void; onLogout: () => void }) {
+function Browser({ client, user, onOpen, onBoard, onPreview, onLogout }: { client: ApiClient; user: User; onOpen: (o: Open) => void; onBoard: (b: BoardTarget) => void; onPreview: (p: PreviewTarget) => void; onLogout: () => void }) {
   const orgs = useLoad(() => client.organizations(), [client])
   const [org, setOrg] = useState<Org | null>(null)
   const projects = useLoad(() => (org ? client.projects(org.id) : Promise.resolve(null)), [org])
@@ -165,6 +184,14 @@ function Browser({ client, user, onOpen, onBoard, onLogout }: { client: ApiClien
         <p>
           <button type="button" onClick={() => onBoard({ project, application: app ?? undefined, canEdit, elements: revision.data ? collectElements(revision.data.model_json) : [] })}>
             Open the story board
+          </button>
+        </p>
+      )}
+      {app && revision.data && (
+        <p>
+          <button type="button" onClick={() => onPreview({ application: app, model: revision.data!.model_json, canEdit,
+            roles: ((revision.data!.model_json.security as { roles?: string[] } | undefined)?.roles ?? []) })}>
+            Open the preview
           </button>
         </p>
       )}
