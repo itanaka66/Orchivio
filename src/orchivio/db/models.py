@@ -890,3 +890,24 @@ class AppUserIdentity(Base):
     email: Mapped[str | None] = mapped_column(String(320))
     created_at: Mapped[datetime] = _created()
     last_login_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class PolicyPack(Base):
+    """An organization's governance rules, enforced on every new revision of every application in it (FR-124)."""
+
+    __tablename__ = "policy_packs"
+    __table_args__ = (
+        UniqueConstraint("organization_id", "name", name="uq_policy_packs_name"),
+        _in("status", ("active", "disabled"), "status"),
+    )
+
+    id: Mapped[uuid.UUID] = _id()
+    organization_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    name: Mapped[str] = mapped_column(String(100), nullable=False)
+    description: Mapped[str | None] = mapped_column(String(500))
+    rules: Mapped[list[Any]] = mapped_column(PortableJSON, nullable=False)
+    status: Mapped[str] = mapped_column(String(10), nullable=False, default="active")
+    created_by: Mapped[uuid.UUID | None] = mapped_column(Uuid)
+    created_at: Mapped[datetime] = _created()

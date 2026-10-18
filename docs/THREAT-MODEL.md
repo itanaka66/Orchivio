@@ -94,6 +94,9 @@ Status: ✅ implemented and tested · 🟡 partly / not verified end-to-end · �
 | A30 | Telemetry leaks data (bodies, tokens, record values, URLs) to the collector or its operators | Attributes are an explicit allow-list of short scalars set at call sites; no bodies, headers, queries, SQL or URLs; exceptions by type only; metric attributes restricted per instrument | ✅ tested (secrets searched for in every span) |
 | A31 | A caller forces tracing on or injects trace ids | Incoming `traceparent` ignored unless explicitly trusted; head sampling applies to new traces | ✅ tested |
 
+| A32 | A model change bypasses organization policy through another route (AI, import, branch merge, rollback) | Packs are evaluated in the one place all routes plan models, plus the merge path; violations fail like validation errors | ✅ tested (revision, proposal, merge) |
+| A33 | Audit export leaks other organizations' events or is used to hide activity | Scoped by organization, admin-only, literal filters, every export audited with its hash, CSV formula-safe | ✅ tested |
+
 ## 4. Assumptions
 
 - PostgreSQL, the host OS and the TLS terminator are operated securely.

@@ -57,6 +57,7 @@ service), **Schema** (data structures only), **Planned**.
 | FR-065 | Page, action and flow access | Done (server side) | Pages need a listed role and the implied entity rights; columns, actions, `visible_expr`/`editable_expr` and flow-bound actions enforced; direct flow runs need `run_roles`; no UI renders these pages yet |
 | FR-073 | Conditional visibility and editability | Done (server side) | `visible_expr` filters actions per row, `editable_expr` is checked before an edit is stored |
 | FR-123 | Runtime observability | Partial | OpenTelemetry traces and metrics over OTLP/HTTP (requests, flows, jobs, webhooks, consumed APIs, MCP, processes), log/trace correlation, strict no-data attribute policy; no OTLP log export, log viewer or AI log analysis; AI Builder calls are not traced yet |
+| FR-124 | Governance console | Partial (API) | Policy packs enforced on every model change, compliance report, app inventory with risk flags, AI usage, audit export; no UI, no per-project exceptions or quotas |
 | FR-090 | Branch-ready revision graph | Done | `parent_revision_ids`, `branches` |
 | FR-091 | Branches and semantic merge | Done (API) | Three-way merge by element id with typed conflicts and per-conflict resolution; no UI yet, no per-branch preview |
 | FR-052 | Server Flows | Done (preview) | Modelled, validated, edited visually and executed transactionally under the caller's security; no elevation, no production deployment |

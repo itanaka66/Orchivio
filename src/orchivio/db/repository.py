@@ -33,8 +33,18 @@ from orchivio.model import (
     model_hash,
     validate_model,
 )
+from orchivio.model.policies import evaluate as evaluate_policies
 
-from .models import Application, AppRevision, AuditEvent, Branch, ElementRef, LintFinding
+from .models import (
+    Application,
+    AppRevision,
+    AuditEvent,
+    Branch,
+    ElementRef,
+    LintFinding,
+    PolicyPack,
+    Project,
+)
 
 MAIN = "main"
 BRANCH_NAME = re.compile(r"^[a-z0-9][a-z0-9._/-]{0,60}$")
@@ -142,7 +152,20 @@ class RevisionRepository:
         issues += [
             Issue("error", f"lint:{f.rule_id}", f.path, f.message, f.element_id) for f in blocking(findings)
         ]
+        if not has_errors(issues):
+            issues += self.policy_issues(app, identified)
         return Plan(identified, issues, diff, findings)
+
+    def policy_issues(self, app: Application, model: AppModel) -> list[Issue]:
+        """Violations of the organization's active policy packs as issues (``policy:<rule>``): errors block, warnings inform."""
+        project = self.session.get(Project, app.project_id)
+        if project is None:
+            return []
+        rules: list[dict[str, Any]] = []
+        for pack in self.session.scalars(select(PolicyPack).where(PolicyPack.organization_id == project.organization_id,
+                                                                 PolicyPack.status == "active").order_by(PolicyPack.name)):
+            rules += pack.rules
+        return [Issue(v.severity, f"policy:{v.rule}", v.path, v.message, v.element_id) for v in evaluate_policies(model, rules)]
 
     # -- writes
     def _application(self, application_id: uuid.UUID) -> Application:
@@ -348,6 +371,8 @@ class RevisionRepository:
         issues = validate_model(merged)
         findings = lint(merged) if not has_errors(issues) else []
         issues += [Issue("error", f"lint:{f.rule_id}", f.path, f.message, f.element_id) for f in blocking(findings)]
+        if not has_errors(issues):
+            issues += self.policy_issues(app, merged)  # a merge may not smuggle in what a policy forbids
         diff = diff_models(ours, merged)
         if has_errors(issues):
             return MergeOutcome("invalid", [], result.all_conflicts, issues, diff, None, result.merged_from_both)
