@@ -80,6 +80,10 @@ records which request started a run.
 `process_instances` (pinned revision, JSON state with a version for compare-and-set, `next_wake_at` for timers),
 `user_tasks` (the inbox: role or user assignment, outcomes, form, due/escalation), `process_events` (the trail).
 
+`app_oidc_providers` (one per application: issuer, client id, secret *reference*, claim and role mapping),
+`oidc_login_states` (single-use state, nonce, PKCE verifier; hashed state and browser binding), `app_user_identities`
+(unique per application, issuer and subject).
+
 ### Audit
 `audit_events` — append-only. `plane` (platform/application) and `channel`
 (studio/api/mcp) separate streams. **No foreign keys on purpose:** audit history must outlive

@@ -131,6 +131,9 @@ one owner (`409 last_owner`). Any member may leave an organization.
 | GET | `/apps/{app_id}/process-instances/{id}` | progress of an instance you started |
 | GET | `/applications/{id}/process-instances`, `/process-instances/{id}`, `/applications/{id}/user-tasks` | monitoring (viewer and up) |
 | POST | `/applications/{id}/processes/{key}/start`, `/process-instances/{id}/cancel`, `/process-instances/{id}/retry` | start for testing / cancel / retry a failed step (editor) |
+| PUT/GET/DELETE | `/applications/{id}/oidc`; POST `/applications/{id}/oidc/test` | the application's OIDC provider (admin); check discovery and keys |
+| GET | `/apps/{app_id}/auth/oidc/login`, `/auth/oidc/callback` | start / finish an OIDC sign-in (redirects; session cookie as for local login) |
+| GET | `/apps/{app_id}/auth/csrf` | a fresh CSRF token for the current session |
 | GET | `/apps/{app_id}/pages`, `/apps/{app_id}/pages/{key}` | the menu and one page definition, only for pages the caller may open |
 | GET | `/apps/{app_id}/pages/{key}/rows[/{id}]` | rows with only the page's columns and per-row `_actions` |
 | POST / PATCH | `/apps/{app_id}/pages/{key}/rows[/{id}]` | submit a create / edit form (declared columns only; `editable_expr` enforced) |

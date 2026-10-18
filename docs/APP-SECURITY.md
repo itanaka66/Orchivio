@@ -114,6 +114,33 @@ separate from Studio accounts (FR-067).
   (`appauth.*`, `plane = application`); management is platform-plane (`appuser.*`). Passwords are never logged.
 * **Data lives in the preview runtime** until a production data plane exists, so these endpoints serve preview data.
 
+## 6a. OpenID Connect sign-in (FR-067, P1)
+
+Each application can sign its end users in through one OIDC identity provider (authorization code flow with PKCE),
+next to or instead of local accounts.
+
+* **Configure** (`PUT /applications/{id}/oidc`, admin): `issuer` (https, exactly as the provider reports it), `client_id`,
+  optional `client_secret_ref` (`env:`/`file:`; none = public client), `scopes` (must include `openid`),
+  `username_claim` (default `email`), `role_claim` (default `groups`) with `role_mapping` (claim value -> application
+  role) and `default_roles`, `auto_provision`, optional `allowed_email_domains` and `post_login_url`. Roles must exist in the
+  model. `POST .../oidc/test` fetches discovery and keys now. Set `ORCHIVIO_PUBLIC_URL`: the redirect URI is
+  `<public url>/api/v1/apps/{id}/auth/oidc/callback` (register it at the provider).
+* **Flow.** `GET /apps/{id}/auth/oidc/login[?next=/path]` redirects to the provider; `.../callback` completes the sign-in,
+  sets the same session cookie as local login and redirects to `next` (a path on this site only) or `post_login_url`.
+  Browser scripts then call `GET /apps/{id}/auth/csrf` for the CSRF token (a new one each time; the old stops working).
+* **Protections.** `state` and the PKCE verifier are server-side, single use and valid for ten minutes; the browser is
+  bound to its attempt by a cookie (login CSRF and fixation); the ID token is fully verified: signature (RS256/ES256 only,
+  RSA keys of at least 2048 bits, key by `kid` with at most one refresh per five minutes), `iss`, `aud`/`azp`,
+  `exp`/`nbf`/`iat` and `nonce`. Discovery's `issuer` must match, and every provider URL passes the SSRF checks and is
+  pinned like any outbound call. Error responses never contain provider-supplied text.
+* **Identity and roles.** An account is identified by (issuer, subject), never by e-mail. A matching local username is
+  never merged: the federated account gets a suffixed name. Federated accounts have no password; their roles come only
+  from the provider mapping and are replaced at every sign-in (role changes at the provider reach existing sessions at
+  once, because roles are read per request). Local accounts are never modified by this flow. `allowed_email_domains`
+  requires a verified e-mail. A disabled account cannot sign in.
+* **Not supported:** SAML, userinfo calls, refresh tokens (the application session has its own lifetime), single logout,
+  several providers per application, linking an existing local account to a provider identity.
+
 ## 7. CSV import and export (FR-089, FR-074)
 
 * **Import** (`POST /apps/{id}/import/{Entity}`, Studio: `/applications/{id}/preview/import/{Entity}`; body is the

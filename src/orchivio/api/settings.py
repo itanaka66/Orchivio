@@ -49,6 +49,7 @@ class Settings(BaseSettings):
     inbound_max_body_bytes: int = 256 * 1024
     inbound_rate_per_minute: int = 60  # per inbound webhook
     mcp_client_max_calls: int = 3  # tool calls the AI Builder may make per proposal
+    public_url: str | None = None  # externally visible base URL (OIDC redirect URIs); e.g. https://studio.example.com
     csv_max_bytes: int = 2 * 1024 * 1024
     csv_max_rows: int = 5000
     csv_max_export_rows: int = 10_000
@@ -61,7 +62,7 @@ class Settings(BaseSettings):
     webhook_backoff_seconds: int = 30
     webhook_pause_after_failures: int = 10
 
-    @field_validator("anthropic_api_key", "llm_model", "metrics_token", "package_signing_key", mode="before")
+    @field_validator("anthropic_api_key", "llm_model", "metrics_token", "package_signing_key", "public_url", mode="before")
     @classmethod
     def _blank_is_unset(cls, v: object) -> object:
         return None if v is None or (isinstance(v, str) and not v.strip()) else v
