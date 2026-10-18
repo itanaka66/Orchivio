@@ -88,6 +88,12 @@ fieldset { border: 1px solid var(--line); border-radius: 8px; margin: .6rem 0; p
 .react-flow__node:focus-visible .step { outline: 3px solid var(--focus); }
 .react-flow__edge-textbg { fill: var(--panel); } .react-flow__edge-text { fill: var(--ink); font-size: 11px; }
 
+/* installable app */
+.pwa-bar { position: sticky; top: 0; z-index: 30; background: var(--warn-bg); color: var(--warn); padding: calc(.4rem + env(safe-area-inset-top)) 1rem .4rem; border-bottom: 1px solid var(--line); }
+.pwa-bar p { margin: .2rem 0; }
+@media (display-mode: standalone) { body { overscroll-behavior-y: none; } .topbar { padding-top: calc(.5rem + env(safe-area-inset-top)); } }
+@supports (padding: max(0px)) { .page, .topbar { padding-left: max(1rem, env(safe-area-inset-left)); padding-right: max(1rem, env(safe-area-inset-right)); } }
+
 /* administration */
 .admin { display: grid; grid-template-columns: 230px 1fr; gap: 1rem; align-items: start; }
 .admin-nav { position: sticky; top: 0; } .admin-nav h3 { font-size: .8rem; text-transform: uppercase; color: var(--muted); margin: .9rem 0 .3rem; }
