@@ -75,7 +75,7 @@ service), **Schema** (data structures only), **Planned**.
 | FR-120 | Model linter | Done | 21 rules, suppressions with justification, blocking errors, stored per revision |
 | FR-030 | CRUD API runtime | Partial | Preview environment only (docs/RUNTIME.md) |
 | FR-032 | OpenAPI for generated apps | Done | `build_openapi`, endpoint and CLI; schemas validated against live responses and request validation in tests |
-| FR-031 | Typed clients | Partial | Generated clients for the data API in TypeScript, Python and C# (types, typed list parameters, permitted operations only, typed flow runs, typed errors); compiled/executed in tests (C# with the .NET SDK); other languages via the OpenAPI document; no pagination helpers or auth handling |
+| FR-031 | Typed clients | Done (generated) | Generated clients for the data API in TypeScript, Python and C# (types, typed list parameters, permitted operations only, typed flow runs, typed errors, pagination helpers `listAll`/`pages`/`list_all`/`ListAllAsync`); compiled/executed in tests (C# with the .NET SDK); other languages via the OpenAPI document; no auth handling |
 | FR-033/034/036 | UI renderer, data migrations, build export | Partial (FR-033) | FR-033: the generated-application shell renders list, form and detail pages drawn from the page API; FR-034/036 still planned |
 | FR-035 | Preview isolated from production data | Done | Separate database, per-app table prefix; prod requires a different preview URL |
 | FR-040 | Test generation and execution | Done (preview scope) | Access, row-constraint, CRUD, validation cases; reports persisted; run comparison |

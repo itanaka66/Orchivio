@@ -139,7 +139,24 @@ def build_csharp_client(model: AppModel, *, namespace: str = "Orchivio.Client") 
                                f'            if (p.Offset is not null) q["offset"] = p.Offset.Value.ToString(System.Globalization.CultureInfo.InvariantCulture);\n'
                                f'            if (!string.IsNullOrEmpty(p.OrderBy)) q["order_by"] = p.OrderBy!;\n            if (p.Desc == true) q["desc"] = "true";\n{q}            return q;\n        }}\n    }}\n')
             lines += [f"        public Task<OrchivioPage<{entity}>> ListAsync({pname}? p = null, CancellationToken ct = default) =>",
-                      f'            _c.SendAsync<OrchivioPage<{entity}>>(HttpMethod.Get, {_str(ops["list"][0])}, (p ?? new {pname}()).ToQuery(), null, ct);', ""]
+                      f'            _c.SendAsync<OrchivioPage<{entity}>>(HttpMethod.Get, {_str(ops["list"][0])}, (p ?? new {pname}()).ToQuery(), null, ct);', "",
+                      f"        public async Task<List<{entity}>> ListAllAsync({pname}? p = null, CancellationToken ct = default)",
+                      "        {",
+                      f"            var src = p ?? new {pname}();",
+                      '            var q = src.ToQuery();',
+                      '            q["limit"] = (src.Limit ?? 100).ToString(System.Globalization.CultureInfo.InvariantCulture);',
+                      f"            var all = new List<{entity}>(); long offset = 0;",
+                      "            while (true)",
+                      "            {",
+                      '                q["offset"] = offset.ToString(System.Globalization.CultureInfo.InvariantCulture);',
+                      f"                var page = await _c.SendAsync<OrchivioPage<{entity}>>(HttpMethod.Get, {_str(ops['list'][0])},",
+                      "                    new Dictionary<string, string>(q), null, ct).ConfigureAwait(false);",
+                      "                all.AddRange(page.Items);",
+                      "                if (page.Items.Count == 0 || all.Count >= page.Total) break;",
+                      "                offset += page.Items.Count;",
+                      "            }",
+                      "            return all;",
+                      "        }", ""]
         if "create" in ops:
             body_t = cs_type(ops["create"][2]["requestBody"]["content"]["application/json"]["schema"])
             lines += [f"        public Task<{entity}> CreateAsync({body_t} body, CancellationToken ct = default) =>",

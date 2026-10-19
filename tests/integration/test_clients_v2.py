@@ -77,6 +77,7 @@ def test_the_python_client_is_valid_for_old_pythons_and_deterministic(model):
     ns = load_client(model)
     assert {"OrchivioApiError", "OrchivioDataClient", "Product", "ProductCreate", "ProductUpdate", "ProductPage", "FlowRunResult", "ReorderLowStockArgs"} <= set(ns)
     assert "import" not in "\n".join(line for line in text.splitlines() if line.startswith("from ") and "typing" not in line)  # standard library only
+    assert "def list_all(" in text and "def pages(" in text
 
 
 def test_the_python_client_only_has_permitted_operations(raw_model):
@@ -85,7 +86,7 @@ def test_the_python_client_only_has_permitted_operations(raw_model):
     raw["security"]["pages"] = {"product-list": ["viewer"]}
     raw["modules"][0]["pages"] = raw["modules"][0]["pages"][:1]
     text = build_python_client(AppModel.model_validate(raw))
-    assert "def list(" in text and "def get(" in text
+    assert "def list(" in text and "def get(" in text and "def list_all(" in text and "def pages(" in text
     for gone in ("def create(", "def update(", "def delete(", "ProductCreate", "ProductUpdate"):
         assert gone not in text
 
@@ -146,6 +147,25 @@ def test_python_client_bodies_ids_and_errors(model):
     assert calls[3].full_url == "https://x.example/flows/core.ReorderLowStock/run" and json.loads(calls[3].data) == {"args": {"min_gap": 0}}
 
 
+def test_python_client_list_all_and_pages_pagination(model):
+    ns = load_client(model)
+    multi = [
+        {"items": [{"id": "p1"}, {"id": "p2"}], "total": 3, "limit": 2, "offset": 0},
+        {"items": [{"id": "p3"}], "total": 3, "limit": 2, "offset": 2},
+    ]
+    seq = iter(multi)
+    opener, _ = fake_opener(lambda r: FakeResponse(200, json.dumps(next(seq)).encode()))
+    c = ns["OrchivioDataClient"]("https://x.example", opener=opener)
+    all_items = c.product.list_all(limit=2)
+    assert all_items == [{"id": "p1"}, {"id": "p2"}, {"id": "p3"}]
+
+    seq = iter(multi)
+    opener2, _ = fake_opener(lambda r: FakeResponse(200, json.dumps(next(seq)).encode()))
+    c2 = ns["OrchivioDataClient"]("https://x.example", opener=opener2)
+    pages = list(c2.product.pages(limit=2))
+    assert len(pages) == 2 and pages[0]["items"] == [{"id": "p1"}, {"id": "p2"}] and pages[1]["items"] == [{"id": "p3"}]
+
+
 def test_python_client_errors(model):
     ns = load_client(model)
     err = ns["OrchivioApiError"]
@@ -201,6 +221,10 @@ def test_the_python_client_works_against_the_real_api(ctx, model):
     assert made["name"] == "Bolt" and made["status"] == "low"
     page = c.product.list(order_by="name", filter={"sku": "B-1"})
     assert page["total"] == 1 and page["items"][0]["id"] == made["id"]
+    all_items = c.product.list_all(filter={"sku": "B-1"})
+    assert len(all_items) == 1 and all_items[0]["id"] == made["id"]
+    pages = list(c.product.pages(filter={"sku": "B-1"}))
+    assert len(pages) == 1 and pages[0]["total"] == 1
     assert c.product.get(made["id"])["sku"] == "B-1"
     assert c.product.update(made["id"], {"quantity": 9})["quantity"] == 9
     ran = c.flows.reorder_low_stock({"min_gap": 0})
@@ -317,6 +341,10 @@ static class P
         var ran = await client.Flows.ReorderLowStockAsync(new ReorderLowStockArgs { MinGap = 0 });
         Check(ran.Status == "succeeded" && ran.StepsExecuted == 3 && ran.Error is null && ran.Trace.Count == 1, "flow result");
         Check(fake.Seen[5].Body == "{\\"args\\":{\\"min_gap\\":0}}" && fake.Seen[5].Request.RequestUri!.AbsolutePath == "/api/flows/core.ReorderLowStock/run", "flow body " + fake.Seen[5].Body);
+
+        fake.Answer = _ => Json(HttpStatusCode.OK, "{\\"items\\":[{\\"id\\":\\"p1\\",\\"name\\":\\"Bolt\\",\\"sku\\":\\"B\\",\\"quantity\\":3,\\"reorder_level\\":1,\\"status\\":\\"low\\",\\"owner\\":\\"u\\",\\"created_at\\":\\"2026-01-01T00:00:00Z\\"}],\\"total\\":1,\\"limit\\":100,\\"offset\\":0}");
+        var allPs = await client.Product.ListAllAsync(new ProductListParams { OrderBy = "name" });
+        Check(allPs.Count == 1 && allPs[0].Name == "Bolt", "listAll single page");
 
         fake.Answer = _ => Json((HttpStatusCode)422, "{\\"error\\":{\\"code\\":\\"validation_failed\\",\\"message\\":\\"sku is required\\",\\"details\\":[{\\"field\\":\\"sku\\"}]}}");
         try { await client.Product.CreateAsync(new ProductCreate { Name = "x", Sku = "", Quantity = 0, ReorderLevel = 0 }); Check(false, "should throw"); }

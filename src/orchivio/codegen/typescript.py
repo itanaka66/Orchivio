@@ -153,7 +153,35 @@ def build_client(model: AppModel) -> str:
             filt = "".join(f"\n    {_prop(n[2:])}?: {ts_type(p['schema'])}" for n, p in params.items() if n.startswith("f."))
             pname = f"{schema_name}ListParams"
             list_types.append(f"export interface {pname} {{\n  limit?: number\n  offset?: number\n  orderBy?: {order}\n  desc?: boolean\n  /** Equality filters on stored fields. */\n  filter?: {{{filt}\n  }}\n}}\n")
-            lines.append(f"    list: (params: {pname} = {{}}) => this.request<OrchivioPage<{schema_name}>>('GET', '{ops['list'][0]}', {{ query: listQuery(params) }}),")
+            lp = ops['list'][0]
+            lines.append(f"    list: (params: {pname} = {{}}) => this.request<OrchivioPage<{schema_name}>>('GET', '{lp}', {{ query: listQuery(params) }}),")
+            lines.append(
+                f"    listAll: async (params: Omit<{pname}, 'offset'> = {{}}) => {{\n"
+                f"      const limit = params.limit ?? 100; let offset = 0; const all: {schema_name}[] = [];\n"
+                f"      while (true) {{\n"
+                f"        const page = await this.request<OrchivioPage<{schema_name}>>('GET', '{lp}', {{ query: listQuery({{ ...params, limit, offset }}) }});\n"
+                f"        all.push(...page.items);\n"
+                f"        if (page.items.length === 0 || all.length >= page.total) break;\n"
+                f"        offset += page.items.length;\n"
+                f"      }}\n"
+                f"      return all;\n"
+                f"    }},"
+            )
+            lines.append(
+                f"    pages: (params: Omit<{pname}, 'offset'> = {{}}): AsyncIterable<OrchivioPage<{schema_name}>> => {{\n"
+                f"      const list = (p: {pname}) => this.request<OrchivioPage<{schema_name}>>('GET', '{lp}', {{ query: listQuery(p) }});\n"
+                f"      const limit = params.limit ?? 100;\n"
+                f"      return (async function*() {{\n"
+                f"        let offset = 0;\n"
+                f"        while (true) {{\n"
+                f"          const page = await list({{ ...params, limit, offset }});\n"
+                f"          yield page;\n"
+                f"          if (page.items.length === 0 || offset + page.items.length >= page.total) break;\n"
+                f"          offset += page.items.length;\n"
+                f"        }}\n"
+                f"      }})();\n"
+                f"    }},"
+            )
         if "create" in ops:
             body = ts_type(ops["create"][2]["requestBody"]["content"]["application/json"]["schema"])
             lines.append(f"    create: (body: {body}) => this.request<{schema_name}>('POST', '{ops['create'][0]}', {{ body }}),")

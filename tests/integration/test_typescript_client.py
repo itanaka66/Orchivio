@@ -41,10 +41,11 @@ def test_the_client_has_the_types_and_operations_of_the_model(model):
     assert f"({model.application.key}" not in ts and model.application.key in ts
     assert "export interface Product {" in ts and "readonly id: string" in ts and "readonly status: 'in_stock' | 'low' | 'out_of_stock'" in ts
     assert "export interface ProductCreate {\n" in ts and "export interface ProductUpdate {" in ts
-    for op in ("list:", "create:", "get:", "update:", "delete:"):
+    for op in ("list:", "listAll:", "pages:", "create:", "get:", "update:", "delete:"):
         assert op in ts
     assert "orderBy?: 'id' | 'name'" in ts and "filter?: {" in ts and "sku?: string" in ts
     assert "OrchivioPage<Product>" in ts and "class OrchivioApiError" in ts and "readonly product = {" in ts
+    assert "AsyncIterable<OrchivioPage<Product>>" in ts
 
 
 def test_output_is_deterministic_and_carries_the_model_hash(model):
@@ -103,6 +104,9 @@ def test_the_client_type_checks_and_rejects_wrong_use(model, tmp_path):
         "  const outcome: 'succeeded' | 'failed' = run.status\n"
         "  console.log(outcome, run.trace[0]?.step)\n"
         "  try { await c.product.get('x') } catch (e) { if (e instanceof OrchivioApiError) console.log(e.status, e.code, first) }\n"
+        "  const all: (typeof page.items[0])[] = await c.product.listAll({ filter: { sku: 'A1' } })\n"
+        "  console.log(all.length)\n"
+        "  for await (const pg of c.product.pages({ limit: 5 })) { console.log(pg.total) }\n"
         "}\n"
         "// @ts-expect-error quantity is a number\n"
         "c.product.create({ name: 'n', sku: 's', quantity: 'many', reorder_level: 0 })\n"

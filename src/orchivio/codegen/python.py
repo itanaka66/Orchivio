@@ -154,7 +154,28 @@ def build_python_client(model: AppModel) -> str:
                       "        if desc:\n            query['desc'] = 'true'",
                       "        for key, value in (filter or {}).items():",
                       "            if value is not None:\n                query['f.' + key] = str(value)",
-                      f"        return self._c._request('GET', {ops['list'][0]!r}, query=query)\n"]
+                      f"        return self._c._request('GET', {ops['list'][0]!r}, query=query)\n",
+                      f"    def list_all(self, *, order_by: Optional[{order}] = None,",
+                      f"                 desc: Optional[bool] = None, filter: Optional[{fname}] = None, limit: int = 100) -> List[{entity_t}]:",
+                      '        """Fetch all pages and return a flat list. Use limit to control page size."""',
+                      "        all_items, offset = [], 0",
+                      "        while True:",
+                      "            page = self.list(limit=limit, offset=offset, order_by=order_by, desc=desc, filter=filter)",
+                      "            all_items.extend(page['items'])",
+                      "            if not page['items'] or len(all_items) >= page['total']:",
+                      "                break",
+                      "            offset += len(page['items'])",
+                      "        return all_items\n",
+                      f"    def pages(self, *, order_by: Optional[{order}] = None,",
+                      f"              desc: Optional[bool] = None, filter: Optional[{fname}] = None, limit: int = 100):",
+                      f'        """Yield one {entity_t}Page at a time."""',
+                      "        offset = 0",
+                      "        while True:",
+                      "            page = self.list(limit=limit, offset=offset, order_by=order_by, desc=desc, filter=filter)",
+                      "            yield page",
+                      "            if not page['items'] or offset + len(page['items']) >= page['total']:",
+                      "                break",
+                      "            offset += len(page['items'])\n"]
         if "create" in ops:
             body = py_type(ops["create"][2]["requestBody"]["content"]["application/json"]["schema"])
             lines += [f"    def create(self, body: {body}) -> {entity_t}:", f"        return self._c._request('POST', {ops['create'][0]!r}, body=body)\n"]
