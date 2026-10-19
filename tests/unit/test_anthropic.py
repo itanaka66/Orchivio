@@ -71,3 +71,23 @@ def test_tool_role_and_missing_key_are_rejected():
         provider(ok).complete(LLMRequest(messages=(Message("tool", "x"),)))
     with pytest.raises(ValueError):
         AnthropicProvider("")
+
+
+def test_cost_is_calculated_from_pricing_table():
+    r = provider(ok).complete(LLMRequest(messages=(Message("user", "hi"),)))
+    # claude-sonnet-5-5 prefix → $3/M in, $15/M out; 12 in + 5 out
+    assert r.usage.cost_usd == pytest.approx((12 * 3.0 + 5 * 15.0) / 1_000_000)
+
+
+def test_custom_prices_override_default():
+    r = provider(ok, prices={"claude-sonnet-5-5": (1.0, 2.0)}).complete(LLMRequest(messages=(Message("user", "hi"),)))
+    assert r.usage.cost_usd == pytest.approx((12 * 1.0 + 5 * 2.0) / 1_000_000)
+
+
+def test_unknown_model_returns_zero_cost():
+    def custom_ok(request):
+        return httpx.Response(200, json={"model": "unknown-future-model", "stop_reason": "end_turn",
+                                         "content": [{"type": "text", "text": "hi"}],
+                                         "usage": {"input_tokens": 10, "output_tokens": 10}})
+    r = provider(custom_ok).complete(LLMRequest(messages=(Message("user", "hi"),)))
+    assert r.usage.cost_usd == 0.0

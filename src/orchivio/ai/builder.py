@@ -112,6 +112,29 @@ class Analysis(BaseModel):
     assumptions: list[str] = Field(default_factory=list, max_length=20)
 
 
+class ImplementationTask(BaseModel):
+    title: str = Field(min_length=1, max_length=200)
+    description: str = Field(default="", max_length=800)
+    type: str = Field(pattern="^(entity|security|page|flow|integration|other)$")
+    depends_on: list[int] = Field(default_factory=list, max_length=20)
+    effort: str = Field(pattern="^(small|medium|large)$")
+
+
+class ImplementationPlan(BaseModel):
+    summary: str = Field(max_length=1000)
+    tasks: list[ImplementationTask] = Field(min_length=1, max_length=50)
+
+
+@dataclass(frozen=True)
+class ImplPlanResult:
+    plan: ImplementationPlan
+    usage: Usage
+    attempts: int
+    provider: str
+    model_name: str
+    template: str
+
+
 class Explanation(BaseModel):
     explanation: str = Field(max_length=3000)
     cited_element_ids: list[str] = Field(min_length=1, max_length=30)
@@ -275,6 +298,20 @@ class AIBuilder:
             raise self._failed(e, prompts.ANALYZE) from e
         return AnalysisResult(v.value, v.usage, v.attempts, v.last_response.provider, v.last_response.model,
                               prompts.ANALYZE.ref)
+
+    @traced("plan_implementation")
+    def plan_implementation(self, requirements: str, analysis: Analysis) -> ImplPlanResult:
+        """Return an ordered task list that takes requirements and their analysis to a working application."""
+        tpl = prompts.PLAN_IMPLEMENTATION
+        user = prompts.block("requirements", requirements)
+        user += "\n\n" + prompts.block("analysis", json.dumps(analysis.model_dump(), ensure_ascii=False))
+        try:
+            v = generate_validated(self.provider, self._request(tpl, user), ImplementationPlan,
+                                   max_attempts=self.max_validation_attempts)
+        except StructuredOutputError as e:
+            raise self._failed(e, tpl) from e
+        r = v.last_response
+        return ImplPlanResult(v.value, v.usage, v.attempts, r.provider, r.model, tpl.ref)
 
     @traced("analyze_logs")
     def analyze_logs(self, entries: list[dict[str, Any]], question: str | None = None) -> LogAnalysisResult:

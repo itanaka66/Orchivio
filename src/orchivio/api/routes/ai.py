@@ -13,7 +13,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.orm import Session
 
-from orchivio.ai import AIBuilder, BuilderError, ToolContext, ToolInfo
+from orchivio.ai import AIBuilder, BuilderError, ImplPlanResult, ToolContext, ToolInfo
 from orchivio.db import ModelInvalid, ProposalRepository, to_model
 from orchivio.db.models import Application, AppRevision
 from orchivio.db.proposals import NoChanges, finish_ai_job, month_cost_usd, start_ai_job
@@ -246,3 +246,37 @@ def explain(app_id: uuid.UUID, body: ExplainIn, request: Request,
     return {"job_id": str(job.id), "explanation": r.explanation, "cited_element_ids": r.cited_element_ids,
             "usage": usage, "note": "AI-generated; citations are checked against the model, the text is not."}
 
+
+@router.post("/applications/{app_id}/ai/plan")
+def plan_implementation(app_id: uuid.UUID, body: RequirementsIn, request: Request,
+                        principal: Principal = Depends(current_principal), db: Session = Depends(get_db)) -> dict[str, Any]:
+    """Analyse requirements then produce an ordered, typed implementation task list (FR-012)."""
+    provider, app, project = _guard(request, db, principal, app_id, "model.propose")
+    job = start_ai_job(db, project_id=project.id, application_id=app.id, type="plan_implementation",
+                       created_by=principal.user_id, input_text=body.requirements,
+                       template="plan_implementation@1")
+    try:
+        builder = AIBuilder(provider)
+        analysis_r = builder.analyze(body.requirements)
+        plan_r = builder.plan_implementation(body.requirements, analysis_r.analysis)
+    except BuilderError as e:
+        finish_ai_job(job, ok=False, usage=_usage(e.usage, e.attempts), error=str(e))
+        db.commit()
+        raise api_error(422, "ai_output_invalid", "the AI did not produce a usable plan") from e
+    except LLMError as e:
+        finish_ai_job(job, ok=False, error=str(e))
+        db.commit()
+        raise _provider_failed(e) from e
+    combined = plan_r.usage + analysis_r.usage
+    total_attempts = analysis_r.attempts + plan_r.attempts
+    usage = _usage(combined, total_attempts)
+    finish_ai_job(job, ok=True, provider=plan_r.provider, model=plan_r.model_name, usage=usage)
+    if body.register_requirements:
+        pass  # analysis already extracted entities; requirement rows handled by caller via auto_register if desired
+    db.commit()
+    return {
+        "job_id": str(job.id),
+        "analysis": analysis_r.analysis.model_dump(),
+        "plan": plan_r.plan.model_dump(),
+        "usage": usage,
+    }

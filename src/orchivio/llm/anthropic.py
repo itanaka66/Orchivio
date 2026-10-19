@@ -16,6 +16,30 @@ from .base import LLMError, LLMRequest, LLMResponse, LLMTimeout, Usage
 DEFAULT_MODEL = "claude-sonnet-5-5"
 API_VERSION = "2023-06-01"
 
+# Default pricing table (USD per million tokens, input / output).
+# Uses prefix matching: a model whose id starts with a key is priced by that key.
+# Operators can pass a custom prices dict to AnthropicProvider.__init__ to override.
+_PRICE_PER_M: dict[str, tuple[float, float]] = {
+    "claude-opus-5": (15.0, 75.0),
+    "claude-sonnet-5": (3.0, 15.0),
+    "claude-haiku-5": (0.80, 4.0),
+    "claude-fable-5": (3.0, 15.0),
+    "claude-3-opus": (15.0, 75.0),
+    "claude-3-5-sonnet": (3.0, 15.0),
+    "claude-3-5-haiku": (0.80, 4.0),
+    "claude-3-sonnet": (3.0, 15.0),
+    "claude-3-haiku": (0.25, 1.25),
+}
+
+
+def _cost_usd(model: str, input_tokens: int, output_tokens: int,
+              prices: dict[str, tuple[float, float]] | None = None) -> float:
+    table = prices if prices is not None else _PRICE_PER_M
+    for prefix, (in_price, out_price) in table.items():
+        if model.startswith(prefix):
+            return (input_tokens * in_price + output_tokens * out_price) / 1_000_000
+    return 0.0
+
 
 class AnthropicProvider:
     name = "anthropic"
@@ -28,6 +52,7 @@ class AnthropicProvider:
         *,
         base_url: str = "https://api.anthropic.com",
         client: Any = None,
+        prices: dict[str, tuple[float, float]] | None = None,
     ) -> None:
         if not api_key:
             raise ValueError("an API key is required")
@@ -35,6 +60,7 @@ class AnthropicProvider:
 
         self._httpx = httpx
         self.model = model
+        self._prices = prices  # None = use the built-in table; {} = no pricing
         self._client = client or httpx.Client(base_url=base_url)
         self._headers = {"x-api-key": api_key, "anthropic-version": API_VERSION, "content-type": "application/json"}
 
@@ -77,12 +103,14 @@ class AnthropicProvider:
             usage = body.get("usage", {})
         except (ValueError, KeyError, TypeError) as e:
             raise LLMError("unexpected response from the model provider") from e
+        model_id = body.get("model", payload["model"])
+        in_tok = int(usage.get("input_tokens", 0))
+        out_tok = int(usage.get("output_tokens", 0))
         return LLMResponse(
             text=text,
             provider=self.name,
-            model=body.get("model", payload["model"]),
-            # Pricing is deployment-specific and changes; cost is left at 0 rather than guessed.
-            usage=Usage(int(usage.get("input_tokens", 0)), int(usage.get("output_tokens", 0)), 0.0),
+            model=model_id,
+            usage=Usage(in_tok, out_tok, _cost_usd(model_id, in_tok, out_tok, self._prices)),
             latency_ms=int((time.perf_counter() - started) * 1000),
             finish_reason=str(body.get("stop_reason") or "stop"),
         )

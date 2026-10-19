@@ -8,6 +8,7 @@ Execution is bounded by a step budget, a wall-clock limit, a call-depth limit an
 
 from __future__ import annotations
 
+import logging
 import time
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
@@ -162,6 +163,15 @@ class FlowRunner:
             if result.status != "succeeded":
                 sp.set_error("flow failed")  # the message can hold record data: it stays out of telemetry
         telemetry.count("orchivio.flow.runs", status=result.status)
+        if self.data.application_id is not None:
+            telemetry.applog(
+                self.data.application_id,
+                logging.INFO if result.status == "succeeded" else logging.WARNING,
+                "flow", "flow run",
+                flow=result.flow,
+                outcome=result.status,
+                duration_ms=int((time.monotonic() - run.started) * 1000),
+            )
         return result
 
     def run_hook(self, flow: str, user: AppUser | None, record: dict[str, Any], previous: dict[str, Any] | None,

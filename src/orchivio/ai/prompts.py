@@ -131,6 +131,19 @@ PLAN_TOOLS = Template(
 )
 
 
+PLAN_IMPLEMENTATION = Template(
+    "plan_implementation",
+    "1",
+    "You help builders understand what work is needed to implement a business application on the Orchivio platform. "
+    "Given the requirements and their analysis, produce an ordered implementation plan as JSON conforming to the "
+    "supplied schema. Each task is a concrete deliverable: defining an entity, adding security rules, creating a "
+    "page or flow. Order tasks so a builder can execute them top-to-bottom, with prerequisite tasks appearing first "
+    "and their 0-based indices listed in `depends_on`. Type must be one of: entity, security, page, flow, "
+    "integration, other. Effort must be one of: small, medium, large. Be specific: name the entity, page or flow "
+    "each task concerns. At most fifty tasks.\n" + DATA_NOTICE,
+)
+
+
 def block(tag: str, text: str) -> str:
     """Wrap untrusted text; any closing tag inside the text is defused."""
     safe = text.replace(f"</{tag}>", f"< /{tag}>")

@@ -1,6 +1,6 @@
 # Implementation Status
 
-Last updated: 2026-10-17 (initial implementation). Statuses: **Done** (implemented and
+Last updated: 2026-10-19. Statuses: **Done** (implemented and
 tested), **Library** (implemented as a tested library but not yet wired into a running
 service), **Schema** (data structures only), **Planned**.
 
@@ -16,11 +16,11 @@ service), **Schema** (data structures only), **Planned**.
 | FR-093 | Git-native canonical file format | Done | One file per element, stable ordering, lossless round trip (property-tested); Git sync pushes a revision to a branch (and opens a GitHub pull request) and pulls the base branch as a proposal (docs/GIT-SYNC.md); API only, GitHub PRs only |
 | FR-010 | Accept natural-language requirements | Partial | Sent per request to `ai/analyze` / `ai/propose`; only a hash is stored, no conversation history |
 | FR-011 | Structured decomposition | Done | `Analysis` and `AppModel` outputs validated against schemas |
-| FR-012 | Implementation plan | Planned | No task/dependency plan yet |
+| FR-012 | Implementation plan | Done | `POST /applications/{id}/ai/plan` — two-step AI call (analyze then plan_implementation); returns ordered task list with types (entity/security/page/flow/integration), effort (small/medium/large) and dependency indices |
 | FR-013/014 | Diffs before application; approval | Done | Proposals, risk levels, role-gated approval, stale detection |
 | FR-015 | AI execution history | Done | `ai_jobs`: provider, model, template version, usage, status (inputs hashed) |
 | FR-016 | Failure analysis and repair proposals | Partial | `test-runs/{id}/ai/repair` proposes from failed tests; no root-cause classification |
-| FR-017 | AI budgets | Partial | Monthly USD budget per project; only as accurate as the cost the provider adapter reports (the Anthropic adapter reports 0) |
+| FR-017 | AI budgets | Done | Monthly USD budget per project; Anthropic adapter now reports USD cost from a built-in per-model pricing table (prefix-matched; overridable via `prices` kwarg) |
 | FR-018 | Provider adapters | Done (not verified live) | Interface, mock, Anthropic adapter tested against a mocked transport only |
 | FR-020 | Entities, fields, relationships | Done | Schema + validation (no runtime) |
 | FR-021/022 | Pages, forms, lists | Partial | Validated; rendered by the generated-application shell (appshell) — list, form, detail pages drawn from the page API; no Studio visual designer |
@@ -56,7 +56,7 @@ service), **Schema** (data structures only), **Planned**.
 | FR-113 | Process monitoring | Partial | Instance and task listings, event trail; no throughput or bottleneck analytics |
 | FR-065 | Page, action and flow access | Done (server side) | Pages need a listed role and the implied entity rights; columns, actions, `visible_expr`/`editable_expr` and flow-bound actions enforced; direct flow runs need `run_roles`; rendered by the appshell |
 | FR-073 | Conditional visibility and editability | Done (server side) | `visible_expr` filters actions per row, `editable_expr` is checked before an edit is stored |
-| FR-123 | Runtime observability | Partial | OpenTelemetry traces and metrics over OTLP/HTTP (requests, flows, jobs, webhooks, consumed APIs, MCP, processes, AI Builder calls), OTLP log export, opt-in outbound `traceparent`, application log store with viewer API and AI log analysis; strict no-data policy. Flow runs made through the API are not yet logged to the store; Studio log viewer with AI analysis |
+| FR-123 | Runtime observability | Partial | OpenTelemetry traces and metrics over OTLP/HTTP (requests, flows, jobs, webhooks, consumed APIs, MCP, processes, AI Builder calls), OTLP log export, opt-in outbound `traceparent`, application log store with viewer API and AI log analysis; strict no-data policy. Flow runs from the page API are now logged to the store (flow, outcome, duration_ms); Studio log viewer with AI analysis |
 | FR-124 | Governance console | Partial | Policy packs enforced on every model change, compliance report, app inventory with risk flags, AI usage, audit export; Studio screens for packs, compliance, inventory, AI usage and export; no per-project exceptions or quotas |
 | FR-098 | Requirements, story board, traceability | Partial | Requirements, stories, validated trace links (stories, elements, revisions, generated test cases), coverage report as JSON/CSV, AI extraction of draft requirements, Studio board with drag and drop; no story editor screen |
 | FR-099 | Preview feedback widget | Partial | Feedback with page, element and optional screenshot, rate limit, triage, AI clustering into proposed stories; widget (element picking, image attach/paste/screen capture) mounted on a Studio preview screen that renders the model's list/form pages with element ids; not the generated production UI |

@@ -32,9 +32,13 @@ def test_background_jobs_write_log_lines(jobs_ctx, app):  # noqa: F811
     w.tick()
     clock.advance(minutes=5)
     assert w.tick().succeeded == 1
-    [line] = get(p["owner"], a)["items"]
-    assert (line["source"], line["level"], line["message"]) == ("job", "info", "job succeeded")
+    items = get(p["owner"], a)["items"]
+    # the engine now also writes a "flow run" line (source=flow); the worker still writes "job succeeded"
+    [line] = [x for x in items if x["source"] == "job"]
+    assert (line["level"], line["message"]) == ("info", "job succeeded")
     assert line["fields"] == {"flow": "core.ReorderLowStock", "trigger": "schedule", "outcome": "succeeded", "attempt": 1}
+    [flow_line] = [x for x in items if x["source"] == "flow"]
+    assert flow_line["message"] == "flow run" and flow_line["fields"]["outcome"] == "succeeded"
 
 
 def test_viewer_filters_paging_and_ordering(ctx):  # noqa: F811
