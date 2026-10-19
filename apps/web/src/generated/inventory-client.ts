@@ -126,6 +126,29 @@ export class OrchivioDataClient {
   /** core.Product */
   readonly product = {
     list: (params: ProductListParams = {}) => this.request<OrchivioPage<Product>>('GET', '/data/core.Product', { query: listQuery(params) }),
+    listAll: async (params: Omit<ProductListParams, 'offset'> = {}) => {
+      const limit = params.limit ?? 100; let offset = 0; const all: Product[] = [];
+      while (true) {
+        const page = await this.request<OrchivioPage<Product>>('GET', '/data/core.Product', { query: listQuery({ ...params, limit, offset }) });
+        all.push(...page.items);
+        if (page.items.length === 0 || all.length >= page.total) break;
+        offset += page.items.length;
+      }
+      return all;
+    },
+    pages: (params: Omit<ProductListParams, 'offset'> = {}): AsyncIterable<OrchivioPage<Product>> => {
+      const list = (p: ProductListParams) => this.request<OrchivioPage<Product>>('GET', '/data/core.Product', { query: listQuery(p) });
+      const limit = params.limit ?? 100;
+      return (async function*() {
+        let offset = 0;
+        while (true) {
+          const page = await list({ ...params, limit, offset });
+          yield page;
+          if (page.items.length === 0 || offset + page.items.length >= page.total) break;
+          offset += page.items.length;
+        }
+      })();
+    },
     create: (body: ProductCreate) => this.request<Product>('POST', '/data/core.Product', { body }),
     get: (id: string) => this.request<Product>('GET', '/data/core.Product/{id}'.replace('{id}', encodeURIComponent(id))),
     update: (id: string, patch: ProductUpdate) => this.request<Product>('PATCH', '/data/core.Product/{id}'.replace('{id}', encodeURIComponent(id)), { body: patch }),
