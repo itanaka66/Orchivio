@@ -24,4 +24,4 @@ person knows; it is never sent anywhere and never stored.
 * Component and unit tests (jsdom + fake-indexeddb) cover the vault, outbox, provider, panel, board, feedback widget and the offline start. There are **no
   Playwright offline scenarios** and nothing was tried on real devices.
 * No conflict resolution (edits to existing items are not queued), no background sync when the Studio is closed, no quota management.
-* Generated applications have no offline support (no UI renderer yet).
+* Generated applications: the appshell (`/apps/{id}/shell/`) caches its own static files (HTML, script, styles, icons, manifest) and serves the offline page when there is no connection. It never caches API data, rows or sessions; offline it opens and says so. Data operations need a connection.

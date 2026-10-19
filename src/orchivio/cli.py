@@ -227,7 +227,7 @@ def run_user(args: argparse.Namespace, out: TextIO) -> int:
 
     url = args.database_url or get_settings().database_url  # ORCHIVIO_DATABASE_URL or .env, like the API
     if args.password_stdin:
-        password = sys.stdin.readline().rstrip("\r\n")
+        password = sys.stdin.readline().removeprefix("﻿").rstrip("\r\n")
     elif sys.stdin.isatty():
         password = getpass.getpass("Password: ")
         if getpass.getpass("Repeat the password: ") != password:

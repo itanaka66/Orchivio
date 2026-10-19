@@ -22,7 +22,7 @@ from orchivio.expr import EvalError, ExprError
 from orchivio.logic import FlowError, FlowRunner
 from orchivio.model.schema import PageAction, PageDef, qualify
 from orchivio.runtime import DataError
-from orchivio.security import STANDARD_ACTIONS, page_access, resolve_access
+from orchivio.security import STANDARD_ACTIONS, page_access, resolve_access, resolve_fields
 
 from ..deps import api_error, not_found
 from .appauth import Caller, _open, _run, usable
@@ -71,10 +71,48 @@ def _state(data, entity: str, user, row: dict[str, Any], page: PageDef, c: Calle
     return out
 
 
+_SHELL_TYPES = {"string": "string", "text": "text", "integer": "integer", "decimal": "decimal",
+                "boolean": "boolean", "date": "date", "datetime": "datetime", "json": "json", "uuid": "string"}
+
+
+def _fields_for_page(c: Caller, mod, page: PageDef) -> list[dict[str, Any]]:
+    q = qualify(mod.key, page.entity)
+    entity = next((e for e in mod.entities if e.name == page.entity), None)
+    if entity is None:
+        return []
+    op = "create" if page.mode == "create" else ("update" if page.mode == "edit" else "read")
+    write_access: frozenset[str] | None = resolve_fields(c.model, c.roles, q, op) if op != "read" else None
+    fields_by_name = {f.name: f for f in entity.fields}
+    cols = page.columns or [f.name for f in entity.fields if not f.primary_key]
+    out = []
+    for name in cols:
+        f = fields_by_name.get(name)
+        if f is None:
+            continue
+        t = f.type
+        kind = _SHELL_TYPES.get(t, "string")
+        if t.startswith("enum:"):
+            kind = "enum"
+        elif t.startswith("ref:"):
+            kind = "string"
+        is_ro = bool(f.generated or f.computed) or (write_access is not None and name not in write_access)
+        desc: dict[str, Any] = {"name": name, "label": f.display_name or name.replace("_", " ").capitalize(),
+                                 "type": kind, "required": f.required, "read_only": is_ro}
+        if kind == "enum":
+            target = t[5:]
+            enum_def = next((e for e in mod.enumerations if e.name == target), None)
+            desc["values"] = enum_def.values if enum_def else []
+        if f.max_length is not None:
+            desc["max_length"] = f.max_length
+        out.append(desc)
+    return out
+
+
 def _page_json(c: Caller, mod, page: PageDef) -> dict[str, Any]:
     q = qualify(mod.key, page.entity)
     return {"key": page.key, "path": page.path, "type": page.type, "mode": page.mode, "entity": q, "layout": page.layout,
-            "columns": list(page.columns), "actions": [a.key for a in _actions(page) if _allowed_here(c, q, a)]}
+            "columns": list(page.columns), "fields": _fields_for_page(c, mod, page),
+            "actions": [a.key for a in _actions(page) if _allowed_here(c, q, a)]}
 
 
 @router.get("/pages")

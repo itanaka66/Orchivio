@@ -23,7 +23,7 @@ service), **Schema** (data structures only), **Planned**.
 | FR-017 | AI budgets | Partial | Monthly USD budget per project; only as accurate as the cost the provider adapter reports (the Anthropic adapter reports 0) |
 | FR-018 | Provider adapters | Done (not verified live) | Interface, mock, Anthropic adapter tested against a mocked transport only |
 | FR-020 | Entities, fields, relationships | Done | Schema + validation (no runtime) |
-| FR-021/022 | Pages, forms, lists | Schema | Validated; no renderer (the data API exists, see FR-030) |
+| FR-021/022 | Pages, forms, lists | Partial | Validated; rendered by the generated-application shell (appshell) — list, form, detail pages drawn from the page API; no Studio visual designer |
 | FR-023 | Declarative validation | Done | Enforced server-side by the preview data service |
 | FR-025 | Immutable revisions | Done | `RevisionRepository` and `/applications/{id}/revisions`; PostgreSQL trigger **not yet run against PostgreSQL** |
 | FR-026 | Diff and rollback | Done | API + repository; rollback creates a new revision; A3+ changes need `acknowledge_risks` |
@@ -54,15 +54,14 @@ service), **Schema** (data structures only), **Planned**.
 | FR-111 | Task inbox | Done (MVP) | Role or expression assignment, claim, release, delegation, due dates, one-shot escalation; no notifications or reassignment by admins |
 | FR-112 | Process versioning and instance migration | Not started | Instances are pinned to their starting revision |
 | FR-113 | Process monitoring | Partial | Instance and task listings, event trail; no throughput or bottleneck analytics |
-| FR-065 | Page, action and flow access | Done (server side) | Pages need a listed role and the implied entity rights; columns, actions, `visible_expr`/`editable_expr` and flow-bound actions enforced; direct flow runs need `run_roles`; no UI renders these pages yet |
+| FR-065 | Page, action and flow access | Done (server side) | Pages need a listed role and the implied entity rights; columns, actions, `visible_expr`/`editable_expr` and flow-bound actions enforced; direct flow runs need `run_roles`; rendered by the appshell |
 | FR-073 | Conditional visibility and editability | Done (server side) | `visible_expr` filters actions per row, `editable_expr` is checked before an edit is stored |
 | FR-123 | Runtime observability | Partial | OpenTelemetry traces and metrics over OTLP/HTTP (requests, flows, jobs, webhooks, consumed APIs, MCP, processes, AI Builder calls), OTLP log export, opt-in outbound `traceparent`, application log store with viewer API and AI log analysis; strict no-data policy. Flow runs made through the API are not yet logged to the store; Studio log viewer with AI analysis |
 | FR-124 | Governance console | Partial | Policy packs enforced on every model change, compliance report, app inventory with risk flags, AI usage, audit export; Studio screens for packs, compliance, inventory, AI usage and export; no per-project exceptions or quotas |
 | FR-098 | Requirements, story board, traceability | Partial | Requirements, stories, validated trace links (stories, elements, revisions, generated test cases), coverage report as JSON/CSV, AI extraction of draft requirements, Studio board with drag and drop; no story editor screen |
 | FR-099 | Preview feedback widget | Partial | Feedback with page, element and optional screenshot, rate limit, triage, AI clustering into proposed stories; widget (element picking, image attach/paste/screen capture) mounted on a Studio preview screen that renders the model's list/form pages with element ids; not the generated production UI |
-| FR-129 | PWA and offline | Partial (PWA) | Studio is installable (manifest, icons, service worker for the shell only, offline page, update prompt, offline bar, safe-area CSS); never caches API data; offline data and sync for additive changes (docs/OFFLINE.md; tested in jsdom only); not tried on real devices; generated applications have no PWA (no UI renderer) |
+| FR-129 | PWA and offline | Partial (PWA) | Studio is installable (manifest, icons, service worker for shell only, offline page, update prompt, offline bar, safe-area CSS); offline data and sync for additive changes (docs/OFFLINE.md; tested in jsdom only); never caches API data; not tried on real devices. Generated applications: installable PWA shell served at `/apps/{id}/shell/` (manifest, icons, service worker scoped to the shell, offline page, list/form/detail pages from the page API); browser-tested with Playwright |
 | FR-126 | Module registry | Partial | Signed, semver, immutable module and template packages in the running server: publish, search, install/upgrade/remove as proposals, dependencies resolved into one proposal, install under another module key, yank, import/export and pull/push with other servers' registries (trusted keys only), templates, Studio screen; no automatic updates, no backtracking resolution, rename does not change page keys/routes |
-| FR-129 | PWA and offline | Partial (PWA) | Studio is installable (manifest, icons, service worker for the shell only, offline page, update prompt, offline bar, safe-area CSS); never caches API data; no offline data or sync; not tried on real devices; generated applications have no PWA (no UI renderer) |
 | FR-090 | Branch-ready revision graph | Done | `parent_revision_ids`, `branches` |
 | FR-091 | Branches and semantic merge | Done | Three-way merge by element id with typed conflicts and per-conflict resolution; Studio screen for branches and merge; no per-branch preview |
 | FR-052 | Server Flows | Done (preview) | Modelled, validated, edited visually and executed transactionally under the caller's security; no elevation, no production deployment |
@@ -77,7 +76,7 @@ service), **Schema** (data structures only), **Planned**.
 | FR-030 | CRUD API runtime | Partial | Preview environment only (docs/RUNTIME.md) |
 | FR-032 | OpenAPI for generated apps | Done | `build_openapi`, endpoint and CLI; schemas validated against live responses and request validation in tests |
 | FR-031 | Typed clients | Partial | Generated clients for the data API in TypeScript, Python and C# (types, typed list parameters, permitted operations only, typed flow runs, typed errors); compiled/executed in tests (C# with the .NET SDK); other languages via the OpenAPI document; no pagination helpers or auth handling |
-| FR-033/034/036 | UI renderer, data migrations, build export | Planned | |
+| FR-033/034/036 | UI renderer, data migrations, build export | Partial (FR-033) | FR-033: the generated-application shell renders list, form and detail pages drawn from the page API; FR-034/036 still planned |
 | FR-035 | Preview isolated from production data | Done | Separate database, per-app table prefix; prod requires a different preview URL |
 | FR-040 | Test generation and execution | Done (preview scope) | Access, row-constraint, CRUD, validation cases; reports persisted; run comparison |
 | FR-127 | Explain mode | Done | Read-only; citations are checked against the model |

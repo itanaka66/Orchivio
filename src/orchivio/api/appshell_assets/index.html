@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>{{TITLE}}</title>
+<meta name="theme-color" content="{{THEME}}">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon-192.png" type="image/png">
+<link rel="apple-touch-icon" href="icon-192.png">
+<link rel="stylesheet" href="app.css?v={{BUILD}}">
+</head>
+<body>
+<div id="offline" class="banner" role="status" hidden>You are offline. Nothing you see here has been saved or sent; reconnect to continue.</div>
+<header><h1 id="title">{{TITLE}}</h1><span id="who" class="hint"></span><button id="signout" type="button" hidden>Sign out</button></header>
+<main id="main" aria-live="polite"><p class="hint">Loading…</p></main>
+<noscript><p>This application needs JavaScript.</p></noscript>
+<script src="app.js?v={{BUILD}}"></script>
+</body>
+</html>

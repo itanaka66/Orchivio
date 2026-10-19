@@ -10,7 +10,8 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "preview": "vite preview",
-    "e2e": "npm run build && playwright test"
+    "e2e": "npm run build && playwright test",
+    "e2e:appshell": "playwright test --config playwright.appshell.config.ts"
   },
   "dependencies": {
     "@xyflow/react": "^12.12.0",

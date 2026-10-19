@@ -34,6 +34,9 @@ dev = ["cryptography>=42", "opentelemetry-sdk>=1.25", "pytest>=8", "httpx>=0.27"
 [tool.setuptools.packages.find]
 where = ["src"]
 
+[tool.setuptools.package-data]
+"orchivio.api" = ["appshell_assets/*"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["src"]

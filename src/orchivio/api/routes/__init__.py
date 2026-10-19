@@ -4,6 +4,7 @@ from . import (
     agile,
     ai,
     appauth,
+    appshell,
     appusers,
     auth,
     csvdata,
@@ -31,5 +32,5 @@ from . import (
     webhooks,
 )
 
-ALL = (auth, orgs, projects, proposals, ai, preview, testruns, tokens, tools, mcp, jobs, delivery, governance, appusers, appauth, webhooks, csvdata, inbound,
-       integrations, mcpservers, processes, tasks, pages, oidc, logs, agile, git_sync, registry)
+ALL = (auth, orgs, projects, proposals, ai, preview, testruns, tokens, tools, mcp, jobs, delivery, governance, appusers, appauth, appshell, webhooks, csvdata,
+       inbound, integrations, mcpservers, processes, tasks, pages, oidc, logs, agile, git_sync, registry)

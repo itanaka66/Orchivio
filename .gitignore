@@ -18,3 +18,4 @@ apps/web/dist/
 apps/web/test-results/
 apps/web/playwright-report/
 apps/web/node_modules/
+apps/web/e2e/.app-id
