@@ -19,7 +19,7 @@ service), **Schema** (data structures only), **Planned**.
 | FR-012 | Implementation plan | Done | `POST /applications/{id}/ai/plan` — two-step AI call (analyze then plan_implementation); returns ordered task list with types (entity/security/page/flow/integration), effort (small/medium/large) and dependency indices |
 | FR-013/014 | Diffs before application; approval | Done | Proposals, risk levels, role-gated approval, stale detection |
 | FR-015 | AI execution history | Done | `ai_jobs`: provider, model, template version, usage, status (inputs hashed) |
-| FR-016 | Failure analysis and repair proposals | Partial | `test-runs/{id}/ai/repair` proposes from failed tests; no root-cause classification |
+| FR-016 | Failure analysis and repair proposals | Done | `test-runs/{id}/ai/repair` proposes from failed tests; response includes `root_causes` list (kind, count) grouped by test category (access, row-constraint, crud, validation); category summary sent in the AI prompt |
 | FR-017 | AI budgets | Done | Monthly USD budget per project; Anthropic adapter now reports USD cost from a built-in per-model pricing table (prefix-matched; overridable via `prices` kwarg) |
 | FR-018 | Provider adapters | Done (not verified live) | Interface, mock, Anthropic adapter tested against a mocked transport only |
 | FR-020 | Entities, fields, relationships | Done | Schema + validation (no runtime) |

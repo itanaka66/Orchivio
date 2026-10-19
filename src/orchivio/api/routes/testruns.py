@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import uuid
+from collections import Counter
 from typing import Any
 
 from fastapi import APIRouter, Depends, Query, Request
@@ -143,10 +144,16 @@ def propose_repair(run_id: uuid.UUID, request: Request, principal: Principal = D
     if app.current_revision_id != rev.id:
         raise api_error(409, "stale_run", "the run is for an older revision than the current model")
     provider, _, _ = _guard(request, db, principal, app.id, "model.propose")
+    kinds = Counter(r.get("kind", r["id"].split(":")[0]) for r in failures)
+    root_causes = [{"kind": k, "count": c} for k, c in kinds.most_common()]
+    kind_summary = ", ".join(f"{c} {k}" for k, c in kinds.most_common())
     lines = "\n".join(f"- {r['id']}: {r['title']} -- {r['message']}" for r in failures[:25])
-    text = ("Automated tests generated from the current model failed. Propose a corrected model that makes them "
-            "pass while keeping access as restrictive as the requirements allow.\nFailed tests:\n" + lines)[:20_000]
+    text = (f"Automated tests generated from the current model failed. Root causes by category: {kind_summary}. "
+            "Propose a corrected model that makes them pass while keeping access as restrictive as the requirements allow.\n"
+            "Failed tests:\n" + lines)[:20_000]
     out = run_proposal(db, provider, principal, app, project, text, f"Repair {len(failures)} failing test(s)",
                        job_type="repair_model")
-    return out.model_dump(mode="json")
+    result = out.model_dump(mode="json")
+    result["root_causes"] = root_causes
+    return result
 

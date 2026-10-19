@@ -110,6 +110,9 @@ def test_repair_proposal_from_a_failed_run(app, ctx, raw_model, monkeypatch):
     prop = r.json()["proposal"]
     assert prop["status"] == "pending" and prop["source"] == "ai_builder"
     assert "access:core.Product:viewer:create" in provider.requests[0].messages[1].content  # failures reach the prompt
+    assert "Root causes by category:" in provider.requests[0].messages[1].content
+    rc = r.json().get("root_causes", [])
+    assert rc and rc[0]["kind"] == "access" and rc[0]["count"] >= 1
     assert p["viewer"].get(f"/applications/{a['id']}").json()["current_revision_no"] == 1  # nothing applied
 
     # once the model moves on, an old run can no longer drive a repair
