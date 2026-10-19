@@ -30,6 +30,13 @@ self.addEventListener('message', (event) => {
   if (event.data && event.data.type === 'CLEAR') event.waitUntil(caches.keys().then((keys) => Promise.all(keys.filter((k) => k.startsWith(PREFIX)).map((k) => caches.delete(k)))))
 })
 
+// Background Sync (Chromium): when the browser reports the connection is back, tell open Studio windows to send what is waiting. The worker itself cannot send
+// anything: the queue is encrypted with a passphrase it never sees (and holds no sign-in), so with no Studio window open the changes wait until one is.
+self.addEventListener('sync', (event) => {
+  if (event.tag !== 'orchivio-outbox') return
+  event.waitUntil(self.clients.matchAll({ type: 'window' }).then((all) => all.forEach((c) => c.postMessage({ type: 'OUTBOX_SYNC' }))))
+})
+
 const cacheable = (response) => response && response.status === 200 && response.type === 'basic' && !/no-store/i.test(response.headers.get('Cache-Control') || '')
 
 self.addEventListener('fetch', (event) => {

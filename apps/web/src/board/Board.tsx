@@ -4,6 +4,7 @@ import {
   type TraceLink, type Traceability,
 } from '../api/client'
 import { useOffline } from '../offline/OfflineProvider'
+import type { OutboxItem } from '../offline/outbox'
 import type { ElementRef } from './elements'
 
 export const COLUMNS: { status: StoryStatus; title: string }[] = [
@@ -22,6 +23,16 @@ interface Props {
   canEdit: boolean
 }
 
+/** Apply the changes waiting on this device to a list loaded from the server (or from the saved copy). */
+function overlay<T extends { id: string }>(items: T[], changes: OutboxItem[], prefix: string): T[] {
+  if (changes.length === 0) return items
+  const by = new Map(changes.map((c) => [c.path.slice(prefix.length), c]))
+  return items.filter((x) => by.get(x.id)?.kind.endsWith('_delete') !== true).map((x) => {
+    const c = by.get(x.id)
+    return c ? { ...x, ...(c.body as object) } : x
+  })
+}
+
 const message = (e: unknown) => (e instanceof ApiError ? e.message : e instanceof Error ? e.message : 'Something went wrong.')
 
 export function Board({ client, projectId, applicationId, elements, canEdit }: Props) {
@@ -34,7 +45,7 @@ export function Board({ client, projectId, applicationId, elements, canEdit }: P
   const offRef = useRef(off)
   offRef.current = off
   const connected = off ? off.online : true
-  const editable = canEdit && connected // changing or deleting what exists needs the server; creating does not
+  const editable = canEdit && (connected || (!!off && off.enabled && off.unlocked)) // offline, changes are kept on this device (when offline work is unlocked)
   const [savedAt, setSavedAt] = useState<string | null>(null)
 
   const reload = useCallback(async () => {
@@ -67,6 +78,34 @@ export function Board({ client, projectId, applicationId, elements, canEdit }: P
     } catch (e) { setError(message(e)) }
   }, [client, projectId, reload])
 
+  /** Change or delete an existing item: sent now with the version the person saw, or kept on this device. */
+  const change = useCallback(async (what: 'story' | 'requirement', item: Story | Requirement, body: Record<string, unknown> | null, label: string) => {
+    const o = offRef.current
+    const path = `/projects/${projectId}/${what === 'story' ? 'stories' : 'requirements'}/${item.id}`
+    const ifMatch = item.version
+    const v: [number] | [] = ifMatch === undefined ? [] : [ifMatch]
+    const send = (): Promise<unknown> => what === 'story'
+      ? (body ? client.updateStory(projectId, item.id, body, ...v) : client.deleteStory(projectId, item.id, ...v))
+      : (body ? client.updateRequirement(projectId, item.id, body, ...v) : client.deleteRequirement(projectId, item.id, ...v))
+    if (!o) return guardRef.current(send)
+    const base = body ? Object.fromEntries(Object.keys(body).map((k) => [k, (item as unknown as Record<string, unknown>)[k]])) : undefined
+    try {
+      const r = await o.submit({ kind: `${what}_${body ? 'edit' : 'delete'}` as 'story_edit', path, body: body ?? {}, label, project: projectId, ifMatch, base }, send)
+      setError('')
+      setNotice(r.queued ? 'Saved on this device. It will be sent when you are online.' : '')
+      await reload()
+    } catch (e) {
+      setError(e instanceof ApiError && e.code === 'version_conflict' ? 'Someone else changed this item. The board was reloaded; try again.' : message(e))
+      if (e instanceof ApiError && e.code === 'version_conflict') await reload()
+    }
+  }, [client, projectId, reload])
+
+  // what is waiting on this device is shown as if it had been done
+  const pendingChanges = (off?.items ?? []).filter((i) => i.project === projectId && (i.kind.endsWith('_edit') || i.kind.endsWith('_delete')) && i.status !== 'conflict')
+  const shownStories = useMemo(() => overlay(stories, pendingChanges.filter((i) => i.kind.startsWith('story')), `/projects/${projectId}/stories/`), [stories, pendingChanges, projectId]) // eslint-disable-line react-hooks/exhaustive-deps
+  const shownRequirements = useMemo(() => overlay(requirements, pendingChanges.filter((i) => i.kind.startsWith('requirement')), `/projects/${projectId}/requirements/`), [requirements, pendingChanges, projectId]) // eslint-disable-line react-hooks/exhaustive-deps
+  const conflicts = (off?.items ?? []).filter((i) => i.project === projectId && i.status === 'conflict')
+
   const guard = useCallback(async (work: () => Promise<unknown>, done?: string) => {
     try { await work(); setError(''); if (done !== undefined) setNotice(done); await reload() } catch (e) { setError(message(e)) }
   }, [reload])
@@ -85,16 +124,17 @@ export function Board({ client, projectId, applicationId, elements, canEdit }: P
       </div>
       {error && <p role="alert" className="sev-error">{error}</p>}
       {notice && <p role="status" className="hint">{notice}</p>}
-      {savedAt !== null && <p role="status" className="sev-warning">You are looking at the copy saved {savedAt ? new Date(savedAt).toLocaleString() : 'earlier'}: the server cannot be reached. You can add new items; changing or deleting existing ones needs a connection.</p>}
-      {off && !connected && <p className="hint">Offline: new requirements and stories wait on this device and are sent when you are back online.</p>}
-      {tab === 'board' && <Columns stories={stories} requirements={requirements} canEdit={editable} canCreate={canEdit} waiting={waiting.filter((w) => w.kind === 'story')}
+      {savedAt !== null && <p role="status" className="sev-warning">You are looking at the copy saved {savedAt ? new Date(savedAt).toLocaleString() : 'earlier'}: the server cannot be reached. Your changes wait on this device and are sent when you are online; if someone else changed the same item you will be asked which version to keep.</p>}
+      {off && !connected && <p className="hint">Offline: changes to requirements and stories wait on this device and are sent when you are back online.</p>}
+      {conflicts.length > 0 && <p role="alert" className="sev-warning">{conflicts.length} change{conflicts.length === 1 ? '' : 's'} could not be applied because someone else changed the item. Decide in “Offline work”.</p>}
+      {tab === 'board' && <Columns stories={shownStories} requirements={shownRequirements} canEdit={editable} canCreate={canEdit} waiting={waiting.filter((w) => w.kind === 'story')}
         onAdd={(title) => create('story', title)}
-        onMove={(s, status) => guard(() => client.updateStory(projectId, s.id, { status, position: Math.max(0, ...stories.map((x) => x.position)) + 1 }))}
-        onDelete={(s) => guard(() => client.deleteStory(projectId, s.id))} />}
-      {tab === 'requirements' && <Requirements requirements={requirements} canEdit={editable} canCreate={canEdit} waiting={waiting.filter((w) => w.kind === 'requirement')} canExtract={editable && !!applicationId}
+        onMove={(s, status) => change('story', stories.find((x) => x.id === s.id) ?? s, { status, position: Math.max(0, ...stories.map((x) => x.position)) + 1 }, s.title)}
+        onDelete={(s) => change('story', stories.find((x) => x.id === s.id) ?? s, null, s.title)} />}
+      {tab === 'requirements' && <Requirements requirements={shownRequirements} canEdit={editable} canCreate={canEdit} waiting={waiting.filter((w) => w.kind === 'requirement')} canExtract={editable && !!applicationId}
         onAdd={(title, body) => create('requirement', title, body)}
-        onStatus={(r, status) => guard(() => client.updateRequirement(projectId, r.id, { status }))}
-        onDelete={(r) => guard(() => client.deleteRequirement(projectId, r.id))}
+        onStatus={(r, status) => change('requirement', requirements.find((x) => x.id === r.id) ?? r, { status }, r.title)}
+        onDelete={(r) => change('requirement', requirements.find((x) => x.id === r.id) ?? r, null, r.title)}
         onExtract={(text) => guard(async () => {
           const r = await client.extractRequirements(applicationId!, text)
           setNotice(`${r.requirements.length} draft requirement${r.requirements.length === 1 ? '' : 's'} added${r.skipped_duplicates ? `, ${r.skipped_duplicates} duplicate${r.skipped_duplicates === 1 ? '' : 's'} skipped` : ''}.`)
@@ -102,7 +142,7 @@ export function Board({ client, projectId, applicationId, elements, canEdit }: P
       {tab === 'feedback' && (!connected ? <p className="hint">Reviewing feedback needs a connection.</p> : applicationId
         ? <Feedback client={client} applicationId={applicationId} canEdit={canEdit} onChanged={reload} setNotice={setNotice} setError={setError} />
         : <p className="hint">Choose an application to see its preview feedback.</p>)}
-      {tab === 'traceability' && (!connected ? <p className="hint">Traceability needs a connection.</p> : <Trace client={client} projectId={projectId} stories={stories} requirements={requirements} elements={elements} canEdit={canEdit} />)}
+      {tab === 'traceability' && (!connected ? <p className="hint">Traceability needs a connection.</p> : <Trace client={client} projectId={projectId} stories={shownStories} requirements={shownRequirements} elements={elements} canEdit={canEdit} />)}
     </section>
   )
 }

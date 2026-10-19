@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { ApiError } from '../api/client'
 import { openDb, type Db } from './idb'
-import { KINDS, loadSnapshot, MAX_QUEUED, Outbox, saveSnapshot, syncOutbox } from './outbox'
+import { KINDS, loadSnapshot, MAX_QUEUED, MAX_SNAPSHOTS, Outbox, saveSnapshot, syncOutbox } from './outbox'
 import { Vault, VaultError } from './vault'
 
 let n = 0
@@ -103,7 +103,7 @@ describe('outbox', () => {
       { kind: 'story' as const, path: `/projects/../stories`, body: {}, label: 'x' },
       { kind: 'feedback' as const, path: `//evil.example/applications/${PROJECT}/feedback`, body: {}, label: 'x' },
     ]) await expect(ctx.outbox.enqueue(bad)).rejects.toThrow(/cannot be saved/)
-    expect(Object.keys(KINDS).sort()).toEqual(['feedback', 'proposal', 'requirement', 'story'])
+    expect(Object.keys(KINDS).sort()).toEqual(['feedback', 'proposal', 'requirement', 'requirement_delete', 'requirement_edit', 'story', 'story_delete', 'story_edit'])
     expect(await ctx.outbox.count()).toBe(0)
   })
 
@@ -124,7 +124,7 @@ describe('sync', () => {
     await ctx.outbox.enqueue(story('second'))
     const c = client(() => ({}))
     const result = await syncOutbox(c, ctx.outbox, ctx.db)
-    expect(result).toEqual({ sent: 2, rejected: 0, left: 0, halted: null })
+    expect(result).toEqual({ sent: 2, rejected: 0, conflicts: 0, left: 0, halted: null })
     const calls = (c as unknown as { request: ReturnType<typeof vi.fn> }).request.mock.calls
     expect(calls.map((x) => (x[2] as { title: string }).title)).toEqual(['first', 'second'])
     expect(calls[0]![0]).toBe('POST')
@@ -148,12 +148,12 @@ describe('sync', () => {
     await ctx.outbox.enqueue(story('bad'))
     await ctx.outbox.enqueue(story('good'))
     const c = client((_m, _p, b) => { if ((b as { title: string }).title === 'bad') throw new ApiError(422, 'validation_failed', 'title is too long'); return {} })
-    expect(await syncOutbox(c, ctx.outbox, ctx.db)).toEqual({ sent: 1, rejected: 1, left: 1, halted: null })
+    expect(await syncOutbox(c, ctx.outbox, ctx.db)).toEqual({ sent: 1, rejected: 1, conflicts: 0, left: 1, halted: null })
     const [kept] = await ctx.outbox.list()
     expect(kept).toMatchObject({ label: 'bad', status: 'rejected', error: 'title is too long' })
     // a refused change is not retried by itself ...
     const again = client(() => ({}))
-    expect(await syncOutbox(again, ctx.outbox, ctx.db)).toEqual({ sent: 0, rejected: 0, left: 1, halted: null })
+    expect(await syncOutbox(again, ctx.outbox, ctx.db)).toEqual({ sent: 0, rejected: 0, conflicts: 0, left: 1, halted: null })
     expect((again as unknown as { request: ReturnType<typeof vi.fn> }).request).not.toHaveBeenCalled()
     // ... until a person asks
     await ctx.outbox.retry(kept!.id)
@@ -164,7 +164,7 @@ describe('sync', () => {
   it('stops, and keeps the order, when signed out or when the server cannot be reached', async () => {
     for (const t of ['a', 'b', 'c']) await ctx.outbox.enqueue(story(t))
     const signedOut = client((_m, _p, b) => { if ((b as { title: string }).title === 'b') throw new ApiError(401, 'unauthorized', 'authentication required'); return {} })
-    expect(await syncOutbox(signedOut, ctx.outbox, ctx.db)).toEqual({ sent: 1, rejected: 0, left: 2, halted: 'signed_out' })
+    expect(await syncOutbox(signedOut, ctx.outbox, ctx.db)).toEqual({ sent: 1, rejected: 0, conflicts: 0, left: 2, halted: 'signed_out' })
     expect((await ctx.outbox.list()).map((i) => [i.label, i.status])).toEqual([['b', 'waiting'], ['c', 'waiting']])
     for (const e of [new ApiError(503, 'unavailable', 'x'), new ApiError(429, 'rate', 'x'), new TypeError('network')]) {
       expect((await syncOutbox(client(() => { throw e }), ctx.outbox, ctx.db)).halted).toBe('unavailable')
@@ -209,5 +209,115 @@ describe('storage', () => {
     await db.clear()
     expect(await db.count('outbox')).toBe(0)
     db.close()
+  })
+})
+
+describe('edits and deletes with conflicts', () => {
+  const ID = '22222222-2222-4222-8222-222222222222'
+  const path = `/projects/${PROJECT}/stories/${ID}`
+  const edit = (body: Record<string, unknown>, base: Record<string, unknown>, ifMatch = 1) => ({ kind: 'story_edit' as const, path, body, base, ifMatch, label: 'S', project: PROJECT })
+  const conflict = (current: Record<string, unknown>) => new ApiError(409, 'version_conflict', 'changed', { current })
+  let ctx: Awaited<ReturnType<typeof fresh>>
+  beforeEach(async () => { ctx = await fresh(); await ctx.vault.create(PASS) })
+
+  it('sends an edit with the version it was made on', async () => {
+    await ctx.outbox.enqueue(edit({ status: 'done' }, { status: 'ready' }, 3))
+    const request = vi.fn(async () => ({}))
+    expect(await syncOutbox({ request } as never, ctx.outbox, ctx.db)).toMatchObject({ sent: 1, conflicts: 0 })
+    expect(request).toHaveBeenCalledWith('PATCH', path, { status: 'done' }, { 'If-Match': '"3"' })
+  })
+
+  it('merges several offline edits of one item into one request, and a delete replaces them', async () => {
+    await ctx.outbox.enqueue(edit({ status: 'done' }, { status: 'ready' }))
+    await ctx.outbox.enqueue(edit({ title: 'New' }, { title: 'Old' }))
+    let items = await ctx.outbox.list()
+    expect(items).toHaveLength(1)
+    expect(items[0]).toMatchObject({ body: { status: 'done', title: 'New' }, base: { status: 'ready', title: 'Old' }, ifMatch: 1 })
+    await ctx.outbox.enqueue({ kind: 'story_delete', path, body: {}, label: 'S', project: PROJECT, ifMatch: 1 })
+    items = await ctx.outbox.list()
+    expect(items.map((i) => i.kind)).toEqual(['story_delete'])
+    await expect(ctx.outbox.enqueue(edit({ title: 'x' }, { title: 'y' }))).rejects.toThrow(/waiting to be deleted/)
+  })
+
+  it('re-bases an edit when somebody else changed other fields', async () => {
+    await ctx.outbox.enqueue(edit({ status: 'done' }, { status: 'ready' }))
+    const request = vi.fn()
+      .mockRejectedValueOnce(conflict({ status: 'ready', title: 'Renamed', version: 2 }))
+      .mockResolvedValueOnce({})
+    expect(await syncOutbox({ request } as never, ctx.outbox, ctx.db)).toMatchObject({ sent: 1, conflicts: 0, left: 0 })
+    expect(request).toHaveBeenLastCalledWith('PATCH', path, { status: 'done' }, { 'If-Match': '"2"' })
+  })
+
+  it('counts an edit as done when the server already holds the same values (a lost answer)', async () => {
+    await ctx.outbox.enqueue(edit({ status: 'done' }, { status: 'ready' }))
+    const request = vi.fn().mockRejectedValueOnce(conflict({ status: 'done', version: 2 }))
+    expect(await syncOutbox({ request } as never, ctx.outbox, ctx.db)).toMatchObject({ sent: 1, conflicts: 0, left: 0 })
+    expect(request).toHaveBeenCalledTimes(1)
+  })
+
+  it('keeps a real conflict for a person, shows the server copy, and lets them keep theirs or mine', async () => {
+    await ctx.outbox.enqueue(edit({ status: 'done' }, { status: 'ready' }))
+    const request = vi.fn().mockRejectedValueOnce(conflict({ status: 'in_progress', version: 5 }))
+    expect(await syncOutbox({ request } as never, ctx.outbox, ctx.db)).toMatchObject({ sent: 0, conflicts: 1, left: 1 })
+    const [item] = await ctx.outbox.list()
+    expect(item).toMatchObject({ status: 'conflict', server: { status: 'in_progress', version: 5 }, body: { status: 'done' } })
+    // nothing is retried by itself
+    expect(await syncOutbox({ request } as never, ctx.outbox, ctx.db)).toMatchObject({ sent: 0, left: 1 })
+    expect(request).toHaveBeenCalledTimes(1)
+    await ctx.outbox.resolve(item!.id, 'mine')
+    const ok = vi.fn(async () => ({}))
+    expect(await syncOutbox({ request: ok } as never, ctx.outbox, ctx.db)).toMatchObject({ sent: 1, left: 0 })
+    expect(ok).toHaveBeenCalledWith('PATCH', path, { status: 'done' }, { 'If-Match': '"5"' })
+    await ctx.outbox.enqueue(edit({ status: 'done' }, { status: 'ready' }))
+    await syncOutbox({ request: vi.fn().mockRejectedValueOnce(conflict({ status: 'in_progress', version: 5 })) } as never, ctx.outbox, ctx.db)
+    await ctx.outbox.resolve((await ctx.outbox.list())[0]!.id, 'theirs')
+    expect(await ctx.outbox.count()).toBe(0)
+  })
+
+  it('treats a delete of something already gone as done, and an edit of something deleted as a conflict', async () => {
+    await ctx.outbox.enqueue({ kind: 'story_delete', path, body: {}, label: 'S', project: PROJECT, ifMatch: 1 })
+    const gone = vi.fn().mockRejectedValue(new ApiError(404, 'not_found', 'not found'))
+    expect(await syncOutbox({ request: gone } as never, ctx.outbox, ctx.db)).toMatchObject({ sent: 1, left: 0 })
+    await ctx.outbox.enqueue(edit({ status: 'done' }, { status: 'ready' }))
+    expect(await syncOutbox({ request: gone } as never, ctx.outbox, ctx.db)).toMatchObject({ conflicts: 1 })
+    expect((await ctx.outbox.list())[0]).toMatchObject({ status: 'conflict', server: null })
+  })
+
+  it('a conflicting delete asks first, and "mine" deletes the newer version', async () => {
+    await ctx.outbox.enqueue({ kind: 'story_delete', path, body: {}, label: 'S', project: PROJECT, ifMatch: 1 })
+    await syncOutbox({ request: vi.fn().mockRejectedValueOnce(conflict({ title: 'T', version: 4 })) } as never, ctx.outbox, ctx.db)
+    const [item] = await ctx.outbox.list()
+    expect(item!.status).toBe('conflict')
+    await ctx.outbox.resolve(item!.id, 'mine')
+    const ok = vi.fn(async () => undefined)
+    await syncOutbox({ request: ok } as never, ctx.outbox, ctx.db)
+    expect(ok).toHaveBeenCalledWith('DELETE', path, undefined, { 'If-Match': '"4"' })
+  })
+})
+
+describe('storage management', () => {
+  it('judges when the quota is nearly used up and formats sizes', async () => {
+    const { isFull, megabytes, storageInfo, requestPersistent } = await import('./storage')
+    expect(isFull({ usage: 90, quota: 100, persisted: null })).toBe(true)
+    expect(isFull({ usage: 89, quota: 100, persisted: null })).toBe(false)
+    expect(isFull({ usage: null, quota: null, persisted: null })).toBe(false)
+    expect(megabytes(5 * 1_048_576)).toBe('5.0 MB')
+    expect(megabytes(null)).toBe('unknown')
+    expect(await storageInfo({ estimate: async () => ({ usage: 1, quota: 2 }), persisted: async () => true })).toEqual({ usage: 1, quota: 2, persisted: true })
+    expect(await storageInfo({ estimate: async () => { throw new Error('x') }, persisted: async () => false })).toEqual({ usage: null, quota: null, persisted: null })
+    expect(await requestPersistent({ persist: async () => true })).toBe(true)
+    expect(await requestPersistent(undefined)).toBe(false)
+  })
+
+  it('keeps only the most recent saved copies', async () => {
+    const { vault, db } = await fresh()
+    await vault.create(PASS)
+    for (let i = 0; i < MAX_SNAPSHOTS + 5; i++) {
+      await saveSnapshot(db, vault, `k${i}`, { i })
+      await new Promise((r) => setTimeout(r, 2))
+    }
+    expect(await db.count('snapshots')).toBe(MAX_SNAPSHOTS)
+    expect(await loadSnapshot(db, vault, 'k0')).toBeNull()
+    expect((await loadSnapshot<{ i: number }>(db, vault, `k${MAX_SNAPSHOTS + 4}`))?.data.i).toBe(MAX_SNAPSHOTS + 4)
   })
 })
