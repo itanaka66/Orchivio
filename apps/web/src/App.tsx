@@ -9,6 +9,7 @@ import { remember, saveModel, PROFILE_KEY } from './offline'
 import { OfflineGate } from './offline/OfflineGate'
 import { OfflinePanel } from './offline/OfflinePanel'
 import { OfflineProvider, useOffline } from './offline/OfflineProvider'
+import { PageDesigner } from './pages/PageDesigner'
 import { Preview } from './preview/Preview'
 import { PwaBar } from './pwa/PwaBar'
 import { clearShellCaches } from './pwa/register'
@@ -23,6 +24,7 @@ type Json = Record<string, unknown>
 interface BoardTarget { project: Project; application?: Application; elements: { id: string; label: string }[]; canEdit: boolean }
 interface AdminTarget { org: Org; project: Project; application?: Application; model: Json | null }
 interface PreviewTarget { application: Application; model: Json; roles: string[]; canEdit: boolean }
+interface PagesTarget { application: Application; model: Json; canEdit: boolean }
 interface Open { model: Json; module: string; flow: Flow; application?: Application; readOnly: boolean; demo: boolean }
 
 export default function App({ client: injected, offline }: { client?: ApiClient; offline?: Omit<ComponentProps<typeof OfflineProvider>, 'client' | 'children'> }) {
@@ -38,6 +40,7 @@ function Studio({ client }: { client: ApiClient }) {
   const [open, setOpen] = useState<Open | null>(null)
   const [board, setBoard] = useState<BoardTarget | null>(null)
   const [preview, setPreview] = useState<PreviewTarget | null>(null)
+  const [pages, setPages] = useState<PagesTarget | null>(null)
   const [admin, setAdmin] = useState<AdminTarget | null>(null)
 
   useEffect(() => {
@@ -83,6 +86,21 @@ function Studio({ client }: { client: ApiClient }) {
         </header>
         <main className="page wide">
           <Preview client={client} applicationId={preview.application.id} model={preview.model} roles={preview.roles} canEdit={preview.canEdit} />
+        </main>
+      </div>
+    )
+
+  } else if (pages) {
+    overlay = (
+      <div className="shell">
+        <header className="topbar">
+          <button type="button" className="link" onClick={() => setPages(null)}>← Back</button>
+          <span>{pages.application.name} · Page designer</span>
+          <span className="spacer" />
+          {user && <span>{user.display_name}</span>}
+        </header>
+        <main className="page wide">
+          <PageDesigner client={client} applicationId={pages.application.id} model={pages.model} canEdit={pages.canEdit} />
         </main>
       </div>
     )
@@ -157,7 +175,7 @@ function Studio({ client }: { client: ApiClient }) {
       <h1>Orchivio Studio · Flow builder</h1>
       {user && <OfflinePanel />}
       {user ? (
-        <Browser client={client} user={user} onOpen={setOpen} onBoard={setBoard} onPreview={setPreview} onAdmin={setAdmin}
+        <Browser client={client} user={user} onOpen={setOpen} onBoard={setBoard} onPreview={setPreview} onPages={setPages} onAdmin={setAdmin}
                  onLogout={signOut} />
       ) : (
         <Login client={client} onUser={setUser} />
@@ -211,7 +229,7 @@ function useLoad<T>(load: () => Promise<T>, deps: unknown[]): { data: T | null; 
   return state
 }
 
-function Browser({ client, user, onOpen, onBoard, onPreview, onAdmin, onLogout }: { client: ApiClient; user: User; onOpen: (o: Open) => void; onBoard: (b: BoardTarget) => void; onPreview: (p: PreviewTarget) => void; onAdmin: (a: AdminTarget) => void; onLogout: () => void }) {
+function Browser({ client, user, onOpen, onBoard, onPreview, onPages, onAdmin, onLogout }: { client: ApiClient; user: User; onOpen: (o: Open) => void; onBoard: (b: BoardTarget) => void; onPreview: (p: PreviewTarget) => void; onPages: (p: PagesTarget) => void; onAdmin: (a: AdminTarget) => void; onLogout: () => void }) {
   const orgs = useLoad(() => client.organizations(), [client])
   const [org, setOrg] = useState<Org | null>(null)
   const projects = useLoad(() => (org ? client.projects(org.id) : Promise.resolve(null)), [org])
@@ -263,6 +281,10 @@ function Browser({ client, user, onOpen, onBoard, onPreview, onAdmin, onLogout }
           <button type="button" onClick={() => onPreview({ application: app, model: revision.data!.model_json, canEdit,
             roles: ((revision.data!.model_json.security as { roles?: string[] } | undefined)?.roles ?? []) })}>
             Open the preview
+          </button>
+          {' '}
+          <button type="button" onClick={() => onPages({ application: app, model: revision.data!.model_json, canEdit })}>
+            Open the page designer
           </button>
         </p>
       )}

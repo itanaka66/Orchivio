@@ -1,6 +1,6 @@
 # Implementation Status
 
-Last updated: 2026-10-19. Statuses: **Done** (implemented and
+Last updated: 2026-10-19 (FR-021/022). Statuses: **Done** (implemented and
 tested), **Library** (implemented as a tested library but not yet wired into a running
 service), **Schema** (data structures only), **Planned**.
 
@@ -23,7 +23,7 @@ service), **Schema** (data structures only), **Planned**.
 | FR-017 | AI budgets | Done | Monthly USD budget per project; Anthropic adapter now reports USD cost from a built-in per-model pricing table (prefix-matched; overridable via `prices` kwarg) |
 | FR-018 | Provider adapters | Done (not verified live) | Interface, mock, Anthropic adapter tested against a mocked transport only |
 | FR-020 | Entities, fields, relationships | Done | Schema + validation (no runtime) |
-| FR-021/022 | Pages, forms, lists | Partial | Validated; rendered by the generated-application shell (appshell) — list, form, detail pages drawn from the page API; no Studio visual designer |
+| FR-021/022 | Pages, forms, lists | Done | Validated; rendered by the generated-application shell (appshell) — list, form, detail pages drawn from the page API; Studio page designer: create/edit/delete pages (columns, actions, type, entity, mode) submitted as proposals |
 | FR-023 | Declarative validation | Done | Enforced server-side by the preview data service |
 | FR-025 | Immutable revisions | Done | `RevisionRepository` and `/applications/{id}/revisions`; PostgreSQL trigger **not yet run against PostgreSQL** |
 | FR-026 | Diff and rollback | Done | API + repository; rollback creates a new revision; A3+ changes need `acknowledge_risks` |
