@@ -1,76 +1,99 @@
-# Contributing
+# Contributing to Orchivio
 
-Orchivio is pre-alpha. Read [DESIGN.md](DESIGN.md) for the plan and
-[docs/STATUS.md](docs/STATUS.md) for what exists before starting work.
+Thanks for your interest. This is a pre-alpha project; the design and APIs are still moving. Contributions are welcome, but please open an issue to discuss non-trivial changes before submitting a pull request.
 
-## Setup
+## Before you start
 
-```bash
-python -m venv .venv && source .venv/bin/activate
-pip install -e ".[dev,server]"
-pytest
-ruff check .
-```
+- Read [DESIGN.md](DESIGN.md) for requirements and architecture.
+- Check [docs/STATUS.md](docs/STATUS.md) for known gaps before filing a new issue.
+- Security issues: see [SECURITY.md](SECURITY.md) — do not open a public issue.
 
-## Rules (DESIGN.md §20)
+## Development setup
 
-- Every issue states purpose, acceptance criteria, test strategy and impact.
-- Update the requirement, spec or ADR **before** changing behaviour it describes.
-- No direct pushes to `main`; open a pull request and pass CI.
-- AI-generated code gets the same review, tests and licence checks as any other code.
-- Extra scrutiny for migrations, authorization, secrets and worker boundaries.
-- Keep implemented, experimental and planned features clearly separated in docs
-  ([docs/STATUS.md](docs/STATUS.md)).
+**Requirements:** Python 3.11+, Node 18+, Docker (for integration tests).
 
-## Definition of done
-
-1. Acceptance criteria met.
-2. Type checks, lint and unit tests pass.
-3. Integration/E2E tests added where relevant.
-4. Permissions, errors and boundary conditions tested (deny paths too).
-5. Logging, auditing and operations considered.
-6. User and developer docs updated.
-7. ADRs, migrations and licence records updated.
-8. Known limitations written down.
-
-## Models as files
+### Backend
 
 ```bash
-orchivio validate model-dir/     # a canonical directory, a zip or a single YAML file
-orchivio export model.yaml model-dir/ --assign-ids
-orchivio diff before/ after/     # exit code 1 when they differ; prints risk and approval level
+pip install -e ".[postgres,server,dev]"
 ```
 
-Commit the exported directory to Git to review model changes as ordinary pull requests.
-
-## Operations
+Run the API against a local Postgres (or the Compose stack):
 
 ```bash
-orchivio backup backup.zip --database-url …     # confidential: contains password hashes and every model
-orchivio verify-backup backup.zip
-orchivio restore backup.zip --database-url …   # into an empty database at the same schema revision
-orchivio openapi model.yaml -o openapi.json
+cp .env.example .env          # set POSTGRES_PASSWORD
+docker compose up db -d       # start Postgres only
+alembic upgrade head
+uvicorn orchivio.api.main:app --reload
 ```
 
-## Web Studio
+### Frontend
 
 ```bash
-cd apps/web && npm install && npm run typecheck && npm test
+cd apps/web
+npm install
+npm run dev       # proxies /api to localhost:8000
 ```
 
-If you change the flow schema or validator, run `python scripts/export_web_contract.py`; `tests/unit/test_web_contract.py` fails when the generated files are stale.
+### Full stack
+
+```bash
+docker compose up --build     # API + Postgres + nginx-served Studio on :80
+```
+
+## Running checks
+
+### Python
+
+```bash
+pytest                        # unit + integration tests
+ruff check src tests          # lint
+ruff format --check src tests # format check (CI enforces this)
+```
+
+All tests use a real database; mocking the database is not acceptable (see ADR-004).
+
+### TypeScript / React
+
+```bash
+cd apps/web
+npm run typecheck             # tsc --noEmit (strict mode; all errors must be zero)
+npm run test                  # Vitest unit tests
+npm run build                 # full production build
+```
+
+The TypeScript config uses `strict`, `noUncheckedIndexedAccess`, `noUnusedLocals`, and `noUnusedParameters`. `array[i]` returns `T | undefined`; guard or assert `!` with intent.
 
 ## Code conventions
 
-- Package dependency rules are enforced by `tests/unit/test_architecture.py`; see
-  [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
-- Model output and request data are untrusted: validate with Pydantic at the boundary, never
-  `eval`/`exec`, never build SQL by string-formatting values.
-- Database changes need an Alembic migration; `tests/integration/test_migrations.py` must pass.
-- PostgreSQL-specific behaviour is tested in `tests/integration/test_postgres.py`, which runs only when
-  `ORCHIVIO_TEST_PG_URL` points at a disposable database (CI sets it). Run it before touching triggers,
-  SQL compilation or runtime column types.
-- Anything that decides access (roles, row constraints, validation) needs a test that fails when the
-  rule is broken on purpose (see `tests/unit/test_testgen.py` for the pattern).
-- New SQL-compiled expression constructs need an interpreter-vs-SQL equivalence test.
-- Don't add a dependency without checking its licence (SBOM/NOTICE are release requirements).
+- **Proposals, not direct writes.** All model mutations go through `client.createProposal(appId, model, title)`. No route may write a model directly without creating a proposal and approval.
+- **Deny by default.** Every new API route must call `authorize(principal, action)` before touching data. Omitting it is a security bug.
+- **No arbitrary LLM execution.** LLM output is validated against the model schema before any use. Raw strings from an LLM are never executed as code.
+- **Comments.** Write no comments unless the *why* is non-obvious — a hidden constraint, a specific bug workaround, or a subtle invariant. Do not explain what the code does.
+- **Backend style:** ruff enforces `E`, `F`, `I`, `B`, `UP`; lines up to 100 characters.
+- **Frontend style:** no formatter (intentional — see pyproject.toml for rationale). Keep vanilla CSS; no Tailwind or component libraries.
+
+## Pull request guidelines
+
+1. **Branch from `main`**, use a short descriptive name: `feat/...`, `fix/...`, `docs/...`.
+2. **One concern per PR.** Separate a refactor from a feature.
+3. **Tests are required.** New API routes need at least one happy-path and one error test. New model features need validation and lint tests.
+4. **Update docs.** If your change affects a spec (`docs/*.md`), update it in the same PR.
+5. **Migrations.** Add an Alembic migration for every schema change; never edit existing migrations.
+6. **Special review.** Changes to `src/orchivio/policy/`, `src/orchivio/security/`, `migrations/`, and worker execution boundaries get extra scrutiny and may require an ADR.
+7. **PR description:** state the motivation, what changed, and how to test it. Reference the relevant DESIGN.md section or FR number.
+
+## Definition of done
+
+A feature is complete only when (DESIGN.md §20.2):
+
+- All acceptance criteria from the relevant FR are met.
+- Type checks, linting, and tests pass in CI.
+- Required integration tests are added.
+- Permissions, errors, and edge cases are tested.
+- Relevant `docs/*.md` files are updated.
+- Any new ADRs, migrations, and license records are present.
+
+## License
+
+By contributing, you agree that your contributions will be licensed under [GPL-3.0-or-later](LICENSE).
