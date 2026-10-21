@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import type { ApiClient, TestRunResult } from '../api/client'
-import { Feedback, Loading, Pager, Panel, Pill, useAction, useApi, when } from './kit'
+import { Feedback, Loading, Pager, Panel, Pill, useAction, useApi } from './kit'
 
 interface Props { client: ApiClient; appId: string; revisionId: string | null }
 
