@@ -1,8 +1,15 @@
 # Orchivio Studio (web)
 
 React + TypeScript front end. It contains the **flow builder**, the **story board** and **preview** (docs/AGILE.md), and the
-**administration screens** below. A model explorer, page builder and proposal review screens are still planned (proposals are reviewed
-through the API).
+**administration screens** below. Non-admin screens reachable from the browser after choosing an application:
+
+| Screen | Role | What it does |
+|---|---|---|
+| Page designer | editor | Create, edit and delete pages (list, form, detail) in the model; submits a proposal |
+| Process designer | editor | Define BPMN-style processes: steps (user task, system task, decision, timer, parallel split/join), edges, params; submits a proposal |
+| Review proposals | editor | List proposals with diff table and lint findings; approve (A3: risk checkbox) or reject |
+| Browse model | viewer | Read-only 5-tab explorer: entities, enumerations, pages, security, flows |
+| Build with AI | editor | Analyze requirements or propose a model directly via AI; links to review proposals |
 
 ## Run
 
@@ -82,6 +89,7 @@ sees depends on their organization role; the server enforces the same rules agai
 | Environments & deployment | editor (admin for environments/constants) | environments and gates, constants (secrets only as references), build/verify/download packages, promote with destructive-step acknowledgement, approve/reject |
 | Jobs & schedules | editor | schedules with next/last run, queue a server flow as a role, filter, retry, cancel |
 | Processes & tasks | editor | instances (filter, details with tasks/events/variables, cancel, retry failed step), task monitor with overdue/escalated, start a test instance |
+| Test runs | editor | list runs, create a new run against the current revision, view per-case results, request AI repair proposals for failing cases |
 | Logs | editor | filter, search, page older lines; AI analysis whose findings highlight the cited lines |
 | Application users | admin | list, create, edit roles, enable/disable, reset password, delete (two-step) |
 | Single sign-on (OIDC) | admin | configure provider, role mapping, domains, auto-provisioning warning, connection test showing the redirect URI |

@@ -54,6 +54,8 @@ export function ProcessDesigner({ client, applicationId, model, canEdit }: Props
   const [isNewStep, setIsNewStep] = useState(false)
   const [edgeDraft, setEdgeDraft] = useState<Edge | null>(null)
   const [isNewEdge, setIsNewEdge] = useState(false)
+  const [paramDraft, setParamDraft] = useState<Param | null>(null)
+  const [isNewParam, setIsNewParam] = useState(false)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const [notice, setNotice] = useState('')
@@ -87,6 +89,15 @@ export function ProcessDesigner({ client, applicationId, model, canEdit }: Props
 
   const removeStep = (id: string) => draft && setDraft({ ...draft, steps: draft.steps.filter((s) => s.id !== id), edges: draft.edges.filter((e) => e.source !== id && e.target !== id) })
   const removeEdge = (id: string) => draft && setDraft({ ...draft, edges: draft.edges.filter((e) => e.id !== id) })
+
+  const saveParam = () => {
+    if (!draft || !paramDraft) return
+    if (!paramDraft.name.trim()) { setError('Parameter name is required.'); return }
+    if (isNewParam && draft.params.some((p) => p.name === paramDraft.name)) { setError(`Parameter "${paramDraft.name}" already exists.`); return }
+    setDraft({ ...draft, params: isNewParam ? [...draft.params, paramDraft] : draft.params.map((p) => p.name === paramDraft.name ? paramDraft : p) })
+    setParamDraft(null); setError('')
+  }
+  const removeParam = (name: string) => draft && setDraft({ ...draft, params: draft.params.filter((p) => p.name !== name) })
 
   const submitDraft = () => {
     if (!draft) return
@@ -141,6 +152,46 @@ export function ProcessDesigner({ client, applicationId, model, canEdit }: Props
                     {roles.map((r) => <option key={r} value={r}>{r}</option>)}
                   </select></label>
               </div>
+            </section>
+
+            {/* Params */}
+            <section className="card">
+              <div className="panel-head"><h2>Parameters</h2></div>
+              <p className="hint">Values the caller must provide when starting this process.</p>
+              {draft.params.length > 0 && (
+                <table className="trace">
+                  <thead><tr><th>Name</th><th>Type</th><th /></tr></thead>
+                  <tbody>
+                    {draft.params.map((p) => (
+                      <tr key={p.name}>
+                        <td><code>{p.name}</code></td><td>{p.type}</td>
+                        <td>
+                          {canEdit && <><button type="button" className="link" onClick={() => { setParamDraft({ ...p }); setIsNewParam(false) }}>Edit</button>{' '}
+                          <button type="button" className="link" aria-label={`Remove parameter ${p.name}`} onClick={() => removeParam(p.name)}>Remove</button></>}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+              {draft.params.length === 0 && <p className="hint">No parameters.</p>}
+              {canEdit && <p><button type="button" onClick={() => { setParamDraft({ name: '', type: 'string' }); setIsNewParam(true) }}>Add parameter</button></p>}
+
+              {paramDraft && (
+                <form className="card" aria-label={isNewParam ? 'Add parameter' : `Edit parameter ${paramDraft.name}`}
+                  onSubmit={(e) => { e.preventDefault(); saveParam() }}>
+                  <div className="panel-head"><h3>{isNewParam ? 'Add parameter' : `Edit ${paramDraft.name}`}</h3></div>
+                  <label className="field"><span>Name</span><input required value={paramDraft.name} placeholder="amount" onChange={(e) => setParamDraft({ ...paramDraft, name: e.target.value })} /></label>
+                  <label className="field"><span>Type</span>
+                    <select value={paramDraft.type} onChange={(e) => setParamDraft({ ...paramDraft, type: e.target.value as Param['type'] })}>
+                      {FIELD_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
+                    </select></label>
+                  <div className="toolbar">
+                    <button type="submit" className="primary">{isNewParam ? 'Add' : 'Update'}</button>
+                    <button type="button" onClick={() => { setParamDraft(null); setError('') }}>Cancel</button>
+                  </div>
+                </form>
+              )}
             </section>
 
             {/* Steps */}
