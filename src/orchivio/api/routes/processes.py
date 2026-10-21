@@ -37,7 +37,8 @@ class StartIn(BaseModel):
 def instance_out(i: ProcessInstance, detail: bool = False) -> dict[str, Any]:
     out = {"id": str(i.id), "application_id": str(i.application_id), "process": i.process, "status": i.status, "initiator": i.initiator,
            "error": i.error, "started_at": aware(i.started_at).isoformat(), "finished_at": aware(i.finished_at).isoformat() if i.finished_at else None,
-           "next_wake_at": aware(i.next_wake_at).isoformat() if i.next_wake_at else None, "revision_id": str(i.revision_id)}
+           "next_wake_at": aware(i.next_wake_at).isoformat() if i.next_wake_at else None, "revision_id": str(i.revision_id),
+           "migration_policy": i.migration_policy}
     if detail:
         st = i.state
         out["variables"] = st.get("variables", {})
@@ -113,6 +114,51 @@ def retry(instance_id: uuid.UUID, request: Request, principal: Principal = Depen
     inst, _, _ = _load(db, principal, instance_id, "model.propose")
     try:
         service(request, db).retry(inst, f"studio:{principal.user_id}")
+    except ServiceError as e:
+        db.rollback()
+        raise failure(e) from e
+    db.commit()
+    db.refresh(inst)
+    return instance_out(inst)
+
+
+@router.get("/applications/{app_id}/process-instances/version-check")
+def version_check(app_id: uuid.UUID, request: Request, principal: Principal = Depends(current_principal),
+                  db: Session = Depends(get_db)) -> dict[str, Any]:
+    """List running instances that are behind the application's current revision (FR-112)."""
+    app, _ = load_application(db, principal, app_id, "model.read")
+    stale = service(request, db).stale_instances(app)
+    return {"items": [instance_out(i) for i in stale], "total": len(stale),
+            "current_revision_id": str(app.current_revision_id) if app.current_revision_id else None}
+
+
+class PolicyPatchIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    migration_policy: str = Field(pattern="^(pin|migrate)$")
+
+
+@router.patch("/process-instances/{instance_id}/policy")
+def set_policy(instance_id: uuid.UUID, body: PolicyPatchIn, request: Request,
+               principal: Principal = Depends(current_principal), db: Session = Depends(get_db)) -> dict[str, Any]:
+    """Update the migration policy of a running instance (FR-112)."""
+    inst, _, _ = _load(db, principal, instance_id, "model.propose")
+    try:
+        service(request, db).set_migration_policy(inst, body.migration_policy, f"studio:{principal.user_id}")
+    except ServiceError as e:
+        db.rollback()
+        raise failure(e) from e
+    db.commit()
+    db.refresh(inst)
+    return instance_out(inst)
+
+
+@router.post("/process-instances/{instance_id}/migrate")
+def migrate_instance(instance_id: uuid.UUID, request: Request,
+                     principal: Principal = Depends(current_principal), db: Session = Depends(get_db)) -> dict[str, Any]:
+    """Move a stale instance to the application's current revision (FR-112). Requires migration_policy='migrate'."""
+    inst, app, _ = _load(db, principal, instance_id, "model.propose")
+    try:
+        service(request, db).migrate_to_current(inst, app, f"studio:{principal.user_id}")
     except ServiceError as e:
         db.rollback()
         raise failure(e) from e
