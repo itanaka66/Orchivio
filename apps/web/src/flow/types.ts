@@ -56,6 +56,8 @@ export interface TraceSpan {
   ms: number
   iteration: number[]
   detail: string
+  /** Variable snapshot just before this step ran (client flows only, FR-057). */
+  vars?: Record<string, unknown>
 }
 
 export interface RunResult {

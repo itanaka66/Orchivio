@@ -10,7 +10,8 @@ from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import desc, func, select
 from sqlalchemy.orm import Session
 
-from orchivio.db.models import ProcessEvent, ProcessInstance, UserTask
+from orchivio.db import to_model
+from orchivio.db.models import AppRevision, ProcessEvent, ProcessInstance, UserTask
 from orchivio.process import ServiceError
 from orchivio.process.service import aware
 
@@ -132,3 +133,96 @@ def all_tasks(app_id: uuid.UUID, status: str | None = Query(None, pattern="^(ope
     rows = db.scalars(q.order_by(desc(UserTask.created_at), UserTask.id).limit(limit).offset(offset)).all()
     now = utcnow()
     return Page(items=[task_out(t, None, now) for t in rows], limit=limit, offset=offset, total=total)
+
+
+@router.get("/applications/{app_id}/process-analytics")
+def process_analytics(app_id: uuid.UUID, principal: Principal = Depends(current_principal),
+                      db: Session = Depends(get_db)) -> dict[str, Any]:
+    """Throughput and bottleneck analytics for the process engine (FR-113)."""
+    app, _ = load_application(db, principal, app_id, "model.read")
+
+    # Counts per process and status
+    count_rows = db.execute(
+        select(ProcessInstance.process, ProcessInstance.status, func.count().label("n"))
+        .where(ProcessInstance.application_id == app.id)
+        .group_by(ProcessInstance.process, ProcessInstance.status)
+    ).all()
+
+    by_process: dict[str, dict[str, Any]] = {}
+    for process, status, n in count_rows:
+        row = by_process.setdefault(process, {"process": process, "running": 0, "completed": 0, "failed": 0, "cancelled": 0})
+        row[status] = n
+
+    # Avg duration for completed instances (computed in Python to stay DB-agnostic)
+    time_rows = db.execute(
+        select(ProcessInstance.process, ProcessInstance.started_at, ProcessInstance.finished_at)
+        .where(ProcessInstance.application_id == app.id, ProcessInstance.status == "completed",
+               ProcessInstance.finished_at.is_not(None))
+        .limit(500)
+    ).all()
+    durations: dict[str, list[float]] = {}
+    for process, started, finished in time_rows:
+        if started and finished:
+            secs = (aware(finished) - aware(started)).total_seconds()
+            durations.setdefault(process, []).append(secs)
+    for proc, row in by_process.items():
+        d = durations.get(proc, [])
+        row["avg_seconds"] = round(sum(d) / len(d), 1) if d else None
+
+    # Open task bottlenecks per step_id
+    now = utcnow()
+    bottleneck_rows = db.execute(
+        select(UserTask.step_id, func.count().label("n"))
+        .where(UserTask.application_id == app.id, UserTask.status == "open")
+        .group_by(UserTask.step_id).order_by(desc(func.count())).limit(20)
+    ).all()
+    overdue_rows = db.execute(
+        select(UserTask.step_id, func.count().label("n"))
+        .where(UserTask.application_id == app.id, UserTask.status == "open", UserTask.due_at <= now)
+        .group_by(UserTask.step_id)
+    ).all()
+    overdue = {s: n for s, n in overdue_rows}
+
+    throughput = sorted(by_process.values(), key=lambda p: -(p["running"] + p["completed"] + p["failed"] + p["cancelled"]))
+    bottlenecks = [{"step_id": s, "open_tasks": n, "overdue": overdue.get(s, 0)} for s, n in bottleneck_rows]
+    return {"throughput": throughput, "bottlenecks": bottlenecks}
+
+
+@router.get("/applications/{app_id}/process-versions")
+def process_versions(app_id: uuid.UUID, principal: Principal = Depends(current_principal),
+                     db: Session = Depends(get_db)) -> dict[str, Any]:
+    """List revisions that define at least one process, for process version history (FR-112)."""
+    app, _ = load_application(db, principal, app_id, "model.read")
+    revisions = db.scalars(
+        select(AppRevision).where(AppRevision.application_id == app.id)
+        .order_by(desc(AppRevision.revision_no)).limit(100)
+    ).all()
+    out = []
+    for rev in revisions:
+        model = to_model(rev)
+        processes = [f"{m.key}.{p.key}" for m in model.modules for p in (m.processes or [])]
+        if processes:
+            out.append({"revision_id": str(rev.id), "revision_no": rev.revision_no,
+                        "created_at": aware(rev.created_at).isoformat(), "processes": processes})
+    return {"revisions": out}
+
+
+class SignalIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    message: str = Field(min_length=1, max_length=100)
+    data: dict[str, Any] = Field(default_factory=dict)
+
+
+@router.post("/process-instances/{instance_id}/signal")
+def signal_instance(instance_id: uuid.UUID, body: SignalIn, request: Request,
+                    principal: Principal = Depends(current_principal), db: Session = Depends(get_db)) -> dict[str, Any]:
+    """Deliver an external message to a waiting catch_message step (FR-110)."""
+    inst, _, _ = _load(db, principal, instance_id, "model.propose")
+    try:
+        service(request, db).signal(inst, body.message, body.data, f"studio:{principal.user_id}")
+    except ServiceError as e:
+        db.rollback()
+        raise failure(e) from e
+    db.commit()
+    db.refresh(inst)
+    return instance_out(inst)

@@ -135,8 +135,10 @@ class _Scope:
 
 class FlowRunner:
     def __init__(self, model: AppModel, data: AppData, *, limits: Limits = DEFAULT_LIMITS,
-                 clock: Callable[[], datetime] = lambda: datetime.now(UTC)) -> None:
+                 clock: Callable[[], datetime] = lambda: datetime.now(UTC),
+                 constants: Mapping[str, Any] | None = None) -> None:
         self.model, self.data, self.limits, self.clock = model, data, limits, clock
+        self.constants: dict[str, Any] = dict(constants) if constants else {}
         self.schema = data.schema
         self.flows: dict[str, tuple[ModuleDef, FlowDef]] = {
             f"{m.key}.{f.key}": (m, f) for m in model.modules for f in m.flows
@@ -220,6 +222,8 @@ class FlowRunner:
         for name, v in (implicit or {}).items():
             values[name] = v
         types.update(implicit_types or {})
+        for k, v in self.constants.items():
+            values.setdefault(k, v)
         scope = _Scope(fl, mod, f"{mod.key}.{fl.key}", values, types,
                        {(e.source, e.handle): e.target for e in fl.edges}, {s.id: s for s in fl.steps})
         start = next(s for s in fl.steps if s.type == "start")

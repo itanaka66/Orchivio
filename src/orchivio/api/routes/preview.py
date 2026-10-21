@@ -13,10 +13,12 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, Header, Query, Request
 from pydantic import BaseModel, ConfigDict, Field
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from orchivio.db import to_model
-from orchivio.db.models import Application, AppRevision
+from orchivio.db.models import Application, AppRevision, Environment, EnvironmentConstant
+from orchivio.delivery import resolve_constants
 from orchivio.logic import FlowError, FlowHooks, FlowRunner
 from orchivio.runtime import (
     AppData,
@@ -90,6 +92,7 @@ def status(app_id: uuid.UUID, request: Request, principal: Principal = Depends(c
 class RunFlowIn(BaseModel):
     model_config = ConfigDict(extra="forbid")
     args: dict[str, Any] = Field(default_factory=dict)
+    environment: str | None = Field(default=None, description="Environment name whose constants to inject (FR-094)")
 
 
 @router.post("/applications/{app_id}/preview/flows/{flow}/run")
@@ -98,7 +101,11 @@ def run_flow(app_id: uuid.UUID, flow: str, body: RunFlowIn, request: Request,
              x_preview_roles: str | None = Header(default=None, alias="X-Preview-Roles"),
              principal: Principal = Depends(current_principal), db: Session = Depends(get_db)) -> dict[str, Any]:
     """Run a Server Flow in the preview as the simulated user. The run is one transaction under that
-    user's application security; the response carries the step-by-step trace."""
+    user's application security; the response carries the step-by-step trace.
+
+    Pass ``environment`` in the body to inject that environment's constants (FR-094/096): plain values
+    are passed as-is; secret references are resolved from the server's environment at request time.
+    """
     data, user = _open(request, db, principal, app_id, "model.propose", x_preview_user, x_preview_roles)
     q = flow if "." in flow else f"{data.model.modules[0].key}.{flow}"
     target = next(((m, f) for m in data.model.modules for f in m.flows if f"{m.key}.{f.key}" == q), None)
@@ -109,13 +116,22 @@ def run_flow(app_id: uuid.UUID, flow: str, body: RunFlowIn, request: Request,
         raise api_error(422, "not_runnable", "client flows run in the browser, not in the preview server")
     if any(q == f"{m.key}.{h}" for m in data.model.modules for e in m.entities for h in e.hooks.values()):
         raise api_error(422, "not_runnable", "this flow is an entity hook; it runs when its event happens")
+    _, project = load_application(db, principal, app_id, "model.read")
+    constants: dict[str, Any] = {}
+    if body.environment:
+        env = db.scalar(select(Environment).where(
+            Environment.application_id == app_id, Environment.name == body.environment))
+        if env is None:
+            raise api_error(404, "unknown_environment", f"no environment named '{body.environment}'")
+        rows = list(db.scalars(select(EnvironmentConstant).where(EnvironmentConstant.environment_id == env.id)))
+        constants = resolve_constants(rows)
     try:
-        result = FlowRunner(data.model, data).run(q, body.args, user)
+        result = FlowRunner(data.model, data, constants=constants or None).run(q, body.args, user)
     except FlowError as e:  # e.g. an unknown flow referenced inside the run
         raise api_error(422, "flow_error", e.message) from e
-    _, project = load_application(db, principal, app_id, "model.read")
     audit(db, request, "flow.run", actor_id=principal.user_id, org_id=project.organization_id, target_type="flow",
-          target_id=q, meta={"status": result.status, "steps": result.steps_executed, "as_user": user.id})
+          target_id=q, meta={"status": result.status, "steps": result.steps_executed, "as_user": user.id,
+                             "environment": body.environment})
     db.commit()
     return result.as_dict()
 

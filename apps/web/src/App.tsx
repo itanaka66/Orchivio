@@ -20,6 +20,7 @@ import { clearShellCaches } from './pwa/register'
 import { FLOW_KEY_RE } from './flow/catalog'
 import { listFlows, viewOf, withFlow } from './flow/model'
 import { newFlow } from './flow/ops'
+import { runClientFlow } from './flow/runner'
 import sampleModel from './flow/sample-model.json'
 import type { Flow } from './flow/types'
 
@@ -151,7 +152,12 @@ function Studio({ client }: { client: ApiClient }) {
           model={view}
           readOnly={readOnly}
           validate={user ? (f) => client.validateFlow(model, module, f) : undefined}
-          run={user && application ? (args, asUser, roles) => client.runFlow(application.id, `${module}.${flow.key}`, args, asUser, roles) : undefined}
+          run={flow.kind === 'client'
+            ? (args) => {
+                const allFlows = new Map(listFlows(model).map(({ module: m, flow: f }) => [`${m}.${f.key}`, f]))
+                return Promise.resolve(runClientFlow(`${module}.${flow.key}`, args, allFlows))
+              }
+            : (user && application ? (args, asUser, roles) => client.runFlow(application.id, `${module}.${flow.key}`, args, asUser, roles) : undefined)}
           runnable={listFlows(model).some((f) => f.module === module && f.flow.key === flow.key)}
           onSave={application && (user || offlineStart) && !readOnly ? async (f) => {
             const next = withFlow(model, module, f)

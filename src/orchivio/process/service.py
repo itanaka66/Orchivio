@@ -284,6 +284,17 @@ class ProcessService:
             raise ServiceError(409, "not_failed", str(e)) from e
         self._save(inst, st)
 
+    def signal(self, inst: ProcessInstance, message: str, data: dict[str, Any], actor: str) -> None:
+        """Deliver an external message to any catch_message steps waiting for it (FR-110)."""
+        if inst.status != "running":
+            raise ServiceError(409, "instance_closed", f"the process is {inst.status}")
+        st = State.from_json(inst.state)
+        try:
+            self._machine(inst, actor).signal(st, message, data)
+        except ProcessError as e:
+            raise ServiceError(409, "no_waiter", str(e)) from e
+        self._save(inst, st)
+
     # -- time ------------------------------------------------------------------------------------
 
     def tick(self) -> dict[str, int]:
