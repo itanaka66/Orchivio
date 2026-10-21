@@ -73,7 +73,8 @@ class PreviewStore:
 
     def reset(self, application_id: uuid.UUID, model: AppModel, model_hash: str, *,
               audit: AuditSink | None = None, organization_id: uuid.UUID | None = None,
-              hooks: Hooks | None = None, integrations: IntegrationClient | None = None) -> tuple[RuntimeSchema, AppData]:
+              hooks: Hooks | None = None, integrations: IntegrationClient | None = None,
+              mcp_broker: object | None = None) -> tuple[RuntimeSchema, AppData]:
         """Drop this application's preview tables and rebuild them (empty) from ``model``."""
         self.drop(application_id)
         schema = RuntimeSchema(model, table_prefix(application_id))
@@ -82,11 +83,13 @@ class PreviewStore:
             conn.execute(insert(META).values(prefix=table_prefix(application_id), model_hash=model_hash,
                                              built_at=datetime.now(UTC)))
         return schema, AppData(self.engine, schema, audit=audit, application_id=application_id,
-                               organization_id=organization_id, hooks=hooks, integrations=integrations)
+                               organization_id=organization_id, hooks=hooks, integrations=integrations,
+                               mcp_broker=mcp_broker)
 
     def open(self, application_id: uuid.UUID, model: AppModel, model_hash: str, *,
              audit: AuditSink | None = None, organization_id: uuid.UUID | None = None,
-             hooks: Hooks | None = None, integrations: IntegrationClient | None = None) -> AppData:
+             hooks: Hooks | None = None, integrations: IntegrationClient | None = None,
+             mcp_broker: object | None = None) -> AppData:
         status = self.status(application_id)
         if status is None:
             raise PreviewNotBuilt("the preview has not been built")
@@ -94,4 +97,4 @@ class PreviewStore:
             raise PreviewStale("the model changed since the preview was built; reset it")
         schema = RuntimeSchema(model, table_prefix(application_id))
         return AppData(self.engine, schema, audit=audit, application_id=application_id, organization_id=organization_id,
-                       hooks=hooks, integrations=integrations)
+                       hooks=hooks, integrations=integrations, mcp_broker=mcp_broker)

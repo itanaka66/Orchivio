@@ -31,7 +31,7 @@ from orchivio.expr import (
     compile_predicate,
     evaluate,
 )
-from orchivio.expr.ast import BOOL, list_t
+from orchivio.expr.ast import BOOL, STRING, list_t
 from orchivio.model import AppModel
 from orchivio.model.schema import FieldDef, FlowDef, FlowStep, ModuleDef, qualify
 from orchivio.ports import IntegrationCall, IntegrationError
@@ -311,6 +311,8 @@ class FlowRunner:
             return self._next(sc, step)
         if t == "call_integration":
             return self._integration_step(run, sc, step, span)
+        if t == "call_mcp":
+            return self._mcp_step(run, sc, step, span)
         raise FlowError(f"unsupported step type '{t}'", step.id, sc.qualified)
 
     def _integration_step(self, run: _Run, sc: _Scope, step: FlowStep, span: Span) -> str | None:
@@ -362,6 +364,31 @@ class FlowRunner:
             else:
                 sc.values[name] = self._response_record(q, op.response_map, res.body, step, sc, f"{ig.key}.{op.id}")
                 sc.types[name] = et
+        return self._next(sc, step)
+
+    def _mcp_step(self, run: _Run, sc: _Scope, step: FlowStep, span: Span) -> str | None:
+        cfg = step.config
+        broker = self.data.mcp_broker
+        if broker is None:
+            raise FlowError("this environment cannot call MCP servers", step.id, sc.qualified)
+        org_id = self.data.organization_id
+        if org_id is None:
+            raise FlowError("organization context required for call_mcp", step.id, sc.qualified)
+        server, tool = str(cfg.get("server", "")), str(cfg.get("tool", ""))
+        args = self._values(run, sc, step, cfg.get("args"))
+        span.detail = f"{server}.{tool}"
+        try:
+            records = broker.run(org_id, [(server, tool, {k: to_json(v) for k, v in args.items()})])
+        except Exception as exc:
+            raise FlowError(f"MCP call {server}.{tool} failed: {exc}", step.id, sc.qualified) from exc
+        rec = records[0] if records else None
+        if rec is None or not rec.ok:
+            msg = rec.error if rec else "no response"
+            raise FlowError(f"{server}.{tool}: {msg}", step.id, sc.qualified)
+        name = cfg.get("into")
+        if name is not None:
+            sc.values[str(name)] = rec.text
+            sc.types[str(name)] = STRING
         return self._next(sc, step)
 
     def _response_record(self, q: str, mapping: Mapping[str, str], obj: Any, step: FlowStep, sc: _Scope, where: str) -> dict[str, Any]:
