@@ -81,7 +81,8 @@ describe('ProcessDesigner', () => {
     render(<ProcessDesigner client={fakeClient()} applicationId="a1" model={model} canEdit={true} />)
     await userEvent.click(screen.getByRole('button', { name: /^Approval/ }))
     expect(screen.getByRole('region', { name: /Edit process Approval/ })).toBeInTheDocument()
-    expect(screen.getByText('review')).toBeInTheDocument()
+    const stepsSection = screen.getByText('Steps').closest('section')!
+    expect(within(stepsSection).getByText('review')).toBeInTheDocument()
     expect(screen.getByText('e1')).toBeInTheDocument()
   })
 
@@ -99,8 +100,8 @@ describe('ProcessDesigner', () => {
     await userEvent.type(within(stepForm).getByLabelText('ID'), 'notify')
     // change type to system_task
     await userEvent.selectOptions(within(stepForm).getByLabelText('Type'), 'system_task')
-    // fill required flow
-    await userEvent.type(within(stepForm).getByPlaceholderText(/ReorderLowStock|select flow/), 'NotifyUser')
+    // select flow from dropdown (flows exist in model, so a select renders)
+    await userEvent.selectOptions(within(stepForm).getByLabelText('Flow key'), 'NotifyUser')
     await userEvent.click(within(stepForm).getByRole('button', { name: 'Add' }))
 
     // step is now in the table
@@ -123,6 +124,8 @@ describe('ProcessDesigner', () => {
     const stepForm = screen.getByRole('form', { name: 'Add step' })
     await userEvent.clear(within(stepForm).getByLabelText('ID'))
     await userEvent.type(within(stepForm).getByLabelText('ID'), 'start')
+    // fill required Title so native validation doesn't block the submit
+    await userEvent.type(within(stepForm).getByLabelText(/Title/), 'Check')
     await userEvent.click(within(stepForm).getByRole('button', { name: 'Add' }))
     expect(screen.getByRole('alert')).toHaveTextContent('already exists')
     expect(client.createProposal).not.toHaveBeenCalled()
