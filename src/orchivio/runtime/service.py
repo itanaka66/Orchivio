@@ -224,9 +224,10 @@ class AppData:
     def __init__(self, engine: Engine, schema: RuntimeSchema, *, audit: AuditSink | None = None,
                  application_id: uuid.UUID | None = None, organization_id: uuid.UUID | None = None,
                  clock: Callable[[], datetime] = lambda: datetime.now(UTC), hooks: Hooks | None = None,
-                 integrations: IntegrationClient | None = None) -> None:
+                 integrations: IntegrationClient | None = None, mcp_broker: object | None = None) -> None:
         self.engine = engine
         self.integrations = integrations  # consumed REST APIs for flows; None = not available here
+        self.mcp_broker = mcp_broker  # ToolBroker for call_mcp flow steps; None = not available here
         self.schema = schema
         self.model: AppModel = schema.model
         self.audit = audit

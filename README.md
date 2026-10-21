@@ -42,9 +42,9 @@ Key properties:
 | Typed client generation (TypeScript, Python, C#) | ✅ implemented |
 | Requirements & story editor | ✅ implemented |
 | Audit log (org-scoped event stream) | ✅ implemented |
-| Three-way model merge | 🔲 planned (R0.4) |
-| External MCP client (AI in apps) | 🔲 planned (R0.5) |
-| Module registry | 🔲 planned (R1.0) |
+| Three-way model merge | ✅ implemented |
+| External MCP client (AI in apps) | ✅ implemented |
+| Module registry | ✅ implemented |
 
 Full roadmap: [DESIGN.md §15](DESIGN.md).
 

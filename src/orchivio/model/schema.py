@@ -115,7 +115,7 @@ StepId = Annotated[str, StringConstraints(pattern=STEP_ID_PATTERN)]
 VarName = Annotated[str, StringConstraints(pattern=STEP_ID_PATTERN)]
 
 StepType = Literal["start", "retrieve", "create", "change", "delete", "decision", "loop", "call_flow",
-                   "call_integration", "raise_error", "end"]
+                   "call_integration", "call_mcp", "raise_error", "end"]
 Handle = Literal["out", "true", "false", "body", "done"]
 
 

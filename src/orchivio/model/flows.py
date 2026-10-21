@@ -19,7 +19,7 @@ from .schema import BUILTIN_ENTITIES, FieldDef, FlowDef, FlowStep, ModuleDef, qu
 Report = Callable[[str, str, str, str], None]  # (code, path, message, severity)
 
 SERVER_STEPS = {"start", "retrieve", "create", "change", "delete", "decision", "loop", "call_flow", "call_integration",
-                "raise_error", "end"}
+                "call_mcp", "raise_error", "end"}
 CLIENT_STEPS = {"start", "decision", "call_flow", "end"}  # client flows cannot touch data (FR-053)
 TERMINAL = {"end", "raise_error"}
 HANDLES = {"decision": {"true", "false"}, "loop": {"body", "done"}}
@@ -322,6 +322,7 @@ class FlowChecker:
                               "delete": {"target"}, "decision": {"expr"},
                               "loop": {"over", "item", "max_iterations"}, "call_flow": {"flow", "args", "into"},
                               "call_integration": {"integration", "operation", "args", "body", "into"},
+                              "call_mcp": {"server", "tool", "args", "into"},
                               "raise_error": {"message"}}.get(t, set())
         if unknown:
             self.err("config", w, f"unknown setting(s) for a {t} step: {', '.join(sorted(unknown))}")
@@ -398,6 +399,15 @@ class FlowChecker:
                     self.err("config", f"{w}/args/{extra}", f"flow '{target}' has no parameter '{extra}'")
         elif t == "call_integration":
             self._check_call_integration(step, cfg, env, define)
+        elif t == "call_mcp":
+            server = cfg.get("server")
+            tool = cfg.get("tool")
+            if not isinstance(server, str) or not server:
+                self.err("config", f"{w}/server", "'server' must name a registered MCP server")
+            if not isinstance(tool, str) or not tool:
+                self.err("config", f"{w}/tool", "'tool' must name a tool on that MCP server")
+            if cfg.get("into") is not None:
+                define(cfg["into"], step, STRING)
         elif t == "raise_error":
             m = cfg.get("message")
             if not isinstance(m, str) or not 1 <= len(m) <= 200:

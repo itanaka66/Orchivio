@@ -155,7 +155,8 @@ def _open(request: Request, db: Session, principal: Principal, app_id: uuid.UUID
     try:
         data = request.app.state.preview_store.open(app.id, model, rev.model_hash, audit=request.app.state.audit_sink,
                                                    organization_id=project.organization_id, hooks=FlowHooks(model),
-                                                   integrations=request.app.state.integration_clients(app.id))
+                                                   integrations=request.app.state.integration_clients(app.id),
+                                                   mcp_broker=request.app.state.mcp_broker)
     except PreviewNotBuilt as e:
         raise api_error(409, "preview_not_built", "reset the preview first") from e
     except PreviewStale as e:
