@@ -285,6 +285,8 @@ function Login({ client, onUser }: { client: ApiClient; onUser: (u: User) => voi
   )
 }
 
+const toSlug = (name: string) => name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')
+
 function useLoad<T>(load: () => Promise<T>, deps: unknown[]): { data: T | null; error: string } {
   const [state, setState] = useState<{ data: T | null; error: string }>({ data: null, error: '' })
   useEffect(() => {
@@ -300,10 +302,20 @@ function useLoad<T>(load: () => Promise<T>, deps: unknown[]): { data: T | null; 
 function Browser({ client, user, onOpen, onBoard, onPreview, onPages, onAdmin, onProcesses, onReview, onAI, onExplorer, onLogout }: { client: ApiClient; user: User; onOpen: (o: Open) => void; onBoard: (b: BoardTarget) => void; onPreview: (p: PreviewTarget) => void; onPages: (p: PagesTarget) => void; onAdmin: (a: AdminTarget) => void; onProcesses: (t: ProcessTarget) => void; onReview: (t: ReviewTarget) => void; onAI: (t: AITarget) => void; onExplorer: (t: ModelTarget) => void; onLogout: () => void }) {
   const orgs = useLoad(() => client.organizations(), [client])
   const [org, setOrg] = useState<Org | null>(null)
-  const projects = useLoad(() => (org ? client.projects(org.id) : Promise.resolve(null)), [org])
+  const [projectVersion, setProjectVersion] = useState(0)
+  const projects = useLoad(() => (org ? client.projects(org.id) : Promise.resolve(null)), [org, projectVersion])
   const [project, setProject] = useState<Project | null>(null)
-  const apps = useLoad(() => (project ? client.applications(project.id) : Promise.resolve(null)), [project])
+  const [showNewProject, setShowNewProject] = useState(false)
+  const [newProjectName, setNewProjectName] = useState('')
+  const [newProjectSlug, setNewProjectSlug] = useState('')
+  const [newProjectError, setNewProjectError] = useState('')
+  const [appVersion, setAppVersion] = useState(0)
+  const apps = useLoad(() => (project ? client.applications(project.id) : Promise.resolve(null)), [project, appVersion])
   const [app, setApp] = useState<Application | null>(null)
+  const [showNewApp, setShowNewApp] = useState(false)
+  const [newAppName, setNewAppName] = useState('')
+  const [newAppKey, setNewAppKey] = useState('')
+  const [newAppError, setNewAppError] = useState('')
   const revision = useLoad(() => (app?.current_revision_id ? client.revision(app.current_revision_id) : Promise.resolve(null)), [app])
   const [newKey, setNewKey] = useState('')
   const [error, setError] = useState('')
@@ -326,9 +338,55 @@ function Browser({ client, user, onOpen, onBoard, onPreview, onPages, onAdmin, o
   return (
     <section className="card">
       <p>Signed in as <strong>{user.display_name}</strong>. <button type="button" className="link" onClick={onLogout}>Sign out</button></p>
-      <Pick label="Organization" items={orgs.data?.items} error={orgs.error} value={org?.id} onPick={(id) => { setOrg(orgs.data?.items.find((o) => o.id === id) ?? null); setProject(null); setApp(null) }} />
-      {org && <Pick label="Project" items={projects.data?.items} error={projects.error} value={project?.id} onPick={(id) => { setProject(projects.data?.items.find((p) => p.id === id) ?? null); setApp(null) }} />}
+      <Pick label="Organization" items={orgs.data?.items} error={orgs.error} value={org?.id} onPick={(id) => { setOrg(orgs.data?.items.find((o) => o.id === id) ?? null); setProject(null); setApp(null); setShowNewProject(false); setNewProjectName(''); setNewProjectSlug(''); setNewProjectError('') }} />
+      {org && <Pick label="Project" items={projects.data?.items} error={projects.error} value={project?.id} onPick={(id) => { setProject(projects.data?.items.find((p) => p.id === id) ?? null); setApp(null); setShowNewApp(false); setNewAppName(''); setNewAppKey(''); setNewAppError('') }} />}
+      {org && projects.data && (
+        showNewProject ? (
+          <form onSubmit={async (e) => {
+            e.preventDefault()
+            setNewProjectError('')
+            try {
+              const slug = newProjectSlug.trim() || toSlug(newProjectName)
+              const p = await client.createProject(org.id, newProjectName.trim(), slug)
+              setProjectVersion((v) => v + 1)
+              setShowNewProject(false); setNewProjectName(''); setNewProjectSlug('')
+              setProject(p); setApp(null)
+            } catch (err) { setNewProjectError(err instanceof ApiError ? err.message : 'Failed to create project.') }
+          }}>
+            <label className="field"><span>Project name</span><input value={newProjectName} onChange={(e) => setNewProjectName(e.target.value)} required /></label>
+            <label className="field"><span>Slug</span><input value={newProjectSlug} placeholder={toSlug(newProjectName) || 'my-project'} onChange={(e) => setNewProjectSlug(e.target.value)} /></label>
+            {newProjectError && <p role="alert" className="sev-error">{newProjectError}</p>}
+            <button type="submit" disabled={!newProjectName.trim()}>Create project</button>
+            {' '}<button type="button" className="link" onClick={() => { setShowNewProject(false); setNewProjectName(''); setNewProjectSlug(''); setNewProjectError('') }}>Cancel</button>
+          </form>
+        ) : (
+          <p><button type="button" className="link" onClick={() => setShowNewProject(true)}>+ New project</button></p>
+        )
+      )}
       {project && <Pick label="Application" items={apps.data?.items} error={apps.error} value={app?.id} onPick={(id) => setApp(apps.data?.items.find((a) => a.id === id) ?? null)} />}
+      {project && apps.data && (
+        showNewApp ? (
+          <form onSubmit={async (e) => {
+            e.preventDefault()
+            setNewAppError('')
+            try {
+              const key = newAppKey.trim() || toSlug(newAppName)
+              const a = await client.createApplication(project.id, key, newAppName.trim())
+              setAppVersion((v) => v + 1)
+              setShowNewApp(false); setNewAppName(''); setNewAppKey('')
+              setApp(a)
+            } catch (err) { setNewAppError(err instanceof ApiError ? err.message : 'Failed to create application.') }
+          }}>
+            <label className="field"><span>Application name</span><input value={newAppName} onChange={(e) => setNewAppName(e.target.value)} required /></label>
+            <label className="field"><span>Key</span><input value={newAppKey} placeholder={toSlug(newAppName) || 'my-app'} onChange={(e) => setNewAppKey(e.target.value)} /></label>
+            {newAppError && <p role="alert" className="sev-error">{newAppError}</p>}
+            <button type="submit" disabled={!newAppName.trim()}>Create application</button>
+            {' '}<button type="button" className="link" onClick={() => { setShowNewApp(false); setNewAppName(''); setNewAppKey(''); setNewAppError('') }}>Cancel</button>
+          </form>
+        ) : (
+          <p><button type="button" className="link" onClick={() => setShowNewApp(true)}>+ New application</button></p>
+        )
+      )}
       {org && project && (
         <p>
           <button type="button" onClick={() => onAdmin({ org, project, application: app ?? undefined, model: revision.data?.model_json ?? null })}>Open administration</button>
