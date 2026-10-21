@@ -300,8 +300,13 @@ function useLoad<T>(load: () => Promise<T>, deps: unknown[]): { data: T | null; 
 }
 
 function Browser({ client, user, onOpen, onBoard, onPreview, onPages, onAdmin, onProcesses, onReview, onAI, onExplorer, onLogout }: { client: ApiClient; user: User; onOpen: (o: Open) => void; onBoard: (b: BoardTarget) => void; onPreview: (p: PreviewTarget) => void; onPages: (p: PagesTarget) => void; onAdmin: (a: AdminTarget) => void; onProcesses: (t: ProcessTarget) => void; onReview: (t: ReviewTarget) => void; onAI: (t: AITarget) => void; onExplorer: (t: ModelTarget) => void; onLogout: () => void }) {
-  const orgs = useLoad(() => client.organizations(), [client])
+  const [orgVersion, setOrgVersion] = useState(0)
+  const orgs = useLoad(() => client.organizations(), [client, orgVersion])
   const [org, setOrg] = useState<Org | null>(null)
+  const [showNewOrg, setShowNewOrg] = useState(false)
+  const [newOrgName, setNewOrgName] = useState('')
+  const [newOrgSlug, setNewOrgSlug] = useState('')
+  const [newOrgError, setNewOrgError] = useState('')
   const [projectVersion, setProjectVersion] = useState(0)
   const projects = useLoad(() => (org ? client.projects(org.id) : Promise.resolve(null)), [org, projectVersion])
   const [project, setProject] = useState<Project | null>(null)
@@ -339,6 +344,37 @@ function Browser({ client, user, onOpen, onBoard, onPreview, onPages, onAdmin, o
     <section className="card">
       <p>Signed in as <strong>{user.display_name}</strong>. <button type="button" className="link" onClick={onLogout}>Sign out</button></p>
       <Pick label="Organization" items={orgs.data?.items} error={orgs.error} value={org?.id} onPick={(id) => { setOrg(orgs.data?.items.find((o) => o.id === id) ?? null); setProject(null); setApp(null); setShowNewProject(false); setNewProjectName(''); setNewProjectSlug(''); setNewProjectError('') }} />
+      {orgs.data && orgs.data.items.length === 0 && !showNewOrg && (
+        <p className="hint">
+          No organizations yet —{' '}
+          <button type="button" className="link" onClick={() => setShowNewOrg(true)}>create one</button>
+          {', or ask an org owner to add you and then '}
+          <button type="button" className="link" onClick={() => setOrgVersion((v) => v + 1)}>reload</button>.
+        </p>
+      )}
+      {orgs.data && (
+        showNewOrg ? (
+          <form onSubmit={async (e) => {
+            e.preventDefault()
+            setNewOrgError('')
+            try {
+              const slug = newOrgSlug.trim() || toSlug(newOrgName)
+              const o = await client.createOrganization(newOrgName.trim(), slug)
+              setOrgVersion((v) => v + 1)
+              setShowNewOrg(false); setNewOrgName(''); setNewOrgSlug('')
+              setOrg(o); setProject(null); setApp(null)
+            } catch (err) { setNewOrgError(err instanceof ApiError ? err.message : 'Failed to create organization.') }
+          }}>
+            <label className="field"><span>Organization name</span><input value={newOrgName} onChange={(e) => setNewOrgName(e.target.value)} required /></label>
+            <label className="field"><span>Slug</span><input value={newOrgSlug} placeholder={toSlug(newOrgName) || 'my-org'} onChange={(e) => setNewOrgSlug(e.target.value)} /></label>
+            {newOrgError && <p role="alert" className="sev-error">{newOrgError}</p>}
+            <button type="submit" disabled={!newOrgName.trim()}>Create organization</button>
+            {' '}<button type="button" className="link" onClick={() => { setShowNewOrg(false); setNewOrgName(''); setNewOrgSlug(''); setNewOrgError('') }}>Cancel</button>
+          </form>
+        ) : (
+          <p><button type="button" className="link" onClick={() => setShowNewOrg(true)}>+ New organization</button></p>
+        )
+      )}
       {org && <Pick label="Project" items={projects.data?.items} error={projects.error} value={project?.id} onPick={(id) => { setProject(projects.data?.items.find((p) => p.id === id) ?? null); setApp(null); setShowNewApp(false); setNewAppName(''); setNewAppKey(''); setNewAppError('') }} />}
       {org && projects.data && (
         showNewProject ? (

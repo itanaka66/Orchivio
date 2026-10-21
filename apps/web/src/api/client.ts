@@ -116,6 +116,8 @@ export class ApiClient {
 
   me = () => this.request<{ user: User }>('GET', '/me')
   organizations = () => this.request<Page<Org>>('GET', '/organizations?limit=200')
+  createOrganization = (name: string, slug: string) =>
+    this.request<Org>('POST', '/organizations', { name, slug })
   projects = (orgId: string) => this.request<Page<Project>>('GET', `/organizations/${orgId}/projects?limit=200`)
   createProject = (orgId: string, name: string, slug: string) =>
     this.request<Project>('POST', `/organizations/${orgId}/projects`, { name, slug })
