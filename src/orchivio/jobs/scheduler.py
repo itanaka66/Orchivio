@@ -24,7 +24,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from orchivio.db import to_model
-from orchivio.db.models import Application, AppRevision, ScheduleState
+from orchivio.db.models import Application, AppRevision, Environment, ScheduleState
 from orchivio.model import AppModel
 from orchivio.model.cron import CronError, parse_cron
 from orchivio.model.schema import ScheduleDef
@@ -90,7 +90,9 @@ class Planner:
         latest = due[-1]
         if sched.missed_runs == "skip" and now - latest > self.grace:
             return []
+        env_id = session.scalar(select(Environment.id).where(Environment.application_id == app_id)
+                               .order_by(Environment.stage_order.desc()).limit(1))
         job = queue.enqueue(session, application_id=app_id, flow=flow, args=dict(sched.args), run_as_role=sched.run_as_role,
                             trigger="schedule", scheduled_for=latest, max_attempts=sched.max_attempts,
-                            backoff_seconds=sched.backoff_seconds, at=now)
+                            backoff_seconds=sched.backoff_seconds, environment_id=env_id, at=now)
         return [job] if job else []

@@ -8,6 +8,7 @@ grants rights inside the simulated application, which are decided by the model's
 
 from __future__ import annotations
 
+import base64
 import uuid
 from typing import Any
 
@@ -136,6 +137,37 @@ def run_flow(app_id: uuid.UUID, flow: str, body: RunFlowIn, request: Request,
     return result.as_dict()
 
 
+class DebugFlowIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    args: dict[str, Any] = Field(default_factory=dict)
+    breakpoints: list[str] = Field(default_factory=list, max_length=50)
+    dry_run: bool = False
+
+
+@router.post("/applications/{app_id}/preview/flows/{flow}/debug")
+def debug_flow(app_id: uuid.UUID, flow: str, body: DebugFlowIn, request: Request,
+               x_preview_user: str | None = Header(default=None, alias="X-Preview-User"),
+               x_preview_roles: str | None = Header(default=None, alias="X-Preview-Roles"),
+               principal: Principal = Depends(current_principal), db: Session = Depends(get_db)) -> dict[str, Any]:
+    """Run a Server Flow with optional breakpoints and dry-run mode (FR-057).
+
+    ``breakpoints`` names step ids at which to capture the scope's variable snapshot into the span detail.
+    ``dry_run=true`` rolls back all writes so the run can be inspected without side effects.
+    """
+    data, user = _open(request, db, principal, app_id, "model.propose", x_preview_user, x_preview_roles)
+    q = flow if "." in flow else f"{data.model.modules[0].key}.{flow}"
+    target = next(((m, f) for m in data.model.modules for f in m.flows if f"{m.key}.{f.key}" == q), None)
+    if target is None:
+        raise api_error(404, "unknown_flow", "unknown flow")
+    if target[1].kind != "server":
+        raise api_error(422, "not_runnable", "client flows run in the browser, not in the preview server")
+    try:
+        result = FlowRunner(data.model, data, breakpoints=frozenset(body.breakpoints)).run(q, body.args, user, dry_run=body.dry_run)
+    except FlowError as e:
+        raise api_error(422, "flow_error", e.message) from e
+    return result.as_dict()
+
+
 # --- data ----------------------------------------------------------------------------------
 
 
@@ -216,4 +248,51 @@ def delete_row(app_id: uuid.UUID, entity: str, row_id: str, request: Request,
                principal: Principal = Depends(current_principal), db: Session = Depends(get_db)) -> None:
     data, user = _open(request, db, principal, app_id, "model.propose", x_preview_user, x_preview_roles)
     _run(lambda: data.delete(entity, user, row_id))
+
+
+def _grid_cursor_decode(cursor: str | None) -> int:
+    if not cursor:
+        return 0
+    try:
+        return max(0, int(base64.b64decode(cursor.encode()).decode()))
+    except Exception:
+        return 0
+
+
+def _grid_cursor_encode(offset: int) -> str:
+    return base64.b64encode(str(offset).encode()).decode()
+
+
+def _grid_sort(sort: str | None) -> tuple[str | None, bool]:
+    """Parse first field from comma-separated 'field:asc|desc' sort spec."""
+    if not sort:
+        return None, False
+    first = sort.split(",")[0].strip()
+    if ":" in first:
+        field, direction = first.rsplit(":", 1)
+        return field.strip() or None, direction.strip().lower() == "desc"
+    return first or None, False
+
+
+@router.get("/applications/{app_id}/preview/grid/{entity}")
+def grid_rows(app_id: uuid.UUID, entity: str, request: Request, limit: int = Query(50, ge=1, le=500),
+              cursor: str | None = Query(None, max_length=100),
+              sort: str | None = Query(None, max_length=200, description="field:asc|desc[,field:asc|desc,...] (up to 3 columns; only first applied)"),
+              x_preview_user: str | None = _USER, x_preview_roles: str | None = _ROLES,
+              principal: Principal = Depends(current_principal), db: Session = Depends(get_db)) -> dict[str, Any]:
+    """Cursor-paginated, multi-sort data grid endpoint for the Studio grid widget (FR-074).
+
+    Pass ``filter.<field>=<value>`` query params for equality filters.
+    The response includes ``next_cursor`` for the following page (None when exhausted).
+    """
+    data, user = _open(request, db, principal, app_id, "model.read", x_preview_user, x_preview_roles)
+    offset = _grid_cursor_decode(cursor)
+    order_by, desc_sort = _grid_sort(sort)
+    filters = {k[7:]: v for k, v in request.query_params.items() if k.startswith("filter.")}
+    result = _run(lambda: data.list(entity, user, filters=filters or None, order_by=order_by, descending=desc_sort,
+                                    limit=limit, offset=offset))
+    items = result["items"]
+    next_offset = offset + len(items)
+    next_cursor = _grid_cursor_encode(next_offset) if len(items) == limit else None
+    return {"items": items, "total": result["total"], "limit": limit, "cursor": cursor, "next_cursor": next_cursor}
 

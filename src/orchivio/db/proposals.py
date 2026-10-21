@@ -12,13 +12,13 @@ import uuid
 from datetime import UTC, datetime
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from orchivio.model import AppModel, ModelDiff
 from orchivio.policy import ApprovalLevel
 
-from .models import AIJob, Application, AuditEvent, Proposal
+from .models import AIJob, Application, AuditEvent, Project, Proposal
 from .repository import ModelInvalid, NotFound, RevisionRepository
 
 SOURCES = ("ai_builder", "mcp", "human")
@@ -165,9 +165,21 @@ class ProposalRepository:
 # --- AI jobs ---------------------------------------------------------------------------
 
 
+def _count_ai_jobs_this_month(session: Session, project_id: uuid.UUID, now: datetime | None = None) -> int:
+    now = now or _now()
+    start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    return session.scalar(select(func.count()).select_from(AIJob).where(
+        AIJob.project_id == project_id, AIJob.started_at >= start)) or 0
+
+
 def start_ai_job(session: Session, *, project_id: uuid.UUID, application_id: uuid.UUID | None, type: str,
                  created_by: uuid.UUID | None, input_text: str, template: str) -> AIJob:
     """Record the job before calling the provider. Only a hash of the input is stored."""
+    project = session.get(Project, project_id)
+    if project is not None:
+        limit = (project.settings or {}).get("quota", {}).get("ai_jobs_per_month")
+        if limit is not None and _count_ai_jobs_this_month(session, project_id) >= int(limit):
+            raise ValueError(f"project AI job quota of {limit}/month exceeded")
     job = AIJob(project_id=project_id, application_id=application_id, type=type, status="running",
                 created_by=created_by, prompt_template_version=template, started_at=_now(),
                 input_ref="sha256:" + hashlib.sha256(input_text.encode("utf-8")).hexdigest())

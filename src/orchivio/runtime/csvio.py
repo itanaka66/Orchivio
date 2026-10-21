@@ -32,7 +32,7 @@ MAX_BYTES = 2 * 1024 * 1024
 MAX_ROWS = 5000
 MAX_COLUMNS = 100
 MAX_REPORTED_ERRORS = 100
-MODES = ("all_or_nothing", "skip_errors")
+MODES = ("all_or_nothing", "skip_errors", "upsert")
 DELIMITERS = {",": ",", ";": ";", "tab": "\t", "|": "|"}
 _TRUE, _FALSE = {"true", "1", "yes", "y", "t"}, {"false", "0", "no", "n", "f"}
 
@@ -163,7 +163,7 @@ def _map_columns(data: AppData, entity: str, user: AppUser, headers: list[str], 
 
 def import_csv(data: AppData, entity: str, user: AppUser, content: bytes | str, *, mapping: Mapping[str, str | None] | None = None,
                mode: str = "all_or_nothing", dry_run: bool = False, delimiter: str = ",", ignore_unknown: bool = False,
-               max_rows: int = MAX_ROWS, max_bytes: int = MAX_BYTES) -> ImportResult:
+               key_field: str | None = None, max_rows: int = MAX_ROWS, max_bytes: int = MAX_BYTES) -> ImportResult:
     if mode not in MODES:
         raise CsvError(f"mode must be one of: {', '.join(MODES)}")
     if len(delimiter) != 1:
@@ -215,8 +215,21 @@ def import_csv(data: AppData, entity: str, user: AppUser, content: bytes | str, 
         errs = list(cell_errors)
         if not errs:
             try:
-                data.create(entity, user, values)
-                return True
+                if mode == "upsert" and key_field and key_field in values:
+                    existing = data.list(entity, user, filters={key_field: values[key_field]}, limit=2, offset=0)
+                    matched = existing["items"]
+                    if len(matched) > 1:
+                        errs = [{"field": key_field, "message": f"multiple rows match this key value"}]
+                    elif len(matched) == 1:
+                        pk_name = data._info(entity).pk.name
+                        data.update(entity, user, matched[0][pk_name], values)
+                        return True
+                    else:
+                        data.create(entity, user, values)
+                        return True
+                else:
+                    data.create(entity, user, values)
+                    return True
             except Invalid as e:
                 errs = list(e.details) if isinstance(e.details, list) else [{"field": "", "message": e.message}]
             except DataError as e:
@@ -239,10 +252,10 @@ def import_csv(data: AppData, entity: str, user: AppUser, content: bytes | str, 
         with data.transaction():
             for item in parsed:
                 result.imported += attempt(*item)
-            if dry_run or (mode == "all_or_nothing" and result.failed):
+            if dry_run or (mode in ("all_or_nothing", "upsert") and result.failed):
                 raise _Abort
     except _Abort:
-        if mode == "all_or_nothing" and result.failed:
+        if mode in ("all_or_nothing", "upsert") and result.failed:
             result.imported = 0  # nothing was kept
         return result
     result.committed = True

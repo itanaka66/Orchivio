@@ -101,7 +101,13 @@ class ModuleTypes:
         self.module_key = module_key
 
     def enum_values(self, name: str) -> Sequence[str] | None:
-        return self.index.enums.get(qualify(self.module_key, name))
+        result = self.index.enums.get(qualify(self.module_key, name))
+        if result is not None:
+            return result
+        if "." in name:
+            return self.index.enums.get(name)
+        matches = [v for k, v in self.index.enums.items() if k.endswith("." + name)]
+        return matches[0] if len(matches) == 1 else None
 
     def field_type(self, entity: str, field: str) -> Type | None:
         f = self.index.field(entity, field)

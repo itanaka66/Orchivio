@@ -305,6 +305,35 @@ def delete_story(project_id: uuid.UUID, story_id: uuid.UUID, request: Request, p
     return Response(status_code=204)
 
 
+class StoryReorderItem(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    id: uuid.UUID
+    position: int
+
+
+class StoryReorderIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    items: list[StoryReorderItem] = Field(min_length=1, max_length=200)
+
+
+@router.post("/projects/{project_id}/stories/reorder")
+def reorder_stories(project_id: uuid.UUID, body: StoryReorderIn, request: Request,
+                    principal: Principal = Depends(current_principal), db: Session = Depends(get_db)) -> dict[str, Any]:
+    """Bulk-update story positions in one transaction (FR-098)."""
+    project = load_project(db, principal, project_id, "story.manage")
+    ids = [item.id for item in body.items]
+    stories = {s.id: s for s in db.scalars(select(Story).where(Story.project_id == project.id, Story.id.in_(ids)))}
+    missing = [str(i) for i in ids if i not in stories]
+    if missing:
+        raise api_error(404, "not_found", "stories not found", {"ids": missing})
+    for item in body.items:
+        stories[item.id].position = item.position
+    audit(db, request, "story.reordered", actor_id=principal.user_id, org_id=project.organization_id, target_type="project",
+          target_id=project.id, meta={"count": len(body.items)})
+    db.commit()
+    return {"updated": len(body.items)}
+
+
 # --- trace links ------------------------------------------------------------------------------------
 
 _ALLOWED = {("requirement", "story"), ("requirement", "element"), ("requirement", "revision"), ("requirement", "test"),

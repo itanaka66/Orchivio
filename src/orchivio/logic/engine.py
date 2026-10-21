@@ -8,6 +8,7 @@ Execution is bounded by a step budget, a wall-clock limit, a call-depth limit an
 
 from __future__ import annotations
 
+import json
 import logging
 import time
 from collections.abc import Callable, Mapping
@@ -133,12 +134,18 @@ class _Scope:
     iteration: list[int] = field(default_factory=list)
 
 
+class _DryRunAbort(Exception):
+    pass
+
+
 class FlowRunner:
     def __init__(self, model: AppModel, data: AppData, *, limits: Limits = DEFAULT_LIMITS,
                  clock: Callable[[], datetime] = lambda: datetime.now(UTC),
-                 constants: Mapping[str, Any] | None = None) -> None:
+                 constants: Mapping[str, Any] | None = None,
+                 breakpoints: frozenset[str] = frozenset()) -> None:
         self.model, self.data, self.limits, self.clock = model, data, limits, clock
         self.constants: dict[str, Any] = dict(constants) if constants else {}
+        self.breakpoints = breakpoints
         self.schema = data.schema
         self.flows: dict[str, tuple[ModuleDef, FlowDef]] = {
             f"{m.key}.{f.key}": (m, f) for m in model.modules for f in m.flows
@@ -146,7 +153,7 @@ class FlowRunner:
 
     # -- public ---------------------------------------------------------------------------
 
-    def run(self, flow: str, args: Mapping[str, Any], user: AppUser | None) -> FlowResult:
+    def run(self, flow: str, args: Mapping[str, Any], user: AppUser | None, *, dry_run: bool = False) -> FlowResult:
         """Run a flow atomically. Returns a result in every case; a failed run changed nothing."""
         mod, fl = self._find(flow, None)
         run = _Run(user, self.limits)
@@ -155,6 +162,10 @@ class FlowRunner:
             try:
                 with self.data.transaction():
                     self._invoke(run, mod, fl, dict(args), user, depth=0)
+                    if dry_run:
+                        raise _DryRunAbort()
+            except _DryRunAbort:
+                pass  # transaction rolled back; result stays "succeeded"
             except FlowError as e:
                 result.status, result.error, result.error_step = "failed", e.message, e.step
             except DataError as e:
@@ -249,6 +260,8 @@ class FlowRunner:
                 raise
             finally:
                 span.ms = round((time.perf_counter() - t0) * 1000, 3)
+            if step.id in self.breakpoints:
+                span.detail = json.dumps({"vars": sc.values, "detail": span.detail or None}, default=str)
             if nxt == END:
                 return END
             step_id = nxt

@@ -72,6 +72,17 @@ class _Hooks(Hooks):
     def run_flow(self, flow: str, args: dict[str, Any]) -> str | None:
         return self.svc.run_system_flow(self.inst, flow, args)
 
+    def run_process(self, process: str, args: dict[str, Any]) -> str | None:
+        app = self.svc.session.get(Application, self.inst.application_id)
+        if app is None:
+            return "application not found"
+        try:
+            self.svc._start(app, process, args, initiator=f"subprocess:{self.inst.process}:{self.inst.id}",
+                            roles=None, actor=self.actor)
+        except ServiceError as e:
+            return e.message
+        return None
+
     def event(self, type_: str, step_id: str | None, data: dict[str, Any]) -> None:
         self.svc.session.add(ProcessEvent(instance_id=self.inst.id, at=self.svc.clock(), type=type_, step_id=step_id,
                                           actor=self.actor, data=data))

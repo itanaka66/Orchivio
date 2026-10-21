@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import statistics
 import uuid
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from fastapi import APIRouter, Depends, Header, Query, Request
@@ -232,6 +234,91 @@ def process_analytics(app_id: uuid.UUID, principal: Principal = Depends(current_
     throughput = sorted(by_process.values(), key=lambda p: -(p["running"] + p["completed"] + p["failed"] + p["cancelled"]))
     bottlenecks = [{"step_id": s, "open_tasks": n, "overdue": overdue.get(s, 0)} for s, n in bottleneck_rows]
     return {"throughput": throughput, "bottlenecks": bottlenecks}
+
+
+@router.get("/applications/{app_id}/process-analytics/throughput")
+def analytics_throughput(app_id: uuid.UUID,
+                          from_: str | None = Query(None, alias="from", description="ISO date/datetime lower bound"),
+                          to: str | None = Query(None, description="ISO date/datetime upper bound"),
+                          process: str | None = Query(None, max_length=130),
+                          bucket: str = Query("day", pattern="^(hour|day|week)$"),
+                          principal: Principal = Depends(current_principal), db: Session = Depends(get_db)) -> dict[str, Any]:
+    """Per-process instance counts grouped by time bucket (FR-113)."""
+    app, _ = load_application(db, principal, app_id, "model.read")
+    q = select(ProcessInstance.process, ProcessInstance.status, ProcessInstance.started_at).where(
+        ProcessInstance.application_id == app.id)
+    if process:
+        q = q.where(ProcessInstance.process == process)
+    try:
+        if from_:
+            q = q.where(ProcessInstance.started_at >= datetime.fromisoformat(from_).replace(tzinfo=UTC))
+        if to:
+            q = q.where(ProcessInstance.started_at <= datetime.fromisoformat(to).replace(tzinfo=UTC))
+    except ValueError as e:
+        from ..deps import api_error
+        raise api_error(422, "invalid_date", str(e))
+    rows = db.execute(q).all()
+    bucket_secs = {"hour": 3600, "day": 86400, "week": 604800}[bucket]
+
+    def _trunc(dt: datetime | None) -> str:
+        if dt is None:
+            return "unknown"
+        ts = aware(dt).timestamp()
+        return datetime.fromtimestamp(ts - ts % bucket_secs, tz=UTC).isoformat()
+
+    counts: dict[tuple[str, str, str], int] = {}
+    for proc, status, started_at in rows:
+        key = (proc, status, _trunc(started_at))
+        counts[key] = counts.get(key, 0) + 1
+    items = [{"process": p, "status": s, "bucket": b, "count": n} for (p, s, b), n in sorted(counts.items())]
+    return {"bucket": bucket, "items": items}
+
+
+@router.get("/applications/{app_id}/process-analytics/bottlenecks")
+def analytics_bottlenecks(app_id: uuid.UUID, principal: Principal = Depends(current_principal),
+                           db: Session = Depends(get_db)) -> dict[str, Any]:
+    """Token positions across running instances — where work is accumulating (FR-113)."""
+    app, _ = load_application(db, principal, app_id, "model.read")
+    running = db.scalars(select(ProcessInstance).where(ProcessInstance.application_id == app.id,
+                                                        ProcessInstance.status == "running").limit(500)).all()
+    counts: dict[tuple[str, str], int] = {}
+    for inst in running:
+        st = inst.state or {}
+        for tok in st.get("tokens", []):
+            if tok.get("status") in ("ready", "waiting_task", "waiting_timer", "waiting_message"):
+                key = (inst.process, tok.get("step", ""))
+                counts[key] = counts.get(key, 0) + 1
+    items = sorted([{"process": p, "step_id": s, "token_count": n} for (p, s), n in counts.items()],
+                   key=lambda x: -x["token_count"])
+    return {"items": items[:50], "running_instances_sampled": len(running)}
+
+
+@router.get("/applications/{app_id}/process-analytics/durations")
+def analytics_durations(app_id: uuid.UUID, process: str | None = Query(None, max_length=130),
+                         principal: Principal = Depends(current_principal), db: Session = Depends(get_db)) -> dict[str, Any]:
+    """Average, median and p90 durations for completed process instances (FR-113)."""
+    app, _ = load_application(db, principal, app_id, "model.read")
+    q = select(ProcessInstance.process, ProcessInstance.started_at, ProcessInstance.finished_at).where(
+        ProcessInstance.application_id == app.id, ProcessInstance.status == "completed",
+        ProcessInstance.finished_at.is_not(None))
+    if process:
+        q = q.where(ProcessInstance.process == process)
+    rows = db.execute(q.limit(2000)).all()
+    by_process: dict[str, list[float]] = {}
+    for proc, started, finished in rows:
+        if started and finished:
+            secs = (aware(finished) - aware(started)).total_seconds()
+            by_process.setdefault(proc, []).append(secs)
+    items = []
+    for proc, durations in sorted(by_process.items()):
+        durations_sorted = sorted(durations)
+        n = len(durations_sorted)
+        p90_idx = max(0, int(n * 0.9) - 1)
+        items.append({"process": proc, "count": n,
+                       "avg_seconds": round(sum(durations_sorted) / n, 1),
+                       "median_seconds": round(statistics.median(durations_sorted), 1),
+                       "p90_seconds": round(durations_sorted[p90_idx], 1)})
+    return {"items": items}
 
 
 @router.get("/applications/{app_id}/process-versions")
