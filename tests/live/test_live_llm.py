@@ -13,16 +13,31 @@ import pytest
 from orchivio.ai import AIBuilder
 from orchivio.llm import AnthropicProvider
 
-pytestmark = pytest.mark.skipif(
-    os.environ.get("ORCHIVIO_LIVE_LLM") != "1" or not os.environ.get("ORCHIVIO_ANTHROPIC_API_KEY"),
-    reason="set ORCHIVIO_LIVE_LLM=1 and ORCHIVIO_ANTHROPIC_API_KEY to run against a real model",
-)
+pytestmark = [
+    pytest.mark.live_api,
+    pytest.mark.skipif(
+        os.environ.get("ORCHIVIO_LIVE_LLM") != "1" or not os.environ.get("ORCHIVIO_ANTHROPIC_API_KEY"),
+        reason="set ORCHIVIO_LIVE_LLM=1 and ORCHIVIO_ANTHROPIC_API_KEY to run against a real model",
+    ),
+]
 
 
 @pytest.fixture(scope="module")
 def builder():
     kwargs = {"model": os.environ["ORCHIVIO_LLM_MODEL"]} if os.environ.get("ORCHIVIO_LLM_MODEL") else {}
     return AIBuilder(AnthropicProvider(os.environ["ORCHIVIO_ANTHROPIC_API_KEY"], **kwargs))
+
+
+def test_anthropic_provider_complete_returns_non_empty_text():
+    """Direct smoke test: the adapter hits the real API and returns text with token counts."""
+    from orchivio.llm import AnthropicProvider, LLMRequest, Message
+
+    provider = AnthropicProvider(os.environ["ORCHIVIO_ANTHROPIC_API_KEY"])
+    req = LLMRequest(messages=(Message("user", "Reply with the single word OK and nothing else."),), max_output_tokens=16)
+    resp = provider.complete(req)
+    assert resp.text.strip(), "response text is empty"
+    assert resp.usage.input_tokens > 0 and resp.usage.output_tokens > 0
+    assert resp.provider == "anthropic" and resp.model
 
 
 def test_analyze_returns_a_valid_analysis(builder):
