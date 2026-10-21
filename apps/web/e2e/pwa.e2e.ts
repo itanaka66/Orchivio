@@ -143,6 +143,7 @@ test('the layout works on a phone: no horizontal scrolling and a visible sign-in
   const phone = await browser.newContext({ viewport: { width: 375, height: 667 }, isMobile: true, hasTouch: true })
   const page = await phone.newPage()
   await page.goto(`${BASE}/`)
+  await page.waitForLoadState('networkidle')
   await expect(page.getByRole('button', { name: 'Sign in' })).toBeVisible()
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)
   expect(overflow).toBeLessThanOrEqual(1)
