@@ -1,124 +1,112 @@
 # Orchivio
 
-AI-native application engineering low/no-code platform. Orchivio keeps an application as a
-machine-readable, version-controlled **model** and uses it as the single source for UI, data
-structures, APIs, business logic and tests. AI proposes changes; humans approve them.
+**AI-native application engineering platform** — describe an application in natural language, let the AI propose the data model, pages, logic, and tests, review and approve every change, then run the generated application.
 
-> **Status: pre-alpha.** This repository contains the design ([DESIGN.md](DESIGN.md)) and the
-> first implemented foundations. Most features in the design are *planned*, not built.
-> [docs/STATUS.md](docs/STATUS.md) is the authoritative list of what exists.
+> **Pre-alpha.** Not ready for production use. APIs and data formats will change without notice.
 
-## What works today
+---
 
-- **Application model** (schema 1.1): Pydantic schema, static validation, stable element IDs,
-  element-level diff with risk/approval classification, 1.0 → 1.1 migration.
-- **Expression language**: parser, null-safe type checker, bounded interpreter, and a compiler
-  from boolean expressions to parameterised SQL predicates (for row-level security).
-- **Application security (library level)**: role resolution with union semantics, row-constraint
-  SQL, consistency checker.
-- **Persistence**: PostgreSQL-first schema (SQLAlchemy models + Alembic migration), immutable,
-  hash-checked, branch-ready revisions with audit events.
-- **Interfaces** with reference adapters: LLM provider (mock + validated/retrying structured
-  output), job queue, artifact store, audit sink.
-- **Accounts and tenancy**: registration, login (cookie sessions with CSRF, or scoped API tokens),
-  organizations with owner/admin/editor/viewer roles, members, projects, audit log.
-- **Applications and revisions over HTTP**: create, validate, diff, roll back; changes that
-  expand permissions or remove data need explicit acknowledgement.
-- **Model tools**: authenticated `validate` / `lint` / `diff` / `expression check` endpoints.
-- **Linter and find-usages**: 21 rules (security, performance, maintainability, accessibility),
-  recorded suppressions, dependency graph per revision.
-- **Proposals and AI Builder**: every change, human or AI, is a proposal with a diff and an approval
-  level; analyze / propose / explain on a provider-neutral LLM layer (mock + Anthropic adapter), with
-  consent and budget guards. See [docs/AI-BUILDER.md](docs/AI-BUILDER.md).
-- **Preview runtime**: tables and a CRUD service generated from the model, enforcing roles, row-level
-  rules and validation; synthetic data; view-as-role. See [docs/RUNTIME.md](docs/RUNTIME.md).
-- **Export / import and CLI**: one YAML file per element (Git-friendly, lossless, reproducible zip archives
-  with integrity checks); imports become proposals; `orchivio validate | lint | export | import | diff` for CI.
-- **OpenAPI for generated apps**: `GET /revisions/{id}/openapi.json` / `orchivio openapi` — schemas and
-  operations derived from the model (roles and row constraints documented), validated against the real API in tests.
-- **Operations**: `/healthz`, `/readyz` (databases + schema revision), token-protected Prometheus `/metrics`, verified
-  logical backup/restore (`orchivio backup | restore | verify-backup`). See [docs/OPERATIONS.md](docs/OPERATIONS.md).
-- **Flow builder** (`apps/web`): a React Flow editor for Server/Client Flows with a palette, inspector,
-  undo/redo, keyboard-operable connections and live server validation; saves as a proposal. Flows are
-  validated, **executed** by the Logic Engine in the preview (transactional, under the caller's security),
-  traced, bound to entity events as hooks, and covered by declarative tests (docs/FLOW-SPEC.md).
-- **Generated tests**: access, row-constraint, CRUD and validation cases derived from the model, with
-  coverage and run-to-run comparison.
+## What it is
+
+Orchivio maintains your application as a structured model (entities, pages, security rules, flows, processes) and treats that model as the single source of truth. The AI proposes changes; humans approve them. Nothing is applied automatically.
+
+Key properties:
+
+- **Model-first.** Generate UI, database migrations, access rules, and tests from one JSON model.
+- **Human-governed.** Every change goes through a diff-and-approve proposal flow before touching your data.
+- **Self-hostable.** A single Docker Compose file runs the full stack. No SaaS required.
+- **AI-optional.** All Studio features work without an LLM key; AI features are additive.
+
+## Status
+
+| Area | State |
+|---|---|
+| Platform auth, orgs, projects | ✅ implemented |
+| Application model (entities, fields, enumerations, modules) | ✅ implemented |
+| Proposal flow (diff, lint, approval levels) | ✅ implemented |
+| CRUD preview runtime | ✅ implemented |
+| Application security (roles, row rules, field-level access) | ✅ implemented |
+| AI Builder (analyze → propose) | ✅ implemented |
+| Test generation and repair loop | ✅ implemented |
+| Page designer (Studio) | ✅ implemented |
+| Process designer | ✅ implemented |
+| Server Flows (logic engine) | ✅ implemented |
+| Delivery: environments, signed packages, promotion | ✅ implemented |
+| Studio MCP server | ✅ implemented |
+| Three-way model merge | 🔲 planned (R0.4) |
+| External MCP client (AI in apps) | 🔲 planned (R0.5) |
+| Module registry | 🔲 planned (R1.0) |
+
+Full roadmap: [DESIGN.md §15](DESIGN.md).
 
 ## Quick start
 
-Requires Python 3.11+.
+**Requires:** Docker and Docker Compose.
 
 ```bash
-python -m venv .venv && source .venv/bin/activate   # Windows: .venv\Scripts\activate
-pip install -e ".[dev,server]"
-pytest                                               # unit + integration tests (SQLite)
-
-alembic upgrade head                                 # creates ./orchivio.db (SQLite) by default
-uvicorn orchivio.api.main:app --reload               # http://127.0.0.1:8000/api/docs
+git clone https://github.com/itanaka66/Orchivio.git
+cd Orchivio
+cp .env.example .env          # set POSTGRES_PASSWORD
+docker compose up --build
 ```
 
-Create an account and an application from the sample model (cookie-based session, as a browser
-would use it):
+Then open **http://localhost** in your browser. The Studio is served by nginx; the API is also reachable directly at http://localhost:8000.
 
-```bash
-B=http://127.0.0.1:8000/api/v1
-curl -c jar -H 'Content-Type: application/json' -d '{"email":"me@example.com","password":"a long passphrase","display_name":"Me"}' $B/auth/register
-CSRF=$(curl -sc jar -H 'Content-Type: application/json' -d '{"email":"me@example.com","password":"a long passphrase"}' $B/auth/login | python -c "import sys,json;print(json.load(sys.stdin)['csrf_token'])")
-curl -b jar -H "X-CSRF-Token: $CSRF" -H 'Content-Type: application/json' -d '{"name":"Acme","slug":"acme"}' $B/organizations
+To enable the AI Builder, add your Anthropic key to `.env`:
+
+```
+ORCHIVIO_LLM_PROVIDER=anthropic
+ORCHIVIO_ANTHROPIC_API_KEY=sk-ant-…
 ```
 
-Automation should use an API token (`POST /tokens`, then `Authorization: Bearer orv_…`);
-see [docs/API-SPEC.md](docs/API-SPEC.md) for every endpoint.
+## Running without Docker
 
-With Docker (untested in CI so far): `cp .env.example .env`, set `POSTGRES_PASSWORD`, then
-`docker compose up --build`.
-
-### Web Studio
+Requires Python 3.11+ and Node 18+.
 
 ```bash
+# Backend
+pip install -e ".[postgres,server]"
+alembic upgrade head
+uvicorn orchivio.api.main:app --reload
+
+# Frontend (separate terminal)
 cd apps/web
 npm install
-npm run dev      # http://localhost:5173, proxies /api to 127.0.0.1:8000
-npm test
+npm run dev       # dev server with /api proxy to :8000
 ```
 
 ## Repository layout
 
 ```
-src/orchivio/   expr, model, security, policy, auth, db, llm, ai, runtime, testgen, ports, api   (see docs/ARCHITECTURE.md)
-migrations/     Alembic migrations (PostgreSQL is the target; SQLite is used for tests)
-examples/       sample application models
-tests/          unit/ and integration/
-docs/           specifications, ADRs, threat model
+src/orchivio/     Python package (API, model, runtime, security, flows, …)
+apps/web/         React + TypeScript Studio (Vite)
+migrations/       Alembic migration scripts
+tests/            pytest unit and integration tests
+docs/             Architecture, specs, ADRs
+k8s/              Kubernetes manifests (namespace, postgres, api, web, ingress)
+docker/           initdb scripts
 ```
+
+Full layout: [DESIGN.md §14](DESIGN.md).
 
 ## Documentation
 
-| Document | Purpose |
+| Document | Description |
 |---|---|
-| [DESIGN.md](DESIGN.md) | Product requirements, architecture, roadmap (the plan) |
-| [docs/STATUS.md](docs/STATUS.md) | Implemented vs. planned, known gaps |
-| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Code structure and dependency rules |
-| [docs/MODEL-SPEC.md](docs/MODEL-SPEC.md) | Application model format and validation rules |
-| [docs/EXPRESSION-SPEC.md](docs/EXPRESSION-SPEC.md) | Expression language |
-| [docs/APP-SECURITY.md](docs/APP-SECURITY.md) | Generated-app security model |
-| [docs/AI-BUILDER.md](docs/AI-BUILDER.md) | AI Builder, proposals, approval |
-| [docs/RUNTIME.md](docs/RUNTIME.md) | Preview runtime, synthetic data, generated tests |
-| [docs/LINT-RULES.md](docs/LINT-RULES.md) | Linter rule catalog (generated) |
-| [docs/OPERATIONS.md](docs/OPERATIONS.md) | Health, metrics, backup and restore |
-| [docs/FLOW-SPEC.md](docs/FLOW-SPEC.md) | Server/Client Flow model and validation rules |
-| [apps/web/README.md](apps/web/README.md) | Web Studio and flow builder |
-| [docs/DATABASE.md](docs/DATABASE.md) | Platform database schema |
-| [docs/INTERFACES.md](docs/INTERFACES.md) | Ports and extension points |
-| [docs/API-SPEC.md](docs/API-SPEC.md) | HTTP API conventions and endpoints |
-| [docs/THREAT-MODEL.md](docs/THREAT-MODEL.md) | Initial threat model |
-| [docs/adr/](docs/adr/README.md) | Architecture decision records |
-| [CONTRIBUTING.md](CONTRIBUTING.md), [SECURITY.md](SECURITY.md) | Contribution and security policy |
+| [DESIGN.md](DESIGN.md) | Requirements, architecture, roadmap |
+| [SECURITY.md](SECURITY.md) | Vulnerability reporting |
+| [CONTRIBUTING.md](CONTRIBUTING.md) | Development setup and PR guidelines |
+| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Components and data flows |
+| [docs/MODEL-SPEC.md](docs/MODEL-SPEC.md) | Application model schema |
+| [docs/API-SPEC.md](docs/API-SPEC.md) | REST API conventions |
+| [docs/APP-SECURITY.md](docs/APP-SECURITY.md) | Two-plane security model |
+| [docs/FLOW-SPEC.md](docs/FLOW-SPEC.md) | Server and client flow specification |
+| [docs/MCP.md](docs/MCP.md) | Studio MCP server (agent integration) |
+| [docs/DELIVERY.md](docs/DELIVERY.md) | Environments, packages, promotion |
+| [docs/THREAT-MODEL.md](docs/THREAT-MODEL.md) | Threats and mitigations |
+| [docs/STATUS.md](docs/STATUS.md) | Known gaps and limitations |
+| [docs/adr/](docs/adr/) | Architecture decision records |
 
 ## License
 
-GNU General Public License v3.0 (GPL-3.0-or-later) — Copyright (C) 2026 株式会社エージーネディア / agNedia Inc.
-
-The full text is in [LICENSE](LICENSE); see [ADR-0006](docs/adr/0006-licence.md) for the decision
-and what it does and does not cover.
+[GPL-3.0-or-later](LICENSE)
