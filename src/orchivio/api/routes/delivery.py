@@ -27,8 +27,9 @@ from orchivio.db.models import (
     PackageDeployment,
     TestRun,
 )
-from orchivio.delivery import PackageError, build_package, public_key_of, verify_package
+from orchivio.delivery import PackageError, build_package, public_key_of, run_contract, run_expand, verify_package
 from orchivio.delivery.package import VerifiedPackage
+from orchivio.runtime import table_prefix
 
 from ..deps import (
     Principal,
@@ -87,6 +88,13 @@ class DecisionIn(BaseModel):
     model_config = ConfigDict(extra="forbid")
     decision: str = Field(pattern="^(approve|reject)$")
     comment: str | None = Field(default=None, max_length=1000)
+
+
+class MigrationRunIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    phase: str = Field(pattern="^(expand|contract)$", default="expand")
+    dry_run: bool = False
+    acknowledge_risks: bool = False  # required when phase=contract
 
 
 def _iso(d):
@@ -471,3 +479,52 @@ def list_deployments(app_id: uuid.UUID, environment: str | None = Query(None, pa
     total = db.scalar(select(func.count()).select_from(q.subquery())) or 0
     rows = db.scalars(q.order_by(desc(PackageDeployment.created_at), PackageDeployment.id).limit(limit).offset(offset)).all()
     return Page(items=[deployment_out(d) for d in rows], limit=limit, offset=offset, total=total)
+
+
+# --- FR-097: migration executor ---------------------------------------------------------------
+
+
+@router.post("/packages/{package_id}/migrations/run")
+def run_migration(package_id: uuid.UUID, body: MigrationRunIn, request: Request,
+                  principal: Principal = Depends(current_principal), db: Session = Depends(get_db)) -> dict[str, Any]:
+    """Apply the expand or contract phase of a package's migration plan against the preview database (FR-097).
+
+    Expand phase is safe to run before upgrading the running code. Contract phase is destructive
+    (drops columns / tables) and requires ``acknowledge_risks=true``.
+
+    Pass ``dry_run=true`` to preview the SQL operations without applying them.
+    """
+    pkg, app, project = _load_package(db, principal, package_id, "delivery.manage")
+    v = _verified(request, pkg)
+
+    steps: list[dict[str, Any]] = v.migration_plan.get("steps", [])
+    if not steps:
+        return {"applied": [], "dry_run": body.dry_run, "phase": body.phase}
+
+    if body.phase == "contract":
+        destructive = [s for s in steps if s.get("phase") == "contract"]
+        if destructive and not body.acknowledge_risks:
+            raise api_error(409, "approval_required",
+                            "contract migrations drop or narrow data; resend with acknowledge_risks=true",
+                            {"destructive_steps": destructive})
+
+    prefix = table_prefix(app.id)
+    preview_engine = request.app.state.preview_store.engine
+    applied: list[str] = []
+
+    if body.dry_run:
+        # Return what would be applied without touching the database
+        dummy_steps = [s for s in steps if s.get("phase") == body.phase]
+        applied = [f"{s['op']} {s['target']}" for s in dummy_steps]
+    else:
+        with preview_engine.begin() as conn:
+            if body.phase == "expand":
+                applied = run_expand(conn, steps, prefix)
+            else:
+                applied = run_contract(conn, steps, prefix)
+
+    audit(db, request, f"migration.{body.phase}_{'dry_run' if body.dry_run else 'applied'}",
+          actor_id=principal.user_id, org_id=project.organization_id, target_type="package", target_id=pkg.id,
+          meta={"ops_count": len(applied), "dry_run": body.dry_run})
+    db.commit()
+    return {"applied": applied, "dry_run": body.dry_run, "phase": body.phase, "ops_count": len(applied)}

@@ -797,6 +797,8 @@ class AppUser(Base):
     password_hash: Mapped[str | None] = mapped_column(String(255))  # null for federated users (OIDC, later)
     status: Mapped[str] = mapped_column(String(16), nullable=False, default="active")
     must_change_password: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    reset_token_hash: Mapped[str | None] = mapped_column(String(64))  # SHA-256 hex of the reset token (FR-067)
+    reset_token_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = _created()
     last_login_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
@@ -991,6 +993,7 @@ class ProcessInstance(Base):
     revision_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("app_revisions.id"), nullable=False)
     process: Mapped[str] = mapped_column(String(130), nullable=False)  # module.Key
     status: Mapped[str] = mapped_column(String(10), nullable=False, default="running")
+    migration_policy: Mapped[str] = mapped_column(String(10), nullable=False, default="pin")  # pin|migrate (FR-112)
     state: Mapped[dict[str, Any]] = mapped_column(PortableJSON, nullable=False)
     version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
     next_wake_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

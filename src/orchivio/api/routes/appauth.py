@@ -39,8 +39,11 @@ from orchivio.db.models import (
     AppUser,
     AppUserRole,
     AuditEvent,
+    Environment,
+    EnvironmentConstant,
     Project,
 )
+from orchivio.delivery import resolve_constants
 from orchivio.logic import FlowError, FlowHooks, FlowRunner
 from orchivio.model import AppModel
 from orchivio.runtime import AppData, DataError, PreviewNotBuilt, PreviewStale
@@ -64,6 +67,24 @@ class LoginIn(BaseModel):
 class PasswordChangeIn(BaseModel):
     model_config = ConfigDict(extra="forbid")
     current_password: str = Field(max_length=1024)
+    new_password: str = Field(max_length=1024)
+
+
+class RegisterIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    username: str = Field(min_length=1, max_length=100)
+    password: str = Field(max_length=1024)
+    display_name: str | None = Field(None, max_length=200)
+
+
+class ResetRequestIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    username: str = Field(min_length=1, max_length=100)
+
+
+class ResetConfirmIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    token: str = Field(min_length=1, max_length=200)
     new_password: str = Field(max_length=1024)
 
 
@@ -97,6 +118,19 @@ def cookie_path(app_id: uuid.UUID) -> str:
 
 def _client_ip(request: Request) -> str:
     return request.client.host if request.client else "unknown"
+
+
+def _load_app_constants(db: Session, app_id: uuid.UUID) -> dict[str, Any]:
+    """Load environment constants from the highest-stage environment of this application (FR-096)."""
+    env = db.scalar(
+        select(Environment)
+        .where(Environment.application_id == app_id)
+        .order_by(Environment.stage_order.desc())
+    )
+    if env is None:
+        return {}
+    rows = list(db.scalars(select(EnvironmentConstant).where(EnvironmentConstant.environment_id == env.id)))
+    return resolve_constants(rows)
 
 
 def _app(db: Session, app_id: uuid.UUID) -> tuple[Application, Project, AppModel, str]:
@@ -260,11 +294,14 @@ def change_password(body: PasswordChangeIn, request: Request, response: Response
 # --- data and flows ----------------------------------------------------------------------------
 
 
-def _open(request: Request, c: Caller) -> AppData:
+def _open(request: Request, c: Caller, db: Session,
+          constants: dict[str, Any] | None = None) -> AppData:
+    if constants is None:
+        constants = _load_app_constants(db, c.application.id)
     try:
         return request.app.state.preview_store.open(
             c.application.id, c.model, c.model_hash, audit=request.app.state.audit_sink,
-            organization_id=c.project.organization_id, hooks=FlowHooks(c.model),
+            organization_id=c.project.organization_id, hooks=FlowHooks(c.model, constants=constants or None),
             integrations=request.app.state.integration_clients(c.application.id))
     except PreviewNotBuilt as e:
         raise api_error(409, "not_available", "the application's data is not available yet") from e
@@ -281,41 +318,48 @@ def _run(fn):
 
 @router.get("/data/{entity}")
 def list_rows(entity: str, request: Request, limit: int = Query(50, ge=1, le=200), offset: int = Query(0, ge=0),
-              order_by: str | None = Query(None, max_length=63), desc: bool = False, c: Caller = Depends(usable)) -> dict[str, Any]:
-    data = _open(request, c)
+              order_by: str | None = Query(None, max_length=63), desc: bool = False,
+              c: Caller = Depends(usable), db: Session = Depends(get_db)) -> dict[str, Any]:
+    data = _open(request, c, db)
     filters = {k[2:]: v for k, v in request.query_params.items() if k.startswith("f.")}
     return _run(lambda: data.list(entity, c.runtime_user, filters=filters, order_by=order_by, descending=desc,
                                   limit=limit, offset=offset))
 
 
 @router.post("/data/{entity}", status_code=201)
-def create_row(entity: str, body: dict[str, Any], request: Request, c: Caller = Depends(usable)) -> dict[str, Any]:
-    data = _open(request, c)
+def create_row(entity: str, body: dict[str, Any], request: Request,
+               c: Caller = Depends(usable), db: Session = Depends(get_db)) -> dict[str, Any]:
+    data = _open(request, c, db)
     return _run(lambda: data.create(entity, c.runtime_user, body))
 
 
 @router.get("/data/{entity}/{row_id}")
-def get_row(entity: str, row_id: str, request: Request, c: Caller = Depends(usable)) -> dict[str, Any]:
-    data = _open(request, c)
+def get_row(entity: str, row_id: str, request: Request,
+            c: Caller = Depends(usable), db: Session = Depends(get_db)) -> dict[str, Any]:
+    data = _open(request, c, db)
     return _run(lambda: data.get(entity, c.runtime_user, row_id))
 
 
 @router.patch("/data/{entity}/{row_id}")
-def patch_row(entity: str, row_id: str, body: dict[str, Any], request: Request, c: Caller = Depends(usable)) -> dict[str, Any]:
-    data = _open(request, c)
+def patch_row(entity: str, row_id: str, body: dict[str, Any], request: Request,
+              c: Caller = Depends(usable), db: Session = Depends(get_db)) -> dict[str, Any]:
+    data = _open(request, c, db)
     return _run(lambda: data.update(entity, c.runtime_user, row_id, body))
 
 
 @router.delete("/data/{entity}/{row_id}", status_code=204)
-def delete_row(entity: str, row_id: str, request: Request, c: Caller = Depends(usable)) -> None:
-    data = _open(request, c)
+def delete_row(entity: str, row_id: str, request: Request,
+               c: Caller = Depends(usable), db: Session = Depends(get_db)) -> None:
+    data = _open(request, c, db)
     _run(lambda: data.delete(entity, c.runtime_user, row_id))
 
 
 @router.post("/flows/{flow}/run")
-def run_flow(flow: str, body: RunIn, request: Request, c: Caller = Depends(usable)) -> dict[str, Any]:
+def run_flow(flow: str, body: RunIn, request: Request,
+             c: Caller = Depends(usable), db: Session = Depends(get_db)) -> dict[str, Any]:
     """Run a server flow as the caller; their data permissions apply to every step."""
-    data = _open(request, c)
+    constants = _load_app_constants(db, c.application.id)
+    data = _open(request, c, db, constants)
     q = flow if "." in flow else f"{c.model.modules[0].key}.{flow}"
     target = next(((m, f) for m in c.model.modules for f in m.flows if f"{m.key}.{f.key}" == q), None)
     if target is None or target[1].kind != "server" or not (set(target[1].run_roles or []) & set(c.roles)):
@@ -323,9 +367,84 @@ def run_flow(flow: str, body: RunIn, request: Request, c: Caller = Depends(usabl
     if any(q == f"{m.key}.{h}" for m in c.model.modules for e in m.entities for h in e.hooks.values()):
         raise api_error(422, "not_runnable", "this flow is an entity hook; it runs when its event happens")
     try:
-        result = FlowRunner(data.model, data).run(q, body.args, c.runtime_user)
+        result = FlowRunner(data.model, data, constants=constants or None).run(q, body.args, c.runtime_user)
     except FlowError as e:
         raise api_error(422, "flow_error", e.message) from e
     out = result.as_dict()
     out["trace"] = [{"step": s["step"], "status": s["status"]} for s in out.get("trace", [])]  # no internals for end users
     return out
+
+
+# --- FR-067: self-registration and self-service password reset ----------------------------------------
+
+
+@router.post("/auth/register", status_code=201)
+def register_user(app_id: uuid.UUID, body: RegisterIn, request: Request,
+                  db: Session = Depends(get_db)) -> dict[str, Any]:
+    """Self-registration (FR-067). Requires model.security.allow_registration = true."""
+    app, project, model, _ = _app(db, app_id)
+    if not model.security.allow_registration:
+        raise api_error(403, "registration_disabled", "self-registration is not enabled for this application")
+    username = body.username.strip().lower()
+    if db.scalar(select(AppUser).where(AppUser.application_id == app.id, AppUser.username == username)):
+        raise api_error(409, "username_taken", "that username is already in use")
+    problem = password_problem(body.password)
+    if problem:
+        raise api_error(422, "weak_password", problem)
+    user = AppUser(application_id=app.id, username=username, display_name=body.display_name,
+                   password_hash=hash_password(body.password), status="active")
+    db.add(user)
+    _audit(db, request, "appauth.registered", app, project, user.id, username=username[:100])
+    db.commit()
+    return {"id": str(user.id), "username": user.username, "display_name": user.display_name}
+
+
+@router.post("/auth/reset-request", status_code=204)
+def reset_request(app_id: uuid.UUID, body: ResetRequestIn,
+                  db: Session = Depends(get_db)) -> Response:
+    """Issue a self-service password-reset token (FR-067).
+
+    The token is returned in the ``X-Reset-Token`` response header (not the body, to
+    reduce accidental logging). The caller is responsible for delivering it to the user
+    (e.g. via email). Returns 204 whether or not the username exists to prevent enumeration.
+    Token is valid for one hour.
+    """
+    app, _, _, _ = _app(db, app_id)
+    username = body.username.strip().lower()
+    user = db.scalar(select(AppUser).where(AppUser.application_id == app.id, AppUser.username == username))
+    if user is None or user.status != "active":
+        return Response(status_code=204)  # constant-time: no 404 for unknown usernames
+    plain, tok_hash = new_token("prt_")
+    user.reset_token_hash = tok_hash
+    user.reset_token_expires_at = utcnow() + timedelta(hours=1)
+    db.commit()
+    return Response(status_code=204, headers={"X-Reset-Token": plain})
+
+
+@router.post("/auth/reset-confirm", status_code=204)
+def reset_confirm(app_id: uuid.UUID, body: ResetConfirmIn,
+                  db: Session = Depends(get_db)) -> Response:
+    """Consume a password-reset token and set a new password (FR-067). Revokes all sessions."""
+    app, _, _, _ = _app(db, app_id)
+    tok_hash = hash_token(body.token)
+    now = utcnow()
+    user = db.scalar(
+        select(AppUser).where(
+            AppUser.application_id == app.id,
+            AppUser.reset_token_hash == tok_hash,
+            AppUser.reset_token_expires_at > now,
+        )
+    )
+    if user is None:
+        raise api_error(400, "invalid_token", "token is invalid or expired")
+    problem = password_problem(body.new_password)
+    if problem:
+        raise api_error(422, "weak_password", problem)
+    user.password_hash = hash_password(body.new_password)
+    user.must_change_password = False
+    user.reset_token_hash = None
+    user.reset_token_expires_at = None
+    for sess in db.scalars(select(AppSession).where(AppSession.app_user_id == user.id, AppSession.revoked_at.is_(None))):
+        sess.revoked_at = now
+    db.commit()
+    return Response(status_code=204)

@@ -259,6 +259,62 @@ class ProcessService:
             raise ServiceError(422, "invalid_result", "the form is incomplete or invalid", problems)
         return out
 
+    # -- FR-112: process versioning ---------------------------------------------------------------
+
+    def stale_instances(self, app: Application) -> list[ProcessInstance]:
+        """Running instances whose revision differs from the application's current revision (FR-112)."""
+        if app.current_revision_id is None:
+            return []
+        return list(self.session.scalars(
+            select(ProcessInstance).where(
+                ProcessInstance.application_id == app.id,
+                ProcessInstance.status == "running",
+                ProcessInstance.revision_id != app.current_revision_id,
+            )
+        ))
+
+    def set_migration_policy(self, inst: ProcessInstance, policy: str, actor: str) -> None:
+        """Change the migration policy of a running instance (FR-112). Allowed values: 'pin', 'migrate'."""
+        if policy not in ("pin", "migrate"):
+            raise ServiceError(422, "invalid_policy", "migration_policy must be 'pin' or 'migrate'")
+        if inst.status not in ("running", "failed"):
+            raise ServiceError(409, "instance_closed", f"cannot change policy on a {inst.status} instance")
+        self.session.execute(
+            update(ProcessInstance).where(ProcessInstance.id == inst.id).values(migration_policy=policy)
+        )
+        self.session.add(ProcessEvent(instance_id=inst.id, at=self.clock(), type="policy_changed", step_id=None,
+                                      actor=actor, data={"migration_policy": policy}))
+        self.session.expire(inst)
+
+    def migrate_to_current(self, inst: ProcessInstance, app: Application, actor: str) -> None:
+        """Move a stale running instance to the application's current revision (FR-112).
+
+        The instance's token positions are preserved. Steps that no longer exist in the new
+        definition will fail when next executed; the instance may then be retried or cancelled.
+        Only allowed when migration_policy='migrate'.
+        """
+        if inst.migration_policy == "pin":
+            raise ServiceError(409, "policy_pin", "update migration_policy to 'migrate' before migrating this instance")
+        if app.current_revision_id is None:
+            raise ServiceError(409, "no_revision", "the application has no current revision")
+        if inst.revision_id == app.current_revision_id:
+            return  # already current
+        if inst.status not in ("running", "failed"):
+            raise ServiceError(409, "instance_closed", f"cannot migrate a {inst.status} instance")
+        new_model = self._model(app.current_revision_id)
+        if resolve_definition(new_model, inst.process) is None:
+            raise ServiceError(409, "process_removed", "the process no longer exists in the current revision")
+        from_rev = str(inst.revision_id)
+        won = self.session.execute(
+            update(ProcessInstance).where(ProcessInstance.id == inst.id, ProcessInstance.version == inst.version)
+            .values(revision_id=app.current_revision_id, version=ProcessInstance.version + 1)
+        ).rowcount
+        if not won:
+            raise ServiceError(409, "conflict", "the process was changed by someone else; reload and try again")
+        self.session.add(ProcessEvent(instance_id=inst.id, at=self.clock(), type="version_migrated", step_id=None,
+                                      actor=actor, data={"from_revision": from_rev, "to_revision": str(app.current_revision_id)}))
+        self.session.expire(inst)
+
     # -- administration --------------------------------------------------------------------------
 
     def cancel(self, inst: ProcessInstance, actor: str) -> None:

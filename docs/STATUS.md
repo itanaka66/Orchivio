@@ -37,14 +37,14 @@ service), **Schema** (data structures only), **Planned**.
 | FR-051 | Computed fields | Done | Type-checked, cycle detection; virtual (read) and stored (write) in the preview runtime |
 | FR-060..063 | Two-plane security, row constraints | Partial | Enforced by the preview data service on every operation, for simulated identities and for real end users |
 | FR-064 | Field-level read/write access | Done (preview runtime) | Allow-lists per rule; removed from responses, not filterable or sortable, write checks, flows act as the caller; other query paths (exports, aggregates) do not exist yet |
-| FR-067 | End-user authentication for generated apps | Partial | Local accounts, forced first-login password change, anonymous opt-in, and OIDC (code flow + PKCE, JIT provisioning, claim-to-role mapping); no SAML, MFA, single logout, self-registration or email reset; serves preview data only |
+| FR-067 | End-user authentication for generated apps | Partial | Local accounts, forced first-login password change, anonymous opt-in, and OIDC (code flow + PKCE, JIT provisioning, claim-to-role mapping); self-registration (`POST /apps/{id}/auth/register`, controlled by `model.security.allow_registration`); self-service password-reset token flow (`POST /apps/{id}/auth/reset-request` + `reset-confirm`); no SAML, MFA or single logout; serves preview data only |
 | FR-066 | Consistency checker | Done | 5 checks |
 | FR-086 | Studio MCP server | Partial | Read/search/usages/lint/validate/proposal/tests tools, proposal-only writes, audit, rate limit; no `model.explain`, no SSE; exercised only with a test client, not a real MCP agent |
 | FR-087 | MCP client for the AI Builder | Partial | Organization registry, discovery, per-tool policy (A0 only), one bounded planning round, untrusted-output handling, audit; no interactive approval for stronger tools, no resources/prompts, no OAuth |
 | FR-094 | Environments and promotion pipeline | Partial | Ordered stages, stage/test/migration/approval gates, separation of duties; records the deployment only, no executor |
 | FR-095 | Immutable deployment packages | Done (control plane) | Reproducible zip, expand/contract plan, SBOM of direct dependencies, Ed25519 signature; no transitive SBOM |
-| FR-096 | Environment constants and secret references | Partial | Stored and audited; references are not resolved anywhere yet |
-| FR-097 | Near-zero-downtime migrations | Not started | Plans only |
+| FR-096 | Environment constants and secret references | Partial | Stored, audited and resolved (`resolve_constants`); wired into preview runner and app-plane flow runner (highest-stage environment's constants); entity-hook FlowHooks now also receive constants; vault/aws-sm/gcp-sm/azure-kv secret schemes not yet implemented |
+| FR-097 | Near-zero-downtime migrations | Library | `delivery/migrate.py` implements `run_expand` and `run_contract` against the preview database; `POST /packages/{id}/migrations/run` applies expand or contract phase with dry-run support; PostgreSQL DDL only (no SQLite path) |
 | FR-081 | Consumed REST via OpenAPI import | Done (MVP) | Typed operations, import as an A3 proposal, allowlisted destinations, SSRF-pinned calls; per application, not per environment; no pagination or retries |
 | FR-082 | Inbound and outbound webhooks | Done (MVP) | Outbound: signed CloudEvents, retries, dead letters, circuit breaker, SSRF guard. Inbound: signature-verified, replay-protected, payload-mapped, queued flow runs; secrets by reference only; limiter is per process |
 | FR-083 | Business events | Done (outbox) | Transactional outbox for record created/updated/deleted, relayed at-least-once; no brokers, no custom events |
@@ -52,7 +52,7 @@ service), **Schema** (data structures only), **Planned**.
 | FR-074 | Data grid (export part) | Partial | Permissioned (`export` operation), audited, formula-safe CSV export; no grid UI |
 | FR-110 | Process definitions | Partial | User tasks, system tasks (flows), decisions, parallel split/join, timers, rework loops; validated; no sub-processes, boundary or message events, no editor |
 | FR-111 | Task inbox | Done (MVP) | Role or expression assignment, claim, release, delegation, due dates, one-shot escalation; no notifications or reassignment by admins |
-| FR-112 | Process versioning and instance migration | Not started | Instances are pinned to their starting revision |
+| FR-112 | Process versioning and instance migration | Partial | `migration_policy` column on instances (`pin`=default, `migrate`); `GET /applications/{id}/process-instances/version-check` lists stale running instances; `PATCH /process-instances/{id}/policy` and `POST /process-instances/{id}/migrate` move stale instances to the current revision; no automatic bulk migration |
 | FR-113 | Process monitoring | Partial | Instance and task listings, event trail; no throughput or bottleneck analytics |
 | FR-065 | Page, action and flow access | Done (server side) | Pages need a listed role and the implied entity rights; columns, actions, `visible_expr`/`editable_expr` and flow-bound actions enforced; direct flow runs need `run_roles`; rendered by the appshell |
 | FR-073 | Conditional visibility and editability | Done (server side) | `visible_expr` filters actions per row, `editable_expr` is checked before an edit is stored |
@@ -65,7 +65,7 @@ service), **Schema** (data structures only), **Planned**.
 | FR-090 | Branch-ready revision graph | Done | `parent_revision_ids`, `branches` |
 | FR-091 | Branches and semantic merge | Done | Three-way merge by element id with typed conflicts and per-conflict resolution; Studio screen for branches and merge; no per-branch preview |
 | FR-052 | Server Flows | Done (preview) | Modelled, validated, edited visually and executed transactionally under the caller's security; no elevation, no production deployment |
-| FR-053 | Client Flows | Partial | Modelled and validated (decision/call/end only); no browser runtime |
+| FR-053 | Client Flows | Done (browser runtime) | Modelled, validated and executed in the browser: `apps/web/src/flow/runner.ts` implements `runClientFlow` with start/decision/call_flow/end steps, wired into `App.tsx`; STATUS.md previously claimed no browser runtime but it is fully implemented |
 | FR-055 | Scheduled jobs | Partial | Cron schedules on server flows, planned once across workers, missed-run policy; runs in the preview runtime only (no environments) |
 | FR-056 | Background task queues | Done (preview) | Leases, retry with exponential backoff, dead-letter queue, per-app concurrency; at-least-once. PostgreSQL path untested |
 | FR-054 | Entity event hooks | Done (preview) | before/after create/update/delete bound to server flows, atomic, bounded recursion |

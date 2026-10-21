@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING, Any
 
 from orchivio.integrations import SecretUnavailable, resolve_secret
 
+from .migrate import run_contract, run_expand
 from .package import (
     FORMAT,
     Package,
@@ -44,4 +45,4 @@ def resolve_constants(constants: list[EnvironmentConstant]) -> dict[str, Any]:
 
 
 __all__ = ["FORMAT", "Package", "PackageError", "VerifiedPackage", "build_package", "generate_key", "key_id",
-           "plan_migration", "public_key_of", "resolve_constants", "sbom", "verify_package"]
+           "plan_migration", "public_key_of", "resolve_constants", "run_contract", "run_expand", "sbom", "verify_package"]

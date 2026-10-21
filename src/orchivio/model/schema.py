@@ -325,6 +325,7 @@ class SecurityModel(_Strict):
     access: list[AccessRule] = Field(default_factory=list)
     pages: dict[str, list[KeyName]] = Field(default_factory=dict)
     anonymous: bool = False  # explicit opt-in; requires A3 approval (FR-067)
+    allow_registration: bool = False  # end-users may self-register (FR-067)
 
 
 class LintSuppression(_Strict):
