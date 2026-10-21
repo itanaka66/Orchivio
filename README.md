@@ -123,6 +123,7 @@ The `live_api` and `eval` tests are skipped automatically when the environment v
 
 | Document | Description |
 |---|---|
+| [docs/INSTALL.md](docs/INSTALL.md) | Installation, configuration, operations |
 | [DESIGN.md](DESIGN.md) | Requirements, architecture, roadmap |
 | [SECURITY.md](SECURITY.md) | Vulnerability reporting |
 | [CONTRIBUTING.md](CONTRIBUTING.md) | Development setup and PR guidelines |
