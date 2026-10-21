@@ -1,0 +1,118 @@
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: api-artifacts
+  namespace: orchivio
+spec:
+  accessModes: [ReadWriteOnce]
+  resources:
+    requests:
+      storage: 5Gi
+
+---
+# Replace image tag with a real version after pushing to your registry:
+#   docker build -t ghcr.io/itanaka66/orchivio-api:latest .
+#   docker push ghcr.io/itanaka66/orchivio-api:latest
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: api
+  namespace: orchivio
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: api
+  template:
+    metadata:
+      labels:
+        app: api
+    spec:
+      initContainers:
+        # Runs `alembic upgrade head` before each API pod starts.
+        # Alembic is idempotent; safe to run on every restart.
+        - name: migrate
+          image: ghcr.io/itanaka66/orchivio-api:latest
+          command: ["alembic", "upgrade", "head"]
+          env:
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: orchivio-secrets
+                  key: POSTGRES_PASSWORD
+            - name: DATABASE_URL
+              value: postgresql+psycopg://orchivio:$(POSTGRES_PASSWORD)@postgres:5432/orchivio
+
+      containers:
+        - name: api
+          image: ghcr.io/itanaka66/orchivio-api:latest
+          ports:
+            - containerPort: 8000
+          env:
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: orchivio-secrets
+                  key: POSTGRES_PASSWORD
+            - name: ORCHIVIO_ANTHROPIC_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: orchivio-secrets
+                  key: ORCHIVIO_ANTHROPIC_API_KEY
+                  optional: true
+            - name: ORCHIVIO_METRICS_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: orchivio-secrets
+                  key: ORCHIVIO_METRICS_TOKEN
+                  optional: true
+            - name: ORCHIVIO_ENV
+              value: prod
+            - name: ORCHIVIO_ALLOW_REGISTRATION
+              value: "true"
+            - name: ORCHIVIO_LOG_JSON
+              value: "true"
+            - name: ORCHIVIO_LLM_PROVIDER
+              value: none
+            - name: ORCHIVIO_LLM_MODEL
+              value: ""
+            - name: ORCHIVIO_ARTIFACT_DIR
+              value: /data/artifacts
+            - name: ORCHIVIO_DATABASE_URL
+              value: postgresql+psycopg://orchivio:$(POSTGRES_PASSWORD)@postgres:5432/orchivio
+            - name: ORCHIVIO_PREVIEW_DATABASE_URL
+              value: postgresql+psycopg://orchivio:$(POSTGRES_PASSWORD)@postgres:5432/orchivio_preview
+          volumeMounts:
+            - name: artifacts
+              mountPath: /data/artifacts
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: 8000
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            failureThreshold: 6
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 8000
+            initialDelaySeconds: 30
+            periodSeconds: 15
+      volumes:
+        - name: artifacts
+          persistentVolumeClaim:
+            claimName: api-artifacts
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: api
+  namespace: orchivio
+spec:
+  selector:
+    app: api
+  ports:
+    - port: 8000
+      targetPort: 8000

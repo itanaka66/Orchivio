@@ -1,5 +1,12 @@
 # Local development stack. Not hardened for production use.
 # Usage: cp .env.example .env && docker compose up --build
+#
+# Services:
+#   db       – PostgreSQL 16 (platform + preview schemas)
+#   migrate  – Alembic one-shot migration runner
+#   api      – FastAPI backend (port 8000 bound to localhost for direct dev access)
+#   web      – Vite-built React Studio, served by nginx (port 80)
+#              nginx also proxies /api, /healthz, /readyz to api:8000
 services:
   db:
     image: postgres:16
@@ -52,6 +59,16 @@ services:
     depends_on:
       migrate:
         condition: service_completed_successfully
+
+  web:
+    build:
+      context: apps/web
+      dockerfile: Dockerfile
+    ports:
+      - "0.0.0.0:80:80"
+    depends_on:
+      api:
+        condition: service_healthy
 
 volumes:
   db-data:

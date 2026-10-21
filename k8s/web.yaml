@@ -1,0 +1,43 @@
+---
+# Replace image tag after building and pushing:
+#   docker build -t ghcr.io/itanaka66/orchivio-web:latest apps/web
+#   docker push ghcr.io/itanaka66/orchivio-web:latest
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: web
+  namespace: orchivio
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: web
+  template:
+    metadata:
+      labels:
+        app: web
+    spec:
+      containers:
+        - name: web
+          image: ghcr.io/itanaka66/orchivio-web:latest
+          ports:
+            - containerPort: 80
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 80
+            initialDelaySeconds: 5
+            periodSeconds: 10
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: web
+  namespace: orchivio
+spec:
+  selector:
+    app: web
+  ports:
+    - port: 80
+      targetPort: 80

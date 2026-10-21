@@ -1,0 +1,31 @@
+# Standard Ingress — works with nginx-ingress-controller and Traefik (k3s default).
+# Set `host` to your domain, or remove the host field to accept all hostnames.
+#
+# For Proxmox / bare-metal without a LoadBalancer:
+#   k3s  → Traefik handles this automatically on port 80/443
+#   kubeadm → install MetalLB (https://metallb.universe.tf) and nginx-ingress-controller
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: orchivio
+  namespace: orchivio
+  annotations:
+    # Remove if using Traefik; required for nginx-ingress-controller
+    # kubernetes.io/ingress.class: "nginx"
+    # Uncomment to enable TLS via cert-manager (Let's Encrypt)
+    # cert-manager.io/cluster-issuer: "letsencrypt-prod"
+spec:
+  # tls:
+  #   - hosts: [orchivio.example.com]
+  #     secretName: orchivio-tls
+  rules:
+    - host: orchivio.example.com   # ← change to your domain or IP
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: web
+                port:
+                  number: 80
