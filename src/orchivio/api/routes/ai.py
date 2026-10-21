@@ -13,7 +13,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.orm import Session
 
-from orchivio.ai import AIBuilder, BuilderError, ImplPlanResult, ToolContext, ToolInfo
+from orchivio.ai import AIBuilder, BuilderError, ToolContext, ToolInfo
 from orchivio.db import ModelInvalid, ProposalRepository, to_model
 from orchivio.db.models import Application, AppRevision
 from orchivio.db.proposals import NoChanges, finish_ai_job, month_cost_usd, start_ai_job
