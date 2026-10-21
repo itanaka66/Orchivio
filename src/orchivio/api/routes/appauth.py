@@ -11,6 +11,7 @@ Data is served by the preview runtime for now: there is no separate production d
 
 from __future__ import annotations
 
+import base64
 import uuid
 from dataclasses import dataclass
 from datetime import timedelta
@@ -352,6 +353,51 @@ def delete_row(entity: str, row_id: str, request: Request,
                c: Caller = Depends(usable), db: Session = Depends(get_db)) -> None:
     data = _open(request, c, db)
     _run(lambda: data.delete(entity, c.runtime_user, row_id))
+
+
+@router.get("/grid/{entity}")
+def grid_rows(entity: str, request: Request, limit: int = Query(50, ge=1, le=500),
+              cursor: str | None = Query(None, max_length=100),
+              sort: str | None = Query(None, max_length=200),
+              c: Caller = Depends(usable), db: Session = Depends(get_db)) -> dict[str, Any]:
+    """Cursor-paginated, multi-sort data grid endpoint for the application plane (FR-074).
+
+    Pass ``filter.<field>=<value>`` query params for equality filters.
+    The response includes ``next_cursor`` for the following page (None when exhausted).
+    """
+    data = _open(request, c, db)
+    offset = _decode_cursor(cursor)
+    order_by, desc_sort = _parse_sort(sort)
+    filters = {k[7:]: v for k, v in request.query_params.items() if k.startswith("filter.")}
+    result = _run(lambda: data.list(entity, c.runtime_user, filters=filters or None, order_by=order_by,
+                                    descending=desc_sort, limit=limit, offset=offset))
+    items = result["items"]
+    next_offset = offset + len(items)
+    next_cursor = _encode_cursor(next_offset) if len(items) == limit else None
+    return {"items": items, "total": result["total"], "limit": limit, "cursor": cursor, "next_cursor": next_cursor}
+
+
+def _decode_cursor(cursor: str | None) -> int:
+    if not cursor:
+        return 0
+    try:
+        return max(0, int(base64.b64decode(cursor.encode()).decode()))
+    except Exception:
+        return 0
+
+
+def _encode_cursor(offset: int) -> str:
+    return base64.b64encode(str(offset).encode()).decode()
+
+
+def _parse_sort(sort: str | None) -> tuple[str | None, bool]:
+    if not sort:
+        return None, False
+    first = sort.split(",")[0].strip()
+    if ":" in first:
+        field, direction = first.rsplit(":", 1)
+        return field.strip() or None, direction.strip().lower() == "desc"
+    return first or None, False
 
 
 @router.post("/flows/{flow}/run")

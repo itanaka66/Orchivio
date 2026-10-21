@@ -85,6 +85,9 @@ class Hooks(Protocol):
     def run_flow(self, flow: str, args: dict[str, Any]) -> str | None:
         """Run the server flow ``module.Flow``; return an error message, or None on success."""
         ...
+    def run_process(self, process: str, args: dict[str, Any]) -> str | None:
+        """Start a sub-process instance; return an error message, or None on success."""
+        ...
     def event(self, type_: str, step_id: str | None, data: dict[str, Any]) -> None: ...
 
 
@@ -207,6 +210,8 @@ class Machine:
                 wake = self.clock() + timedelta(seconds=int(step.config["wait_seconds"]))
                 tok.status, tok.wake_at = "waiting_timer", wake.isoformat()
                 self.hooks.event("timer_set", step.id, {"wake_at": tok.wake_at})
+            elif t == "call_process":
+                self._call_process(st, tok, step)
             elif t == "catch_message":
                 tok.status = "waiting_message"
                 self.hooks.event("waiting_message", step.id, {"message": step.config.get("message", "")})
@@ -231,6 +236,16 @@ class Machine:
                         tuple(cfg.get("outcomes", ["done"])), tuple(cfg.get("form", [])), due, esc, cfg.get("escalate_to_role"))
         tok.task_id = self.hooks.create_task(spec)
         tok.status = "waiting_task"
+
+    def _call_process(self, st: State, tok: Token, step: ProcessStep) -> None:
+        q = qualify(self.module.key, step.config["process"])
+        args = {name: self._eval(st, src, None) for name, src in (step.config.get("args") or {}).items()}
+        error = self.hooks.run_process(q, args)
+        self.hooks.event("subprocess_failed" if error else "subprocess_started", step.id, {"process": q, **({"error": error[:300]} if error else {})})
+        if error:
+            self._fail(st, tok, f"subprocess {q} failed: {error}"[:500])
+        else:
+            self._go(tok, self._edge(step.id, None))
 
     def _system_task(self, st: State, tok: Token, step: ProcessStep) -> None:
         q = qualify(self.module.key, step.config["flow"])

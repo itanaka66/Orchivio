@@ -32,12 +32,14 @@ async def _body(request: Request) -> bytes:
     return raw
 
 
-def _options(request: Request, mode: str, dry_run: bool, delimiter: str, ignore_unknown: bool) -> dict[str, Any]:
+def _options(request: Request, mode: str, dry_run: bool, delimiter: str, ignore_unknown: bool,
+             key_field: str | None = None) -> dict[str, Any]:
     if delimiter not in DELIMITERS:
         raise api_error(422, "invalid_delimiter", f"delimiter must be one of: {', '.join(DELIMITERS)}")
     mapping = {k[4:]: (v or None) for k, v in request.query_params.items() if k.startswith("map.")}
     return {"mode": mode, "dry_run": dry_run, "delimiter": DELIMITERS[delimiter], "ignore_unknown": ignore_unknown,
-            "mapping": mapping or None, "max_rows": request.app.state.settings.csv_max_rows,
+            "key_field": key_field or None, "mapping": mapping or None,
+            "max_rows": request.app.state.settings.csv_max_rows,
             "max_bytes": request.app.state.settings.csv_max_bytes}
 
 
@@ -49,7 +51,7 @@ def _do_import(data: AppData, entity: str, user: AppUser, raw: bytes, opts: dict
         raise api_error(422, "invalid_csv", e.message, e.details) from e
     except DataError as e:
         raise api_error(e.status, e.code, e.message, e.details) from e
-    if result.mode == "all_or_nothing" and result.failed and not result.dry_run:
+    if result.mode in ("all_or_nothing", "upsert") and result.failed and not result.dry_run:
         raise api_error(422, "import_rejected", f"{result.failed} of {result.total} rows have errors; nothing was imported",
                         result.as_dict())
     return result.as_dict()
@@ -78,11 +80,11 @@ def _app_audit(db: Session, request: Request, c: Caller, action: str, **meta: An
 
 @router.post("/apps/{app_id}/import/{entity}")
 async def app_import(app_id: uuid.UUID, entity: str, request: Request, mode: str = Query("all_or_nothing"), dry_run: bool = False,
-                     delimiter: str = Query(","), ignore_unknown: bool = False, c: Caller = Depends(usable),
-                     db: Session = Depends(get_db)) -> dict[str, Any]:
-    """Body: the CSV file (``text/csv``). Query: mode, dry_run, delimiter, ignore_unknown, map.<header>=<field>."""
+                     delimiter: str = Query(","), ignore_unknown: bool = False, key_field: str | None = Query(None, max_length=63),
+                     c: Caller = Depends(usable), db: Session = Depends(get_db)) -> dict[str, Any]:
+    """Body: the CSV file (``text/csv``). Query: mode (all_or_nothing|skip_errors|upsert), dry_run, delimiter, ignore_unknown, key_field, map.<header>=<field>."""
     raw = await _body(request)
-    opts = _options(request, mode, dry_run, delimiter, ignore_unknown)
+    opts = _options(request, mode, dry_run, delimiter, ignore_unknown, key_field)
     data = _open(request, c)
     out = _do_import(data, entity, c.runtime_user, raw, opts)
     _app_audit(db, request, c, "import.completed" if not dry_run else "import.dry_run", entity=entity, mode=mode,
@@ -105,10 +107,10 @@ def app_export(app_id: uuid.UUID, entity: str, request: Request, c: Caller = Dep
 
 @router.post("/applications/{app_id}/preview/import/{entity}")
 async def preview_import(app_id: uuid.UUID, entity: str, request: Request, mode: str = Query("all_or_nothing"), dry_run: bool = False,
-                         delimiter: str = Query(","), ignore_unknown: bool = False,
+                         delimiter: str = Query(","), ignore_unknown: bool = False, key_field: str | None = Query(None, max_length=63),
                          principal: Principal = Depends(current_principal), db: Session = Depends(get_db)) -> dict[str, Any]:
     raw = await _body(request)
-    opts = _options(request, mode, dry_run, delimiter, ignore_unknown)
+    opts = _options(request, mode, dry_run, delimiter, ignore_unknown, key_field)
     data, user = _open_preview(request, db, principal, app_id, "model.propose", request.headers.get("x-preview-user"),
                                request.headers.get("x-preview-roles"))
     out = _do_import(data, entity, user, raw, opts)

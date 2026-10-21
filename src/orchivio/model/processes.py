@@ -27,6 +27,7 @@ FORM_TYPES = {"string": STRING, "integer": INT, "decimal": DECIMAL, "boolean": B
 CONFIG_KEYS = {
     "user_task": {"title", "assignee_role", "assignee_expr", "outcomes", "form", "due_in_hours", "escalate_after_hours", "escalate_to_role"},
     "system_task": {"flow", "args"},
+    "call_process": {"process", "args", "await_completion"},
     "decision": {"expr"},
     "timer": {"wait_seconds"},
     "catch_message": {"message"},
@@ -130,7 +131,7 @@ class ProcessChecker:
                 self.err("process-edges", w, "an end step has no outgoing edges")
             return
         plain = [e for e in outs if e.outcome is None]
-        if t in ("start", "system_task", "timer", "catch_message", "parallel_join"):
+        if t in ("start", "system_task", "call_process", "timer", "catch_message", "parallel_join"):
             if len(outs) != 1 or plain != outs:
                 self.err("process-edges", w, f"a {t.replace('_', ' ')} step needs exactly one outgoing edge without an outcome")
         elif t == "parallel_split":
@@ -146,6 +147,8 @@ class ProcessChecker:
             self.user_task(s, w, cfg, outs)
         elif t == "system_task":
             self.system_task(s, w, cfg)
+        elif t == "call_process":
+            self.call_process(s, w, cfg)
         elif t == "decision":
             self.expr(cfg.get("expr"), f"{w}/config/expr", BOOL)
         elif t == "timer":
@@ -230,6 +233,20 @@ class ProcessChecker:
                 self.expr(args[p.name], f"{c}/args/{p.name}", pt)
         for extra in sorted(set(args) - {p.name for p in flow.params}):
             self.err("process-config", f"{c}/args/{extra}", f"flow '{target}' has no parameter '{extra}'")
+
+    def call_process(self, s, w: str, cfg: dict[str, Any]) -> None:
+        c = f"{w}/config"
+        target = cfg.get("process")
+        if not isinstance(target, str) or not target.strip():
+            self.err("process-config", f"{c}/process", "call_process requires a 'process' key")
+            return
+        q = qualify(self.mod.key, target)
+        found = next((p for m in [self.mod] for p in (m.processes or []) if f"{m.key}.{p.key}" == q), None)
+        if found is None:
+            self.err("process-config", f"{c}/process", f"'{target}' is not a known process")
+        args = cfg.get("args", {})
+        if not isinstance(args, dict):
+            self.err("process-config", f"{c}/args", "'args' must be a dict mapping parameter names to expressions")
 
     def expr(self, src: Any, where: str, expected: Type) -> None:
         if not isinstance(src, str) or not src.strip():

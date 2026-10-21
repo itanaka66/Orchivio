@@ -6,6 +6,7 @@ import uuid
 from typing import Any
 
 from fastapi import APIRouter, Depends, Query, Request, Response
+from pydantic import BaseModel, ConfigDict, Field
 from fastapi.concurrency import run_in_threadpool
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
@@ -117,6 +118,74 @@ def delete_project(project_id: uuid.UUID, request: Request,
     audit(db, request, "project.deleted", actor_id=principal.user_id, org_id=project.organization_id,
           target_type="project", target_id=project.id, meta={"slug": project.slug})
     db.delete(project)
+    db.commit()
+    return Response(status_code=204)
+
+
+# --- quotas and policy exceptions (FR-124) -----------------------------------
+
+
+class QuotaIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    ai_jobs_per_month: int | None = Field(None, ge=0, le=100_000)
+
+
+class ProjectSettingsPatch(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    quota: QuotaIn | None = None
+
+
+@router.patch("/projects/{project_id}/settings")
+def patch_project_settings(project_id: uuid.UUID, body: ProjectSettingsPatch, request: Request,
+                            principal: Principal = Depends(current_principal), db: Session = Depends(get_db)) -> dict[str, Any]:
+    """Update project-level quota settings (FR-124). Requires ``project.admin`` on the project."""
+    project = load_project(db, principal, project_id, "project.admin")
+    settings: dict[str, Any] = dict(project.settings or {})
+    if body.quota is not None:
+        quota = dict(settings.get("quota") or {})
+        if body.quota.ai_jobs_per_month is None:
+            quota.pop("ai_jobs_per_month", None)
+        else:
+            quota["ai_jobs_per_month"] = body.quota.ai_jobs_per_month
+        settings["quota"] = quota
+    project.settings = settings
+    audit(db, request, "project.settings_updated", actor_id=principal.user_id, org_id=project.organization_id,
+          target_type="project", target_id=project.id, meta={"quota": settings.get("quota")})
+    db.commit()
+    return {"settings": project.settings}
+
+
+@router.post("/projects/{project_id}/policy-exceptions/{pack_id}", status_code=201)
+def add_policy_exception(project_id: uuid.UUID, pack_id: str, request: Request,
+                         principal: Principal = Depends(current_principal), db: Session = Depends(get_db)) -> dict[str, Any]:
+    """Record a policy-pack exception for this project (FR-124). Requires ``governance.manage`` on the org."""
+    project = load_project(db, principal, project_id, "governance.manage")
+    settings: dict[str, Any] = dict(project.settings or {})
+    exceptions: list[str] = list(settings.get("policy_exceptions") or [])
+    if pack_id not in exceptions:
+        exceptions.append(pack_id)
+    settings["policy_exceptions"] = exceptions
+    project.settings = settings
+    audit(db, request, "project.policy_exception_added", actor_id=principal.user_id, org_id=project.organization_id,
+          target_type="project", target_id=project.id, meta={"pack_id": pack_id})
+    db.commit()
+    return {"policy_exceptions": exceptions}
+
+
+@router.delete("/projects/{project_id}/policy-exceptions/{pack_id}", status_code=204)
+def remove_policy_exception(project_id: uuid.UUID, pack_id: str, request: Request,
+                             principal: Principal = Depends(current_principal), db: Session = Depends(get_db)) -> Response:
+    """Remove a policy-pack exception for this project (FR-124). Requires ``governance.manage`` on the org."""
+    project = load_project(db, principal, project_id, "governance.manage")
+    settings: dict[str, Any] = dict(project.settings or {})
+    exceptions: list[str] = list(settings.get("policy_exceptions") or [])
+    if pack_id not in exceptions:
+        raise api_error(404, "not_found", "policy exception not found")
+    exceptions.remove(pack_id)
+    settings["policy_exceptions"] = exceptions
+    project.settings = settings
+    audit(db, request, "project.policy_exception_removed", actor_id=principal.user_id, org_id=project.organization_id,
+          target_type="project", target_id=project.id, meta={"pack_id": pack_id})
     db.commit()
     return Response(status_code=204)
 

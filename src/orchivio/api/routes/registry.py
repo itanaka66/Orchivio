@@ -641,6 +641,93 @@ def installs(app_id: uuid.UUID, principal: Principal = Depends(current_principal
     return {"items": out}
 
 
+@router.get("/applications/{app_id}/registry/updates")
+def registry_updates(app_id: uuid.UUID, principal: Principal = Depends(current_principal),
+                     db: Session = Depends(get_db)) -> dict[str, Any]:
+    """List installed modules with available registry upgrades (FR-126)."""
+    app, _ = load_application(db, principal, app_id, "model.read")
+    model = _current(db, app) if app.current_revision_id else None
+    history = _history(db, app.id)
+    items = []
+    for key, rows in history.items():
+        present = model is not None and any(m.key == key for m in model.modules)
+        if rows[0].action == "uninstall" and not present:
+            continue
+        installs_ = [r for r in rows if r.action == "install"]
+        if not installs_:
+            continue
+        applied = _applied(model, rows) if model is not None else None
+        r = applied or installs_[0]
+        locally_modified = present and applied is None
+        try:
+            latest_entry, _ = _find(db, principal, r.package_ref, "latest")
+            newest = latest_entry.version
+        except Exception:  # noqa: BLE001
+            newest = r.version
+        up_to_date = Version.parse(newest) <= Version.parse(r.version)
+        items.append({"module_key": key, "package": r.package_ref, "installed_version": r.version,
+                      "latest_version": newest, "up_to_date": up_to_date, "locally_modified": locally_modified})
+    return {"items": items}
+
+
+class UpgradeAllIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    dry_run: bool = False
+
+
+@router.post("/applications/{app_id}/registry/upgrade-all", status_code=201)
+def upgrade_all(app_id: uuid.UUID, body: UpgradeAllIn, request: Request,
+                principal: Principal = Depends(current_principal), db: Session = Depends(get_db)) -> dict[str, Any]:
+    """Upgrade all non-locally-modified modules to their latest registry versions as one proposal (FR-126)."""
+    app, project = load_application(db, principal, app_id, "model.propose")
+    model = _current(db, app)
+    history = _history(db, app.id)
+    upgraded: list[str] = []
+    skipped: list[str] = []
+    target = model
+    new_rows: list[RegistryInstall] = []
+    for key, rows in history.items():
+        present = any(m.key == key for m in target.modules)
+        if rows[0].action == "uninstall" and not present:
+            continue
+        installs_ = [r for r in rows if r.action == "install"]
+        if not installs_:
+            continue
+        applied = _applied(target, rows)
+        r = applied or installs_[0]
+        if applied is None:  # locally modified
+            skipped.append(key)
+            continue
+        try:
+            latest_entry, _ = _find(db, principal, r.package_ref, "latest")
+        except Exception:  # noqa: BLE001
+            skipped.append(key)
+            continue
+        if Version.parse(latest_entry.version) <= Version.parse(r.version):
+            continue
+        v = _verified(request, latest_entry)
+        target = merge_module(target, v.model, replace=True)
+        new_rows.append(RegistryInstall(application_id=app.id, package_ref=r.package_ref, created_at=utcnow(),
+                                        version=latest_entry.version, module_key=key, source_key=r.source_key,
+                                        action="install", module_hash=module_hash(target, key)))
+        upgraded.append(key)
+    if not upgraded or body.dry_run:
+        return {"upgraded": upgraded, "skipped": skipped, "proposal_id": None, "dry_run": True}
+    try:
+        proposal = ProposalRepository(db).create(app.id, assign_element_ids(target, previous=model), source="human",
+                                                 created_by=principal.user_id, organization_id=project.organization_id)
+    except ModelInvalid as e:
+        raise api_error(422, "model_invalid", "upgrade produced an invalid model",
+                        [i.as_dict() for i in e.issues if i.severity == "error"]) from e
+    for row in new_rows:
+        row.proposal_id = proposal.id
+        db.add(row)
+    audit(db, request, "registry.upgrade_all", actor_id=principal.user_id, org_id=project.organization_id,
+          target_type="application", target_id=app.id, meta={"upgraded": upgraded, "skipped": skipped})
+    db.commit()
+    return {"upgraded": upgraded, "skipped": skipped, "proposal_id": str(proposal.id), "dry_run": False}
+
+
 @router.post("/projects/{project_id}/registry/instantiate", status_code=201)
 def instantiate(project_id: uuid.UUID, body: InstantiateIn, request: Request, principal: Principal = Depends(current_principal),
                 db: Session = Depends(get_db)) -> dict[str, Any]:

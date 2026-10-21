@@ -674,6 +674,7 @@ class JobRun(Base):
     available_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     locked_by: Mapped[str | None] = mapped_column(String(100))
     locked_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    environment_id: Mapped[uuid.UUID | None] = mapped_column(Uuid)
     model_hash: Mapped[str | None] = mapped_column(String(80))
     error: Mapped[str | None] = mapped_column(Text)
     result: Mapped[dict[str, Any] | None] = mapped_column(PortableJSON)

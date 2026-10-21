@@ -181,9 +181,12 @@ def compliance(org_id: uuid.UUID, principal: Principal = Depends(current_princip
     items, totals = [], Counter()
     for app, project in _apps(db, org_id):
         model = _model(db, app)
+        exceptions: set[str] = set((project.settings or {}).get("policy_exceptions") or [])
         violations = []
         if model is not None:
             for pack in packs:
+                if str(pack.id) in exceptions or pack.name in exceptions:
+                    continue
                 violations += [{**v.as_dict(), "pack": pack.name} for v in evaluate(model, pack.rules)]
         blocking = sum(1 for v in violations if v["severity"] == "error")
         status = "no_model" if model is None else "violations" if blocking else "warnings" if violations else "compliant"
