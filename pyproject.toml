@@ -41,6 +41,11 @@ where = ["src"]
 testpaths = ["tests"]
 pythonpath = ["src"]
 addopts = "-q"
+markers = [
+  "postgres: tests requiring a real PostgreSQL database (set ORCHIVIO_TEST_PG_URL)",
+  "live_api: tests that call real external APIs (set ORCHIVIO_LIVE_LLM=1 and ORCHIVIO_ANTHROPIC_API_KEY)",
+  "eval: AI quality eval harness (set ORCHIVIO_LIVE_LLM=1 and ORCHIVIO_ANTHROPIC_API_KEY)",
+]
 
 [tool.ruff]
 line-length = 100

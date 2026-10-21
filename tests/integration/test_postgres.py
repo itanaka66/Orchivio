@@ -24,7 +24,10 @@ from orchivio.testgen import run_tests
 from tests_support import alembic_config, load_yaml
 
 URL = os.environ.get("ORCHIVIO_TEST_PG_URL")
-pytestmark = pytest.mark.skipif(not URL, reason="set ORCHIVIO_TEST_PG_URL to a disposable PostgreSQL database")
+pytestmark = [
+    pytest.mark.postgres,
+    pytest.mark.skipif(not URL, reason="set ORCHIVIO_TEST_PG_URL to a disposable PostgreSQL database"),
+]
 
 ROOT = Path(__file__).resolve().parents[2]
 
