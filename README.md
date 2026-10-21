@@ -33,6 +33,8 @@ Key properties:
 | Server Flows (logic engine) | ✅ implemented |
 | Delivery: environments, signed packages, promotion | ✅ implemented |
 | Studio MCP server | ✅ implemented |
+| PWA (installable Studio, offline shell) | ✅ implemented |
+| Typed client generation (TypeScript, Python, C#) | ✅ implemented |
 | Three-way model merge | 🔲 planned (R0.4) |
 | External MCP client (AI in apps) | 🔲 planned (R0.5) |
 | Module registry | 🔲 planned (R1.0) |
@@ -105,6 +107,9 @@ Full layout: [DESIGN.md §14](DESIGN.md).
 | [docs/DELIVERY.md](docs/DELIVERY.md) | Environments, packages, promotion |
 | [docs/THREAT-MODEL.md](docs/THREAT-MODEL.md) | Threats and mitigations |
 | [docs/STATUS.md](docs/STATUS.md) | Known gaps and limitations |
+| [docs/TUTORIAL.md](docs/TUTORIAL.md) | Studio quick-start tutorial (English and Japanese) |
+| [docs/RELEASE.md](docs/RELEASE.md) | Release-candidate and release process |
+| [NOTICE](NOTICE) | Third-party software notices |
 | [docs/adr/](docs/adr/) | Architecture decision records |
 
 ## License
