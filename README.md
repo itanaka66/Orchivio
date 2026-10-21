@@ -23,18 +23,25 @@ Key properties:
 |---|---|
 | Platform auth, orgs, projects | ✅ implemented |
 | Application model (entities, fields, enumerations, modules) | ✅ implemented |
+| Module management UI (add, rename, delete via proposals) | ✅ implemented |
 | Proposal flow (diff, lint, approval levels) | ✅ implemented |
 | CRUD preview runtime | ✅ implemented |
+| End-user auth (login, logout, CSRF, OIDC, password change) | ✅ implemented |
 | Application security (roles, row rules, field-level access) | ✅ implemented |
 | AI Builder (analyze → propose) | ✅ implemented |
 | Test generation and repair loop | ✅ implemented |
 | Page designer (Studio) | ✅ implemented |
 | Process designer | ✅ implemented |
 | Server Flows (logic engine) | ✅ implemented |
+| Client flow browser runtime | ✅ implemented |
+| Flow debugger | ✅ implemented |
 | Delivery: environments, signed packages, promotion | ✅ implemented |
+| Near-zero-downtime migrations (expand/contract) | ✅ implemented |
 | Studio MCP server | ✅ implemented |
 | PWA (installable Studio, offline shell) | ✅ implemented |
 | Typed client generation (TypeScript, Python, C#) | ✅ implemented |
+| Requirements & story editor | ✅ implemented |
+| Audit log (org-scoped event stream) | ✅ implemented |
 | Three-way model merge | 🔲 planned (R0.4) |
 | External MCP client (AI in apps) | 🔲 planned (R0.5) |
 | Module registry | 🔲 planned (R1.0) |
@@ -83,13 +90,34 @@ npm run dev       # dev server with /api proxy to :8000
 src/orchivio/     Python package (API, model, runtime, security, flows, …)
 apps/web/         React + TypeScript Studio (Vite)
 migrations/       Alembic migration scripts
-tests/            pytest unit and integration tests
+tests/
+  integration/    PostgreSQL integration tests (set ORCHIVIO_TEST_PG_URL)
+  live/           Live-API tests against real Anthropic models (set ORCHIVIO_LIVE_LLM=1)
+  evals/          AI quality eval harness with rubric fixtures
 docs/             Architecture, specs, ADRs
 k8s/              Kubernetes manifests (namespace, postgres, api, web, ingress)
 docker/           initdb scripts
 ```
 
 Full layout: [DESIGN.md §14](DESIGN.md).
+
+## Running the tests
+
+```bash
+# Unit tests (SQLite, no external services)
+pytest
+
+# PostgreSQL integration tests
+ORCHIVIO_TEST_PG_URL=postgresql://user:pass@localhost/orchivio_test pytest -m postgres
+
+# Live Anthropic adapter tests
+ORCHIVIO_LIVE_LLM=1 ORCHIVIO_ANTHROPIC_API_KEY=sk-ant-… pytest -m live_api
+
+# AI quality evals
+ORCHIVIO_LIVE_LLM=1 ORCHIVIO_ANTHROPIC_API_KEY=sk-ant-… pytest -m eval -v
+```
+
+The `live_api` and `eval` tests are skipped automatically when the environment variables are absent.
 
 ## Documentation
 
