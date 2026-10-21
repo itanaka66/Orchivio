@@ -130,7 +130,9 @@ orchivio user add --email admin@example.com --name "Ada Lee" --org acme --role o
 
 > **Security note:** The password is never a command-line argument. The scripts prompt for it without echo, read it from stdin (`-p`), or take it from `ORCHIVIO_NEW_PASSWORD`.
 
-Valid roles: `owner`, `admin`, `editor`, `viewer`. The `--org` value is created automatically when it does not exist.
+Valid roles: `owner`, `admin`, `editor`, `viewer`.
+
+> **Note:** The `--org` slug must refer to an organization that already exists. There is no CLI command to create an organization; use the Studio UI (sign in → `+ New organization`) or the API (`POST /api/v1/organizations`).
 
 After the admin account is created, disable registration:
 
