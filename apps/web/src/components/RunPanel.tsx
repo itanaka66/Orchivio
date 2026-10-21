@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import type { Flow, RunResult } from '../flow/types'
+import type { Flow, RunResult, TraceSpan } from '../flow/types'
 
 interface Props {
   flow: Flow
@@ -23,6 +23,7 @@ export function RunPanel({ flow, roles, blockedReason, result, onRun, onGoTo }: 
   const [asUser, setAsUser] = useState('preview-user')
   const [asRoles, setAsRoles] = useState(roles.join(', '))
   const [busy, setBusy] = useState(false)
+  const [inspected, setInspected] = useState<TraceSpan | null>(null)
 
   return (
     <section className="run-panel" aria-label="Run">
@@ -76,8 +77,17 @@ export function RunPanel({ flow, roles, blockedReason, result, onRun, onGoTo }: 
           <ol aria-label="Steps that ran">
             {result.trace.map((s, i) => (
               <li key={i} className={s.status === 'error' ? 'sev-error' : undefined}>
-                <code>{s.step}</code>{s.iteration.length ? ` [${s.iteration.join('.')}]` : ''}{s.detail ? ` — ${s.detail}` : ''}
+                <button type="button" className="link" onClick={() => { onGoTo(s.step); setInspected(inspected?.step === s.step && inspected.flow === s.flow ? null : s) }}>
+                  <code>{s.step}</code>
+                </button>
+                {s.iteration.length ? ` [${s.iteration.join('.')}]` : ''}
+                {s.detail ? ` — ${s.detail}` : ''}
                 {s.status === 'error' && ' (failed)'}
+                {inspected?.step === s.step && inspected.flow === s.flow && s.vars !== undefined && (
+                  <pre className="hint" style={{ margin: '2px 0 0', fontSize: '0.75em', overflowX: 'auto' }}>
+                    {JSON.stringify(s.vars, null, 2)}
+                  </pre>
+                )}
               </li>
             ))}
           </ol>

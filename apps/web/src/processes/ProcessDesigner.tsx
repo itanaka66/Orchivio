@@ -2,8 +2,8 @@ import { useState } from 'react'
 import type { ApiClient } from '../api/client'
 
 type Json = Record<string, unknown>
-type StepType = 'start' | 'user_task' | 'system_task' | 'decision' | 'parallel_split' | 'parallel_join' | 'timer' | 'end'
-const STEP_TYPES: StepType[] = ['start', 'end', 'user_task', 'system_task', 'decision', 'parallel_split', 'parallel_join', 'timer']
+type StepType = 'start' | 'user_task' | 'system_task' | 'decision' | 'parallel_split' | 'parallel_join' | 'timer' | 'catch_message' | 'end'
+const STEP_TYPES: StepType[] = ['start', 'end', 'user_task', 'system_task', 'decision', 'parallel_split', 'parallel_join', 'timer', 'catch_message']
 const FIELD_TYPES = ['string', 'integer', 'decimal', 'boolean'] as const
 const NO_CONFIG_TYPES: StepType[] = ['start', 'end', 'parallel_split', 'parallel_join']
 
@@ -25,6 +25,7 @@ function defaultConfig(t: StepType): Record<string, unknown> {
   if (t === 'timer') return { wait_seconds: 3600 }
   if (t === 'user_task') return { title: '', assignee_role: '', outcomes: ['approve', 'reject'] }
   if (t === 'system_task') return { flow: '', run_as_role: '', args: {} }
+  if (t === 'catch_message') return { message: '' }
   return {}
 }
 
@@ -299,6 +300,12 @@ function StepConfig({ step, roles, flows, onChange }: { step: Step; roles: strin
     <label className="field"><span>Wait seconds</span>
       <input type="number" min={1} value={Number(c.wait_seconds ?? 3600)}
         onChange={(e) => onChange({ ...c, wait_seconds: Number(e.target.value) })} /></label>
+  )
+
+  if (step.type === 'catch_message') return (
+    <label className="field"><span>Message name</span>
+      <input value={String(c.message ?? '')} placeholder="request_approved"
+        onChange={(e) => onChange({ ...c, message: e.target.value })} /></label>
   )
 
   if (step.type === 'system_task') return (

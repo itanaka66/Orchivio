@@ -20,7 +20,7 @@ from .schema import FieldDef, FlowDef, ModuleDef, ProcessDef, qualify
 
 Report = Callable[[str, str, str, str], None]  # (code, path, message, severity)
 
-WAITING = {"user_task", "timer"}
+WAITING = {"user_task", "timer", "catch_message"}
 MAX_HOURS = 24 * 365
 MAX_TIMER_SECONDS = 365 * 24 * 3600
 FORM_TYPES = {"string": STRING, "integer": INT, "decimal": DECIMAL, "boolean": BOOL}
@@ -29,6 +29,7 @@ CONFIG_KEYS = {
     "system_task": {"flow", "args"},
     "decision": {"expr"},
     "timer": {"wait_seconds"},
+    "catch_message": {"message"},
 }
 
 
@@ -129,7 +130,7 @@ class ProcessChecker:
                 self.err("process-edges", w, "an end step has no outgoing edges")
             return
         plain = [e for e in outs if e.outcome is None]
-        if t in ("start", "system_task", "timer", "parallel_join"):
+        if t in ("start", "system_task", "timer", "catch_message", "parallel_join"):
             if len(outs) != 1 or plain != outs:
                 self.err("process-edges", w, f"a {t.replace('_', ' ')} step needs exactly one outgoing edge without an outcome")
         elif t == "parallel_split":
@@ -151,6 +152,10 @@ class ProcessChecker:
             n = cfg.get("wait_seconds")
             if not isinstance(n, int) or isinstance(n, bool) or not 1 <= n <= MAX_TIMER_SECONDS:
                 self.err("process-config", f"{w}/config/wait_seconds", f"wait_seconds must be an integer from 1 to {MAX_TIMER_SECONDS}")
+        elif t == "catch_message":
+            msg = cfg.get("message")
+            if not isinstance(msg, str) or not 1 <= len(msg) <= 100 or not msg.replace("_", "").replace("-", "").isalnum():
+                self.err("process-config", f"{w}/config/message", "message must be a 1-100 character alphanumeric/underscore/hyphen name")
 
     def user_task(self, s, w: str, cfg: dict[str, Any], outs: list) -> None:
         c = f"{w}/config"

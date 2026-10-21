@@ -32,7 +32,7 @@ class ProcessError(Exception):
 class Token:
     id: int
     step: str
-    status: str = "ready"  # ready | waiting_task | waiting_timer | failed
+    status: str = "ready"  # ready | waiting_task | waiting_timer | waiting_message | failed
     wake_at: str | None = None
     task_id: str | None = None
     error: str | None = None
@@ -141,6 +141,24 @@ class Machine:
         self.advance(st)
         return st
 
+    def signal(self, st: State, message: str, data: dict[str, Any]) -> State:
+        """Deliver an external message to any waiting catch_message tokens that match."""
+        matched = [
+            tok for tok in st.tokens
+            if tok.status == "waiting_message"
+            and self.steps.get(tok.step) is not None
+            and self.steps[tok.step].config.get("message") == message
+        ]
+        if not matched:
+            raise ProcessError(f"no step is waiting for message '{message}'")
+        for tok in matched:
+            st.variables.update(data)
+            edge = self._edge(tok.step, None)
+            self.hooks.event("message_received", tok.step, {"message": message})
+            tok.step, tok.status = edge.target, "ready"
+        self.advance(st)
+        return st
+
     def advance(self, st: State) -> None:
         run = 0
         while True:
@@ -189,6 +207,9 @@ class Machine:
                 wake = self.clock() + timedelta(seconds=int(step.config["wait_seconds"]))
                 tok.status, tok.wake_at = "waiting_timer", wake.isoformat()
                 self.hooks.event("timer_set", step.id, {"wake_at": tok.wake_at})
+            elif t == "catch_message":
+                tok.status = "waiting_message"
+                self.hooks.event("waiting_message", step.id, {"message": step.config.get("message", "")})
             elif t == "end":
                 st.tokens.remove(tok)
         except (ExprError, ProcessError) as e:
