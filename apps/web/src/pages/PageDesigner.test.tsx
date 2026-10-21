@@ -55,7 +55,7 @@ describe('PageDesigner', () => {
 
     await userEvent.click(screen.getByRole('button', { name: 'Submit as proposal' }))
     expect(client.createProposal).toHaveBeenCalledOnce()
-    const [, newModel, title] = (client.createProposal as ReturnType<typeof vi.fn>).mock.calls[0]
+    const [, newModel, title] = (client.createProposal as ReturnType<typeof vi.fn>).mock.calls[0]!
     expect(title).toBe('Add page product-detail')
     const pages = (newModel as { modules: { pages: { key: string }[] }[] }).modules[0]!.pages
     expect(pages).toHaveLength(3)
@@ -98,7 +98,7 @@ describe('PageDesigner', () => {
     await userEvent.click(qtyBox)
     await userEvent.click(screen.getByRole('button', { name: 'Submit as proposal' }))
     expect(client.createProposal).toHaveBeenCalledOnce()
-    const [, newModel, title] = (client.createProposal as ReturnType<typeof vi.fn>).mock.calls[0]
+    const [, newModel, title] = (client.createProposal as ReturnType<typeof vi.fn>).mock.calls[0]!
     expect(title).toBe('Edit page product-list')
     const pages = (newModel as { modules: { pages: { key: string; columns: string[] }[] }[] }).modules[0]!.pages
     const edited = pages.find((p) => p.key === 'product-list')!
@@ -111,7 +111,7 @@ describe('PageDesigner', () => {
     render(<PageDesigner client={client} applicationId="a1" model={model} canEdit={true} />)
     await userEvent.click(screen.getByRole('button', { name: 'Delete page product-form' }))
     expect(client.createProposal).toHaveBeenCalledOnce()
-    const [, newModel, title] = (client.createProposal as ReturnType<typeof vi.fn>).mock.calls[0]
+    const [, newModel, title] = (client.createProposal as ReturnType<typeof vi.fn>).mock.calls[0]!
     expect(title).toBe('Delete page product-form')
     const pages = (newModel as { modules: { pages: { key: string }[] }[] }).modules[0]!.pages
     expect(pages.every((p) => p.key !== 'product-form')).toBe(true)

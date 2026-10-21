@@ -29,7 +29,7 @@ export function PageDesigner({ client, applicationId, model, canEdit }: Props) {
   const rawPages = (mod?.pages ?? []) as Array<PageDef & { actions?: (string | { key: string })[] }>
   const pages: PageDef[] = rawPages.map((p) => ({
     ...p,
-    actions: (p.actions ?? []).map((a) => (typeof a === 'string' ? a : a.key)),
+    actions: (p.actions ?? []).map((a): string => (typeof a === 'string' ? a : (a as { key: string }).key)),
   }))
 
   const [draft, setDraft] = useState<PageDef | null>(null)

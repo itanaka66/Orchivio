@@ -9,7 +9,11 @@ import { remember, saveModel, PROFILE_KEY } from './offline'
 import { OfflineGate } from './offline/OfflineGate'
 import { OfflinePanel } from './offline/OfflinePanel'
 import { OfflineProvider, useOffline } from './offline/OfflineProvider'
+import { AIBuilder } from './ai/AIBuilder'
+import { DiffReview } from './proposals/DiffReview'
+import { ModelExplorer } from './model/ModelExplorer'
 import { PageDesigner } from './pages/PageDesigner'
+import { ProcessDesigner } from './processes/ProcessDesigner'
 import { Preview } from './preview/Preview'
 import { PwaBar } from './pwa/PwaBar'
 import { clearShellCaches } from './pwa/register'
@@ -25,6 +29,10 @@ interface BoardTarget { project: Project; application?: Application; elements: {
 interface AdminTarget { org: Org; project: Project; application?: Application; model: Json | null }
 interface PreviewTarget { application: Application; model: Json; roles: string[]; canEdit: boolean }
 interface PagesTarget { application: Application; model: Json; canEdit: boolean }
+interface ProcessTarget { application: Application; model: Json; canEdit: boolean }
+interface AITarget { application: Application; model: Json; canEdit: boolean }
+interface ReviewTarget { application: Application; canEdit: boolean }
+interface ModelTarget { application: Application; model: Json }
 interface Open { model: Json; module: string; flow: Flow; application?: Application; readOnly: boolean; demo: boolean }
 
 export default function App({ client: injected, offline }: { client?: ApiClient; offline?: Omit<ComponentProps<typeof OfflineProvider>, 'client' | 'children'> }) {
@@ -42,6 +50,10 @@ function Studio({ client }: { client: ApiClient }) {
   const [preview, setPreview] = useState<PreviewTarget | null>(null)
   const [pages, setPages] = useState<PagesTarget | null>(null)
   const [admin, setAdmin] = useState<AdminTarget | null>(null)
+  const [processes, setProcesses] = useState<ProcessTarget | null>(null)
+  const [review, setReview] = useState<ReviewTarget | null>(null)
+  const [aiBuilder, setAiBuilder] = useState<AITarget | null>(null)
+  const [explorer, setExplorer] = useState<ModelTarget | null>(null)
 
   useEffect(() => {
     if (!client.signedIn) return
@@ -152,6 +164,55 @@ function Studio({ client }: { client: ApiClient }) {
         />
       </div>
     )
+  } else if (processes) {
+    overlay = (
+      <div className="shell">
+        <header className="topbar">
+          <button type="button" className="link" onClick={() => setProcesses(null)}>← Back</button>
+          <span>{processes.application.name} · Process designer</span>
+          <span className="spacer" />
+          {user && <span>{user.display_name}</span>}
+        </header>
+        <main className="page wide"><ProcessDesigner client={client} applicationId={processes.application.id} model={processes.model} canEdit={processes.canEdit} /></main>
+      </div>
+    )
+  } else if (review) {
+    overlay = (
+      <div className="shell">
+        <header className="topbar">
+          <button type="button" className="link" onClick={() => setReview(null)}>← Back</button>
+          <span>{review.application.name} · Proposals</span>
+          <span className="spacer" />
+          {user && <span>{user.display_name}</span>}
+        </header>
+        <main className="page wide"><DiffReview client={client} application={review.application} canEdit={review.canEdit} /></main>
+      </div>
+    )
+  } else if (aiBuilder) {
+    overlay = (
+      <div className="shell">
+        <header className="topbar">
+          <button type="button" className="link" onClick={() => setAiBuilder(null)}>← Back</button>
+          <span>{aiBuilder.application.name} · AI Builder</span>
+          <span className="spacer" />
+          {user && <span>{user.display_name}</span>}
+        </header>
+        <main className="page wide"><AIBuilder client={client} application={aiBuilder.application} canEdit={aiBuilder.canEdit}
+          onReview={() => { setAiBuilder(null); setReview({ application: aiBuilder.application, canEdit: aiBuilder.canEdit }) }} /></main>
+      </div>
+    )
+  } else if (explorer) {
+    overlay = (
+      <div className="shell">
+        <header className="topbar">
+          <button type="button" className="link" onClick={() => setExplorer(null)}>← Back</button>
+          <span>{explorer.application.name} · Model explorer</span>
+          <span className="spacer" />
+          {user && <span>{user.display_name}</span>}
+        </header>
+        <main className="page wide"><ModelExplorer model={explorer.model} /></main>
+      </div>
+    )
   }
 
   return (
@@ -176,13 +237,14 @@ function Studio({ client }: { client: ApiClient }) {
       {user && <OfflinePanel />}
       {user ? (
         <Browser client={client} user={user} onOpen={setOpen} onBoard={setBoard} onPreview={setPreview} onPages={setPages} onAdmin={setAdmin}
+                 onProcesses={setProcesses} onReview={setReview} onAI={setAiBuilder} onExplorer={setExplorer}
                  onLogout={signOut} />
       ) : (
         <Login client={client} onUser={setUser} />
       )}
       <section aria-label="Demo">
         <h2>Try it without a server</h2>
-        <p>Opens the example “Reorder low stock” flow from the sample inventory app. Sign in first to get live validation from the server.</p>
+        <p>Opens the example "Reorder low stock" flow from the sample inventory app. Sign in first to get live validation from the server.</p>
         <button type="button" onClick={() => {
           const f = listFlows(sampleModel as Json)[0]
           if (f) setOpen({ model: sampleModel as Json, module: f.module, flow: f.flow, readOnly: false, demo: true })
@@ -229,7 +291,7 @@ function useLoad<T>(load: () => Promise<T>, deps: unknown[]): { data: T | null; 
   return state
 }
 
-function Browser({ client, user, onOpen, onBoard, onPreview, onPages, onAdmin, onLogout }: { client: ApiClient; user: User; onOpen: (o: Open) => void; onBoard: (b: BoardTarget) => void; onPreview: (p: PreviewTarget) => void; onPages: (p: PagesTarget) => void; onAdmin: (a: AdminTarget) => void; onLogout: () => void }) {
+function Browser({ client, user, onOpen, onBoard, onPreview, onPages, onAdmin, onProcesses, onReview, onAI, onExplorer, onLogout }: { client: ApiClient; user: User; onOpen: (o: Open) => void; onBoard: (b: BoardTarget) => void; onPreview: (p: PreviewTarget) => void; onPages: (p: PagesTarget) => void; onAdmin: (a: AdminTarget) => void; onProcesses: (t: ProcessTarget) => void; onReview: (t: ReviewTarget) => void; onAI: (t: AITarget) => void; onExplorer: (t: ModelTarget) => void; onLogout: () => void }) {
   const orgs = useLoad(() => client.organizations(), [client])
   const [org, setOrg] = useState<Org | null>(null)
   const projects = useLoad(() => (org ? client.projects(org.id) : Promise.resolve(null)), [org])
@@ -286,6 +348,20 @@ function Browser({ client, user, onOpen, onBoard, onPreview, onPages, onAdmin, o
           <button type="button" onClick={() => onPages({ application: app, model: revision.data!.model_json, canEdit })}>
             Open the page designer
           </button>
+        </p>
+      )}
+      {app && revision.data && (
+        <p>
+          <button type="button" onClick={() => onAI({ application: app, model: revision.data!.model_json, canEdit })}>Build with AI</button>
+          {' '}
+          <button type="button" onClick={() => onReview({ application: app, canEdit })}>Review proposals</button>
+          {' '}
+          <button type="button" onClick={() => onExplorer({ application: app, model: revision.data!.model_json })}>Browse model</button>
+        </p>
+      )}
+      {app && revision.data && canEdit && (
+        <p>
+          <button type="button" onClick={() => onProcesses({ application: app, model: revision.data!.model_json, canEdit })}>Open process designer</button>
         </p>
       )}
       {app && !app.current_revision_id && <p className="hint">This application has no model yet.</p>}
