@@ -49,7 +49,7 @@ test('creates a record through the form; markup in data is shown as text and nev
   await page.getByLabel(/^Reorder level/i).fill('2')
   await page.getByRole('button', { name: 'Save' }).click()
   await expect(page.getByRole('heading', { name: 'Product list' })).toBeVisible()
-  await expect(page.getByRole('cell', { name: hostile })).toBeVisible()
+  await expect(page.getByRole('cell', { name: hostile }).first()).toBeVisible()
   expect(await page.evaluate(() => (window as unknown as { __pwned?: number }).__pwned)).toBeUndefined()
   expect(await page.locator('main img').count()).toBe(0)
 })
