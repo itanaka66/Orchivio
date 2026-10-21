@@ -1,0 +1,135 @@
+Orchivio — Third-Party Notices
+Copyright (C) 2026 株式会社エージーネディア / agNedia Inc.
+Licensed under the GNU General Public License v3.0 or later (GPL-3.0-or-later).
+See LICENSE for the full text.
+
+------------------------------------------------------------------------
+
+This product incorporates components from the following open-source projects.
+Each component is used under its own license, reproduced or referenced below.
+
+------------------------------------------------------------------------
+
+## Python runtime dependencies
+
+### Pydantic
+https://github.com/pydantic/pydantic
+MIT License — Copyright (c) 2017 to present Pydantic Services Inc. and individual contributors.
+
+### pydantic-settings
+https://github.com/pydantic/pydantic-settings
+MIT License — Copyright (c) 2022 to present Pydantic Services Inc. and individual contributors.
+
+### PyYAML
+https://github.com/yaml/pyyaml
+MIT License — Copyright (c) 2017–2021 Ingy döt Net; Copyright (c) 2006–2016 Kirill Simonov.
+
+### SQLAlchemy
+https://github.com/sqlalchemy/sqlalchemy
+MIT License — Copyright 2005–2024 SQLAlchemy authors and contributors.
+
+### Alembic
+https://github.com/sqlalchemy/alembic
+MIT License — Copyright 2009–2024 Michael Bayer.
+
+### FastAPI
+https://github.com/tiangolo/fastapi
+MIT License — Copyright (c) 2018 Sebastián Ramírez.
+
+### Uvicorn
+https://github.com/encode/uvicorn
+BSD 3-Clause License — Copyright © 2017–present, Encode OSS Ltd.
+
+### httpx
+https://github.com/encode/httpx
+BSD 3-Clause License — Copyright © 2019–present, Encode OSS Ltd.
+
+### cryptography
+https://github.com/pyca/cryptography
+Apache License 2.0 (and BSD for certain subcomponents) — Copyright The cryptography authors.
+
+### psycopg 3
+https://github.com/psycopg/psycopg
+GNU Lesser General Public License v3 (LGPLv3) — Copyright (C) 2020 The Psycopg Team.
+
+### opentelemetry-api / opentelemetry-sdk / opentelemetry-exporter-otlp-proto-http
+https://github.com/open-telemetry/opentelemetry-python
+Apache License 2.0 — Copyright The OpenTelemetry Authors.
+
+### Starlette (transitive via FastAPI)
+https://github.com/encode/starlette
+BSD 3-Clause License — Copyright © 2018–present, Encode OSS Ltd.
+
+### AnyIO (transitive via FastAPI/Starlette)
+https://github.com/agronholm/anyio
+MIT License — Copyright (c) 2018 Alex Grönholm.
+
+### typing_extensions (transitive)
+https://github.com/python/typing_extensions
+PSF License — Copyright (c) 2001–2024 Python Software Foundation.
+
+------------------------------------------------------------------------
+
+## Frontend (Studio) dependencies
+
+### React
+https://github.com/facebook/react
+MIT License — Copyright (c) Meta Platforms, Inc. and affiliates.
+
+### ReactDOM
+https://github.com/facebook/react
+MIT License — Copyright (c) Meta Platforms, Inc. and affiliates.
+
+### @xyflow/react (React Flow)
+https://github.com/xyflow/xyflow
+MIT License — Copyright (c) 2019 webkid GmbH.
+
+### Vite
+https://github.com/vitejs/vite
+MIT License — Copyright (c) 2019–present, VoidZero Inc. and Vite contributors.
+
+### TypeScript
+https://github.com/microsoft/TypeScript
+Apache License 2.0 — Copyright (c) Microsoft Corporation.
+
+------------------------------------------------------------------------
+
+## Development and test dependencies
+
+### pytest
+https://github.com/pytest-dev/pytest
+MIT License — Copyright (c) 2004 Holger Krekel and others.
+
+### Hypothesis
+https://github.com/HypothesisWorks/hypothesis
+Mozilla Public License 2.0 — Copyright (c) David R. MacIver and contributors.
+
+### Playwright
+https://github.com/microsoft/playwright
+Apache License 2.0 — Copyright (c) Microsoft Corporation.
+
+### Ruff
+https://github.com/astral-sh/ruff
+MIT License — Copyright (c) 2022 Astral Software Inc.
+
+### Vitest
+https://github.com/vitest-dev/vitest
+MIT License — Copyright (c) 2021 Anthony Fu.
+
+### @testing-library/react
+https://github.com/testing-library/react-testing-library
+MIT License — Copyright (c) 2018 Kent C. Dodds.
+
+### jsonschema
+https://github.com/python-jsonschema/jsonschema
+MIT License — Copyright (c) 2012–2023 Julian Berman.
+
+### openapi-spec-validator
+https://github.com/p1c2u/openapi-spec-validator
+Apache License 2.0 — Copyright (c) 2017–2024 Artur Maciag.
+
+------------------------------------------------------------------------
+
+Full license texts for Apache-2.0, MIT, BSD-3-Clause, LGPLv3, and MPL-2.0
+are available at https://spdx.org/licenses/ and in the respective packages
+under apps/web/node_modules/ and the Python virtual environment.
