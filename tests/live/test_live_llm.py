@@ -11,7 +11,7 @@ import os
 import pytest
 
 from orchivio.ai import AIBuilder
-from orchivio.llm import AnthropicProvider
+from orchivio.llm import AnthropicProvider, LLMRequest, Message
 
 pytestmark = [
     pytest.mark.live_api,
@@ -30,8 +30,6 @@ def builder():
 
 def test_anthropic_provider_complete_returns_non_empty_text():
     """Direct smoke test: the adapter hits the real API and returns text with token counts."""
-    from orchivio.llm import AnthropicProvider, LLMRequest, Message
-
     provider = AnthropicProvider(os.environ["ORCHIVIO_ANTHROPIC_API_KEY"])
     req = LLMRequest(messages=(Message("user", "Reply with the single word OK and nothing else."),), max_output_tokens=16)
     resp = provider.complete(req)
