@@ -109,4 +109,6 @@ Full layout: [DESIGN.md §14](DESIGN.md).
 
 ## License
 
-[GPL-3.0-or-later](LICENSE)
+GNU General Public License v3.0 (GPL-3.0-or-later) — Copyright (C) 2026 株式会社エージーネディア / agNedia Inc.
+
+See [LICENSE](LICENSE) for the full text.
