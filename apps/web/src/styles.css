@@ -137,3 +137,14 @@ fieldset { border: 1px solid var(--line); border-radius: 8px; margin: .6rem 0; p
 .run-panel { margin-top: 1.25rem; border-top: 1px solid var(--line); padding-top: .75rem; }
 .run-panel ol { padding-left: 1.2rem; margin: .25rem 0; font-size: .9em; }
 .run-panel .result-failed { color: var(--error); font-weight: 600; } .run-panel .result-succeeded { color: var(--ok); font-weight: 600; }
+
+/* page + process designer */
+.page-designer { display: grid; grid-template-columns: 250px 1fr; gap: 1rem; align-items: start; }
+.designer-edit { min-width: 0; }
+.form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0 .75rem; }
+@media (max-width: 900px) { .page-designer { grid-template-columns: 1fr; } .form-grid { grid-template-columns: 1fr; } }
+
+/* diff review */
+.change-add { color: var(--ok); }
+.change-modify { color: var(--warn); }
+.change-remove { color: var(--error); }

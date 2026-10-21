@@ -34,6 +34,21 @@ export interface Traceability {
 export interface FeedbackItem { id: string; page_key: string; element_id: string | null; body: string; status: 'new' | 'clustered' | 'dismissed'; has_screenshot: boolean; story_id: string | null; created_at: string }
 export interface FeedbackInput { page_key: string; body: string; element_id?: string | null; screenshot_base64?: string | null }
 
+export interface Finding { rule: string; severity: string; message: string; path?: string; element_id?: string }
+export interface Change { kind: string; path: string; summary: string; element_id?: string }
+export interface ProposalDetail {
+  id: string; title: string; status: string; approval_level: string
+  diff: { level: string; security_changed: boolean; changes: Change[] }
+  lint: Finding[]
+  warnings: string[]
+}
+export interface AnalysisResult { summary: string; roles: string[]; entities: string[]; open_questions: string[]; assumptions: string[] }
+export interface RevisionSummary { id: string; revision_no: number; created_at: string }
+export interface LintResult { findings: Finding[] }
+export interface TestRunSummary { total: number; passed: number; failed: number; skipped: number }
+export interface TestCaseResult { id: string; title: string; outcome: string }
+export interface TestRunResult { id: string; status: string; revision_id: string; summary: TestRunSummary; cases: TestCaseResult[] }
+
 export interface PreviewActor { user: string; roles: string[] }
 
 const CSRF_KEY = 'orchivio.csrf'
@@ -156,4 +171,46 @@ export class ApiClient {
   createProposal(appId: string, model: unknown, title: string) {
     return this.request<ProposalSummary>('POST', `/applications/${appId}/proposals`, { model, title })
   }
+
+  revisions = (appId: string, limit = 20, offset = 0) =>
+    this.request<Page<RevisionSummary>>('GET', `/applications/${appId}/revisions?limit=${limit}&offset=${offset}`)
+
+  lint = (revisionId: string) =>
+    this.request<LintResult>('GET', `/revisions/${revisionId}/lint`)
+
+  proposals = (appId: string, limit = 20, offset = 0) =>
+    this.request<Page<ProposalSummary>>('GET', `/applications/${appId}/proposals?limit=${limit}&offset=${offset}`)
+
+  proposalDetail = (appId: string, proposalId: string) =>
+    this.request<ProposalDetail>('GET', `/applications/${appId}/proposals/${proposalId}`)
+
+  approveProposal = (appId: string, proposalId: string, acknowledgeRisks = false) =>
+    this.request<ProposalSummary>('POST', `/applications/${appId}/proposals/${proposalId}/approve`, { acknowledge_risks: acknowledgeRisks })
+
+  rejectProposal = (appId: string, proposalId: string) =>
+    this.request<ProposalSummary>('POST', `/applications/${appId}/proposals/${proposalId}/reject`, {})
+
+  analyzeRequirements = (appId: string, text: string) =>
+    this.request<AnalysisResult>('POST', `/applications/${appId}/ai/analyze`, { text })
+
+  proposeModel = (appId: string, text: string) =>
+    this.request<ProposalSummary>('POST', `/applications/${appId}/ai/propose`, { text })
+
+  explainElement = (appId: string, elementId: string) =>
+    this.request<{ explanation: string }>('GET', `/applications/${appId}/ai/explain/${encodeURIComponent(elementId)}`)
+
+  planRequirements = (appId: string, text: string) =>
+    this.request<{ plan: string }>('POST', `/applications/${appId}/ai/plan`, { text })
+
+  createTestRun = (appId: string, revisionId: string) =>
+    this.request<TestRunResult>('POST', `/applications/${appId}/test-runs`, { revision_id: revisionId })
+
+  testRuns = (appId: string, limit = 20, offset = 0) =>
+    this.request<Page<TestRunResult>>('GET', `/applications/${appId}/test-runs?limit=${limit}&offset=${offset}`)
+
+  testRun = (appId: string, id: string) =>
+    this.request<TestRunResult>('GET', `/applications/${appId}/test-runs/${id}`)
+
+  repairTests = (appId: string, id: string) =>
+    this.request<TestRunResult>('POST', `/applications/${appId}/test-runs/${id}/repair`, {})
 }
