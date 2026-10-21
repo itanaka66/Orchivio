@@ -1,6 +1,7 @@
 import { useMemo, useState, type ReactNode } from 'react'
 import type { Application, ApiClient, Org, Project } from '../api/client'
 import { AppUsers } from './AppUsers'
+import { AuditLog } from './AuditLog'
 import { Branches } from './Branches'
 import { Delivery } from './Delivery'
 import { GitSync } from './GitSync'
@@ -9,9 +10,11 @@ import { Integrations } from './Integrations'
 import { Jobs } from './Jobs'
 import { Logs } from './Logs'
 import { McpServers } from './McpServers'
+import { Modules } from './Modules'
 import { Oidc } from './Oidc'
 import { Processes } from './Processes'
 import { Registry } from './Registry'
+import { Stories } from './Stories'
 import { TestRuns } from './TestRuns'
 import { Webhooks } from './Webhooks'
 
@@ -22,6 +25,8 @@ interface Section { key: string; label: string; group: 'Application' | 'Delivery
 
 export const SECTIONS: Section[] = [
   { key: 'branches', label: 'Branches', group: 'Application', min: 'editor', scope: 'app' },
+  { key: 'modules', label: 'Modules', group: 'Application', min: 'editor', scope: 'app' },
+  { key: 'stories', label: 'Stories & requirements', group: 'Application', min: 'editor', scope: 'app' },
   { key: 'delivery', label: 'Environments & deployment', group: 'Delivery', min: 'editor', scope: 'app' },
   { key: 'jobs', label: 'Jobs & schedules', group: 'Application', min: 'editor', scope: 'app' },
   { key: 'processes', label: 'Processes & tasks', group: 'Application', min: 'editor', scope: 'app' },
@@ -35,6 +40,7 @@ export const SECTIONS: Section[] = [
   { key: 'git', label: 'Git sync', group: 'Integrations', min: 'admin', scope: 'app' },
   { key: 'mcp', label: 'MCP servers', group: 'Organization', min: 'admin', scope: 'org' },
   { key: 'governance', label: 'Governance', group: 'Organization', min: 'admin', scope: 'org' },
+  { key: 'audit', label: 'Audit log', group: 'Organization', min: 'admin', scope: 'org' },
 ]
 
 /** Role names and process keys the model defines, for the pickers. */
@@ -64,6 +70,8 @@ export function AdminWorkspace({ client, org, project, application, model }: Pro
     const a = appId ?? ''
     body = {
       branches: <Branches client={client} appId={a} />,
+      modules: <Modules client={client} appId={a} model={model} canEdit={RANK[org.role]! >= RANK.editor!} />,
+      stories: <Stories client={client} projectId={project.id} />,
       delivery: <Delivery client={client} appId={a} currentRevisionId={application?.current_revision_id ?? null} />,
       jobs: <Jobs client={client} appId={a} roles={roles} />,
       processes: <Processes client={client} appId={a} processes={processes} />,
@@ -77,6 +85,7 @@ export function AdminWorkspace({ client, org, project, application, model }: Pro
       git: <GitSync client={client} appId={a} />,
       mcp: <McpServers client={client} orgId={org.id} />,
       governance: <Governance client={client} orgId={org.id} />,
+      audit: <AuditLog client={client} orgId={org.id} />,
     }[current.key] ?? body
   }
 
