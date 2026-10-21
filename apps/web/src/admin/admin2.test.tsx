@@ -313,7 +313,7 @@ describe('AdminWorkspace', () => {
   it('hides screens the role cannot use and the application screens when no application is chosen', () => {
     const keys = (role: string, hasApp: boolean) => visibleSections(role, hasApp).map((s) => s.key)
     expect(keys('viewer', true)).toEqual([])
-    expect(keys('editor', true)).toEqual(['branches', 'delivery', 'jobs', 'processes', 'logs', 'registry'])
+    expect(keys('editor', true)).toEqual(['branches', 'delivery', 'jobs', 'processes', 'tests', 'logs', 'registry'])
     expect(keys('admin', true)).toContain('webhooks')
     expect(keys('admin', false)).toEqual(['mcp', 'governance'])
   })

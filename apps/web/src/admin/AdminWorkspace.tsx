@@ -12,6 +12,7 @@ import { McpServers } from './McpServers'
 import { Oidc } from './Oidc'
 import { Processes } from './Processes'
 import { Registry } from './Registry'
+import { TestRuns } from './TestRuns'
 import { Webhooks } from './Webhooks'
 
 type Json = Record<string, unknown>
@@ -24,6 +25,7 @@ export const SECTIONS: Section[] = [
   { key: 'delivery', label: 'Environments & deployment', group: 'Delivery', min: 'editor', scope: 'app' },
   { key: 'jobs', label: 'Jobs & schedules', group: 'Application', min: 'editor', scope: 'app' },
   { key: 'processes', label: 'Processes & tasks', group: 'Application', min: 'editor', scope: 'app' },
+  { key: 'tests', label: 'Test runs', group: 'Application', min: 'editor', scope: 'app' },
   { key: 'logs', label: 'Logs', group: 'Application', min: 'editor', scope: 'app' },
   { key: 'users', label: 'Application users', group: 'Application', min: 'admin', scope: 'app' },
   { key: 'oidc', label: 'Single sign-on (OIDC)', group: 'Application', min: 'admin', scope: 'app' },
@@ -65,6 +67,7 @@ export function AdminWorkspace({ client, org, project, application, model }: Pro
       delivery: <Delivery client={client} appId={a} currentRevisionId={application?.current_revision_id ?? null} />,
       jobs: <Jobs client={client} appId={a} roles={roles} />,
       processes: <Processes client={client} appId={a} processes={processes} />,
+      tests: <TestRuns client={client} appId={a} revisionId={application?.current_revision_id ?? null} />,
       logs: <Logs client={client} appId={a} />,
       users: <AppUsers client={client} appId={a} roles={roles} />,
       oidc: <Oidc client={client} appId={a} roles={roles} />,
