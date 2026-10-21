@@ -17,7 +17,7 @@ import json
 import struct
 import uuid
 import zlib
-from functools import lru_cache
+from functools import cache, lru_cache
 from importlib import resources
 
 from fastapi import APIRouter, Depends, Response
@@ -33,7 +33,7 @@ _NO_CACHE = {"Cache-Control": "no-cache"}
 _ASSET = {"Cache-Control": "public, max-age=31536000, immutable"}
 
 
-@lru_cache(maxsize=None)
+@cache
 def asset(name: str) -> str:
     return (resources.files("orchivio.api") / "appshell_assets" / name).read_text(encoding="utf-8")
 
@@ -55,7 +55,7 @@ def theme(app_id: uuid.UUID) -> tuple[int, int, int]:
 
 
 def _hex(c: tuple[int, int, int]) -> str:
-    return "#%02x%02x%02x" % c
+    return "#{:02x}{:02x}{:02x}".format(*c)
 
 
 def png(size: int, bg: tuple[int, int, int]) -> bytes:

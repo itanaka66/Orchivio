@@ -19,11 +19,11 @@ from sqlalchemy import create_engine  # noqa: E402
 from test_app_auth import NEW_PW, ready_client  # noqa: E402
 from test_pages import paged  # noqa: E402
 from test_tenancy import make_org  # noqa: E402
-from tests_support import Api, alembic_config, load_yaml  # noqa: E402
 
 from orchivio.api import create_app  # noqa: E402
 from orchivio.api.settings import Settings  # noqa: E402
 from orchivio.db import make_engine  # noqa: E402
+from tests_support import Api, alembic_config, load_yaml  # noqa: E402
 
 
 def build():
