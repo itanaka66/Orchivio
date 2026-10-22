@@ -9,6 +9,7 @@ state update then loses a race; that is the one place where an effect can repeat
 
 from __future__ import annotations
 
+import logging
 import uuid
 from collections.abc import Callable
 from datetime import UTC, datetime
@@ -129,14 +130,19 @@ class ProcessService:
 
     def _save(self, inst: ProcessInstance, st: State) -> None:
         wake = st.next_wake_at
-        done = st.status in ("completed", "cancelled")
+        finished = st.status in ("completed", "cancelled")
+        terminal = finished or st.status == "failed"
         won = self.session.execute(update(ProcessInstance).where(ProcessInstance.id == inst.id, ProcessInstance.version == inst.version).values(
             state=st.to_json(), status=st.status, error=st.error, version=ProcessInstance.version + 1,
             next_wake_at=datetime.fromisoformat(wake) if wake and st.status == "running" else None,
-            finished_at=self.clock() if done else None)).rowcount
+            finished_at=self.clock() if finished else None)).rowcount
         if not won:
             raise ServiceError(409, "conflict", "the process was changed by someone else; reload and try again")
         self.session.expire(inst)
+        if terminal:
+            level = logging.INFO if finished else logging.WARNING
+            telemetry.applog(inst.application_id, level, "process", f"process {st.status}",
+                             event_type=f"process.{st.status}", process=inst.process, outcome=st.status)
 
     # -- starting --------------------------------------------------------------------------------
 
@@ -173,6 +179,8 @@ class ProcessService:
         st = Machine(model, mod, proc, _Hooks(self, inst, actor or initiator), self.clock).start(args, initiator)
         self._save(inst, st)
         self._audit(app, "process.started", initiator, {"process": inst.process, "instance": str(inst.id)})
+        telemetry.applog(app.id, logging.INFO, "process", "process started",
+                         event_type="process.started", process=inst.process, outcome=st.status)
         return inst
 
     # -- the inbox -------------------------------------------------------------------------------
