@@ -26,6 +26,7 @@ class Settings(BaseSettings):
     anthropic_api_key: SecretStr | None = None
 
     # Accounts and sessions
+    auto_migrate: bool = False  # run `alembic upgrade head` at startup (needs alembic.ini in cwd)
     allow_registration: bool = True
     session_ttl_hours: int = 12
     session_cookie_name: str = "orchivio_session"

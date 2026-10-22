@@ -1,6 +1,6 @@
 # Implementation Status
 
-Last updated: 2026-10-23 (FR-013/015 second approver for A3+ proposals; FR-029 cross-module enum expressions in interpreter; FR-064 status corrected to Done; FR-081 retries; FR-094/FR-097 contract migration endpoint; FR-111 admin reassignment). Statuses: **Done** (implemented and
+Last updated: 2026-10-23 (FR-013/015 second approver for A3+ proposals; FR-029 cross-module enum expressions in interpreter; FR-064 status corrected to Done; FR-081 retries; FR-094/FR-097 contract migration endpoint; FR-111 admin reassignment; bootstrap endpoint; auto-migrate setting). Statuses: **Done** (implemented and
 tested), **Library** (implemented as a tested library but not yet wired into a running
 service), **Schema** (data structures only), **Planned**.
 
@@ -117,10 +117,10 @@ Everything not listed is **Planned**.
 - Request-size limiting trusts `Content-Length`; enforce a body limit at the reverse proxy too.
 - The login throttle is per process; running several API replicas needs a shared store.
 - No email verification for platform (Studio) accounts; registration is open unless
-  `ORCHIVIO_ALLOW_REGISTRATION=false`. Password reset and TOTP MFA are supported. There is no first-user bootstrap other than registering.
+  `ORCHIVIO_ALLOW_REGISTRATION=false`. Password reset and TOTP MFA are supported. `POST /auth/bootstrap` creates the first user (and opens a session) when no users exist — safe to call with registration disabled.
 - Members can be invited by email (`POST /organizations/{id}/invitations`); the invite token is returned in `X-Invite-Token` for the caller to deliver.
 - Risky (A3+) proposals require a second approver (a different user) via a second `POST /proposals/{id}/approval` call; A0–A2 proposals still apply on the first approval.
-- Database migrations are not run automatically at start-up (`alembic upgrade head`).
+- Database migrations are not run automatically at start-up by default (`alembic upgrade head`); set `ORCHIVIO_AUTO_MIGRATE=true` to run them on each startup (requires `alembic.ini` in the working directory).
 - Expressions: no relationship traversal (`record.owner.name`), no object literals (see EXPRESSION-SPEC.md).
 - Application end-user accounts are local to each app (local accounts, OIDC, TOTP MFA, single logout); no SAML.
 - AI calls and test runs are synchronous inside the request; no job-queue offload yet.

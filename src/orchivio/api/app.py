@@ -68,6 +68,31 @@ def route_template(request: Request) -> str:
     return path
 
 
+def _auto_migrate(engine: Engine) -> None:
+    """Run ``alembic upgrade head`` programmatically (ORCHIVIO_AUTO_MIGRATE=true).
+
+    Looks for alembic.ini in the current working directory first, then relative to
+    this file (project root). Skips with a warning when neither is found.
+    """
+    from pathlib import Path
+
+    from alembic import command as alembic_command
+    from alembic.config import Config as AlembicConfig
+
+    ini = Path("alembic.ini")
+    if not ini.exists():
+        ini = Path(__file__).resolve().parents[3] / "alembic.ini"
+    if not ini.exists():
+        logger.warning("auto_migrate: alembic.ini not found; skipping (set cwd to project root or disable auto_migrate)")
+        return
+    cfg = AlembicConfig(str(ini))
+    cfg.attributes["configure_logger"] = False
+    with engine.connect() as conn:
+        cfg.attributes["connection"] = conn
+        alembic_command.upgrade(cfg, "head")
+    logger.info("auto_migrate: database schema is up to date")
+
+
 def create_app(
     settings: Settings | None = None,
     *,
@@ -83,11 +108,14 @@ def create_app(
         raise RuntimeError("ORCHIVIO_PREVIEW_DATABASE_URL must differ from ORCHIVIO_DATABASE_URL in prod")
     configure_logging(settings.log_json)
 
+    _db_engine = engine or make_engine(settings.database_url)
     if session_factory is None:
-        session_factory = make_session_factory(engine or make_engine(settings.database_url))
+        session_factory = make_session_factory(_db_engine)
 
     @asynccontextmanager
     async def lifespan(_: FastAPI) -> AsyncIterator[None]:
+        if settings.auto_migrate:
+            _auto_migrate(app.state.db_engine)
         stop, thread = threading.Event(), None
         if settings.worker_enabled:
             dispatcher = dispatcher_from_settings(settings, session_factory, app.state.preview_store.engine)
@@ -111,6 +139,7 @@ def create_app(
                   lifespan=lifespan)
     app.state.settings = settings
     app.state.telemetry = telemetry.setup(settings, version=__version__)
+    app.state.db_engine = _db_engine
     app.state.session_factory = session_factory
     app.state.preview_store = PreviewStore(preview_engine or make_engine(settings.preview_database_url))
     app.state.audit_sink = DbAuditSink(session_factory)

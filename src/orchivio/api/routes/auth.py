@@ -37,6 +37,29 @@ def _client_ip(request: Request) -> str:
     return request.client.host if request.client else "unknown"
 
 
+@router.post("/auth/bootstrap", status_code=201, response_model=LoginOut)
+def bootstrap(body: RegisterIn, request: Request, response: Response, db: Session = Depends(get_db)) -> LoginOut:
+    """Create the very first Studio user and open a session.
+
+    Fails with 409 when any user already exists. Use when
+    ``ORCHIVIO_ALLOW_REGISTRATION=false`` and the CLI (``orchivio user add``)
+    is not available. This endpoint is unauthenticated; its guard is the empty
+    users table.
+    """
+    if db.scalar(select(func.count()).select_from(User)):
+        raise api_error(409, "bootstrap_done", "a user already exists; use /auth/register or the CLI")
+    problem = password_problem(body.password)
+    if problem:
+        raise api_error(422, "weak_password", problem)
+    if db.scalar(select(User.id).where(func.lower(User.email) == body.email)):
+        raise api_error(409, "email_taken", "an account with this email already exists")
+    user = User(email=body.email, display_name=body.display_name, password_hash=hash_password(body.password))
+    db.add(user)
+    db.flush()
+    audit(db, request, "user.bootstrapped", actor_id=user.id, target_type="user", target_id=user.id)
+    return _create_session(user, request, response, db, request.app.state.settings)
+
+
 @router.post("/auth/register", status_code=201, response_model=UserOut)
 def register(body: RegisterIn, request: Request, db: Session = Depends(get_db)) -> User:
     if not request.app.state.settings.allow_registration:
