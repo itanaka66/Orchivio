@@ -32,7 +32,7 @@ interface AdminTarget { org: Org; project: Project; application?: Application; m
 interface PreviewTarget { application: Application; model: Json; roles: string[]; canEdit: boolean }
 interface PagesTarget { application: Application; model: Json; canEdit: boolean }
 interface ProcessTarget { application: Application; model: Json; canEdit: boolean }
-interface AITarget { application: Application; model: Json; canEdit: boolean }
+interface AITarget { application: Application; model: Json | null; canEdit: boolean }
 interface ReviewTarget { application: Application; canEdit: boolean }
 interface ModelTarget { application: Application; model: Json }
 interface DataTarget { application: Application; entity: string }
@@ -533,13 +533,15 @@ function Browser({ client, user, onOpen, onBoard, onPreview, onPages, onAdmin, o
           </button>
         </p>
       )}
-      {app && revision.data && (
+      {app && (
         <p>
-          <button type="button" onClick={() => onAI({ application: app, model: revision.data!.model_json, canEdit })}>Build with AI</button>
-          {' '}
+          {canEdit && (
+            <><button type="button" onClick={() => onAI({ application: app, model: revision.data?.model_json ?? null, canEdit })}>Build with AI</button>{' '}</>
+          )}
           <button type="button" onClick={() => onReview({ application: app, canEdit })}>Review proposals</button>
-          {' '}
-          <button type="button" onClick={() => onExplorer({ application: app, model: revision.data!.model_json })}>Browse model</button>
+          {revision.data && (
+            <>{' '}<button type="button" onClick={() => onExplorer({ application: app, model: revision.data!.model_json })}>Browse model</button></>
+          )}
         </p>
       )}
       {app && revision.data && canEdit && (
