@@ -251,19 +251,109 @@
   // --- feedback widget (FR-099) ------------------------------------------------------------------------------------------------------------------
 
   var feedbackOverlay = null
+  var feedbackPickData = { elementId: null, shot: null }
+
+  // Identify the element the user clicked during pick mode
+  function identifyElement(target) {
+    var node = target
+    while (node && node !== document.body) {
+      // Form field: find nearest <label> and read its text span
+      if (node.tagName === 'LABEL') {
+        var span = node.querySelector('span')
+        if (span && span.textContent) return 'field:' + span.textContent.trim().replace(/\s*\*$/, '')
+      }
+      // Button
+      if (node.tagName === 'BUTTON' && node.textContent) return 'button:' + node.textContent.trim().slice(0, 40)
+      // Table cell → find column header
+      if (node.tagName === 'TD') {
+        var table = node.closest('table')
+        if (table) {
+          var idx = node.cellIndex
+          var th = table.querySelector('thead tr th:nth-child(' + (idx + 1) + ')')
+          if (th) return 'column:' + th.textContent.trim()
+        }
+      }
+      node = node.parentElement
+    }
+    return (target.tagName || 'element').toLowerCase() + ':' + (target.textContent || '').trim().slice(0, 40)
+  }
+
+  function enterPickMode() {
+    document.body.style.cursor = 'crosshair'
+    var highlight = null
+    function onOver(ev) {
+      if (highlight) { highlight.style.outline = ''; highlight = null }
+      ev.target.style.outline = '2px solid #4a90e2'
+      highlight = ev.target
+    }
+    function onClick(ev) {
+      ev.preventDefault(); ev.stopPropagation()
+      if (highlight) { highlight.style.outline = ''; highlight = null }
+      document.body.style.cursor = ''
+      document.body.removeEventListener('mouseover', onOver)
+      document.body.removeEventListener('click', onClick, true)
+      document.removeEventListener('keydown', onKey)
+      feedbackPickData.elementId = identifyElement(ev.target)
+      showFeedbackModal()
+    }
+    function onKey(ev) {
+      if (ev.key !== 'Escape') return
+      if (highlight) { highlight.style.outline = ''; highlight = null }
+      document.body.style.cursor = ''
+      document.body.removeEventListener('mouseover', onOver)
+      document.body.removeEventListener('click', onClick, true)
+      document.removeEventListener('keydown', onKey)
+      showFeedbackModal()
+    }
+    document.body.addEventListener('mouseover', onOver)
+    document.body.addEventListener('click', onClick, true)
+    document.addEventListener('keydown', onKey)
+  }
+
+  function captureScreen() {
+    return navigator.mediaDevices.getDisplayMedia({ video: true }).then(function (stream) {
+      return new Promise(function (resolve, reject) {
+        var video = document.createElement('video')
+        video.srcObject = stream
+        video.onloadedmetadata = function () {
+          video.play()
+          var canvas = document.createElement('canvas')
+          canvas.width = video.videoWidth; canvas.height = video.videoHeight
+          canvas.getContext('2d').drawImage(video, 0, 0)
+          stream.getTracks().forEach(function (t) { t.stop() })
+          canvas.toBlob(function (blob) {
+            if (!blob) return reject(new Error('capture failed'))
+            var reader = new FileReader()
+            reader.onload = function () { resolve(reader.result) }
+            reader.onerror = reject
+            reader.readAsDataURL(blob)
+          }, 'image/png')
+        }
+        video.onerror = reject
+      })
+    })
+  }
 
   function showFeedbackModal() {
     if (feedbackOverlay) return
     var pageKey = currentPageKey || ''
     var ta = el('textarea', { rows: 4, placeholder: 'Describe what you noticed or suggest an improvement…', required: true })
     var status = show('')
+    var elemInfo = show(feedbackPickData.elementId ? ('Element: ' + feedbackPickData.elementId) : '', 'hint')
+    var shotInfo = show(feedbackPickData.shot ? 'Screenshot attached.' : '', 'hint')
+    var canCapture = !!(navigator.mediaDevices && navigator.mediaDevices.getDisplayMedia)
+
     var overlay = el('div', { role: 'dialog', 'aria-modal': 'true', 'aria-label': 'Send feedback',
       style: 'position:fixed;inset:0;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;z-index:9999;padding:16px' }, [
       el('form', { class: 'card', style: 'max-width:460px;width:100%', onsubmit: function (ev) {
         ev.preventDefault()
         var bodyText = ta.value.trim()
         if (!bodyText) return
-        call('POST', 'feedback', { page_key: pageKey || 'unknown', body: bodyText }).then(function () {
+        var payload = { page_key: pageKey || 'unknown', body: bodyText }
+        if (feedbackPickData.elementId) payload.element_id = feedbackPickData.elementId
+        if (feedbackPickData.shot) payload.screenshot_base64 = feedbackPickData.shot.split(',')[1] || feedbackPickData.shot
+        call('POST', 'feedback', payload).then(function () {
+          feedbackPickData.elementId = null; feedbackPickData.shot = null
           status.textContent = 'Thank you for your feedback!'
           status.className = 'hint'
           ta.value = ''
@@ -272,14 +362,27 @@
       } }, [
         el('h2', { text: 'Send feedback' }),
         el('label', {}, [el('span', { text: pageKey ? ('Page: ' + pageKey) : 'Feedback' }), ta]),
-        status,
-        el('div', { class: 'row' }, [
+        elemInfo, shotInfo, status,
+        el('div', { class: 'row', style: 'flex-wrap:wrap;gap:0.5rem' }, [
           el('button', { class: 'primary', type: 'submit', text: 'Send' }),
-          el('button', { type: 'button', text: 'Cancel', onclick: closeFeedbackModal }),
+          el('button', { type: 'button', text: 'Pick an element', onclick: function () {
+            closeFeedbackModal()
+            enterPickMode()
+          } }),
+          canCapture ? el('button', { type: 'button', text: 'Capture screen', onclick: function () {
+            closeFeedbackModal()
+            captureScreen().then(function (data) {
+              feedbackPickData.shot = data
+              showFeedbackModal()
+            }).catch(function () { showFeedbackModal() })
+          } }) : null,
+          el('button', { type: 'button', text: 'Cancel', onclick: function () {
+            feedbackPickData.elementId = null; feedbackPickData.shot = null; closeFeedbackModal()
+          } }),
         ]),
       ]),
     ])
-    overlay.addEventListener('click', function (ev) { if (ev.target === overlay) closeFeedbackModal() })
+    overlay.addEventListener('click', function (ev) { if (ev.target === overlay) { feedbackPickData.elementId = null; feedbackPickData.shot = null; closeFeedbackModal() } })
     document.body.appendChild(overlay)
     feedbackOverlay = overlay
     ta.focus()

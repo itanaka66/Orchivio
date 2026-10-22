@@ -2,8 +2,8 @@ import { useState } from 'react'
 import type { ApiClient } from '../api/client'
 
 type Json = Record<string, unknown>
-type StepType = 'start' | 'user_task' | 'system_task' | 'decision' | 'parallel_split' | 'parallel_join' | 'timer' | 'catch_message' | 'end'
-const STEP_TYPES: StepType[] = ['start', 'end', 'user_task', 'system_task', 'decision', 'parallel_split', 'parallel_join', 'timer', 'catch_message']
+type StepType = 'start' | 'user_task' | 'system_task' | 'call_process' | 'decision' | 'parallel_split' | 'parallel_join' | 'timer' | 'catch_message' | 'send_message' | 'end'
+const STEP_TYPES: StepType[] = ['start', 'end', 'user_task', 'system_task', 'call_process', 'decision', 'parallel_split', 'parallel_join', 'timer', 'catch_message', 'send_message']
 const FIELD_TYPES = ['string', 'integer', 'decimal', 'boolean'] as const
 const NO_CONFIG_TYPES: StepType[] = ['start', 'end', 'parallel_split', 'parallel_join']
 
@@ -25,7 +25,9 @@ function defaultConfig(t: StepType): Record<string, unknown> {
   if (t === 'timer') return { wait_seconds: 3600 }
   if (t === 'user_task') return { title: '', assignee_role: '', outcomes: ['approve', 'reject'] }
   if (t === 'system_task') return { flow: '', run_as_role: '', args: {} }
+  if (t === 'call_process') return { process: '', args: {} }
   if (t === 'catch_message') return { message: '' }
+  if (t === 'send_message') return { message_type: '', payload_expr: {}, target: 'broadcast' }
   return {}
 }
 
@@ -306,6 +308,30 @@ function StepConfig({ step, roles, flows, onChange }: { step: Step; roles: strin
     <label className="field"><span>Message name</span>
       <input value={String(c.message ?? '')} placeholder="request_approved"
         onChange={(e) => onChange({ ...c, message: e.target.value })} /></label>
+  )
+
+  if (step.type === 'call_process') return (
+    <>
+      <label className="field"><span>Process key</span>
+        <input required value={String(c.process ?? '')} placeholder="Approval" onChange={(e) => onChange({ ...c, process: e.target.value })} /></label>
+      <label className="field"><span>Args (JSON object)</span>
+        <input value={fmtArgs(c.args)} placeholder='{"amount": "data.amount"}'
+          onChange={(e) => onChange({ ...c, args: parseArgs(e.target.value) })} /></label>
+    </>
+  )
+
+  if (step.type === 'send_message') return (
+    <>
+      <label className="field"><span>Message type</span>
+        <input required value={String(c.message_type ?? '')} placeholder="request_approved"
+          onChange={(e) => onChange({ ...c, message_type: e.target.value })} /></label>
+      <label className="field"><span>Target</span>
+        <input value={String(c.target ?? 'broadcast')} placeholder="broadcast"
+          onChange={(e) => onChange({ ...c, target: e.target.value || 'broadcast' })} /></label>
+      <label className="field"><span>Payload expressions (JSON object)</span>
+        <input value={fmtArgs(c.payload_expr)} placeholder='{"ref": "data.id"}'
+          onChange={(e) => onChange({ ...c, payload_expr: parseArgs(e.target.value) })} /></label>
+    </>
   )
 
   if (step.type === 'system_task') return (
