@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+﻿import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   ApiError, type ApiClient, type FeedbackItem, type Requirement, type RequirementStatus, type Story, type StoryStatus,
   type TraceLink, type Traceability,
@@ -126,7 +126,7 @@ export function Board({ client, projectId, applicationId, elements, canEdit }: P
       {notice && <p role="status" className="hint">{notice}</p>}
       {savedAt !== null && <p role="status" className="sev-warning">You are looking at the copy saved {savedAt ? new Date(savedAt).toLocaleString() : 'earlier'}: the server cannot be reached. Your changes wait on this device and are sent when you are online; if someone else changed the same item you will be asked which version to keep.</p>}
       {off && !connected && <p className="hint">Offline: changes to requirements and stories wait on this device and are sent when you are back online.</p>}
-      {conflicts.length > 0 && <p role="alert" className="sev-warning">{conflicts.length} change{conflicts.length === 1 ? '' : 's'} could not be applied because someone else changed the item. Decide in “Offline work".</p>}
+      {conflicts.length > 0 && <p role="alert" className="sev-warning">{conflicts.length} change{conflicts.length === 1 ? '' : 's'} could not be applied because someone else changed the item. Decide in "Offline work".</p>}
       {tab === 'board' && <Columns stories={shownStories} requirements={shownRequirements} canEdit={editable} canCreate={canEdit} waiting={waiting.filter((w) => w.kind === 'story')}
         onAdd={(title) => create('story', title)}
         onMove={(s, status) => change('story', stories.find((x) => x.id === s.id) ?? s, { status, position: Math.max(0, ...stories.map((x) => x.position)) + 1 }, s.title)}
@@ -239,7 +239,7 @@ function Columns({ stories, requirements, canEdit, canCreate, waiting, onAdd, on
                     {canEdit && (
                       <div className="story-actions">
                         <button type="button" className="link" aria-label={`Edit story ${s.title}`} onClick={() => setEditing(s)}>Edit</button>
-                        <label><span className="sr-only">Move “{s.title}" to</span>
+                        <label><span className="sr-only">Move "{s.title}" to</span>
                           <select value={s.status} onChange={(e) => onMove(s, e.target.value as StoryStatus)}>
                             {COLUMNS.map((c) => <option key={c.status} value={c.status}>{c.title}</option>)}
                           </select>
@@ -279,7 +279,7 @@ function Requirements({ requirements, canEdit, canCreate, waiting, canExtract, o
             {r.body && <p className="hint">{r.body}</p>}
             {canEdit && (
               <div className="story-actions">
-                <label><span className="sr-only">Status of “{r.title}"</span>
+                <label><span className="sr-only">Status of "{r.title}"</span>
                   <select value={r.status} onChange={(e) => onStatus(r, e.target.value as RequirementStatus)}>
                     {REQUIREMENT_STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}
                   </select>

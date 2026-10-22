@@ -6,7 +6,9 @@ anywhere else (``current_principal`` only knows the Studio cookie and ``orv_`` t
 security planes apart (FR-060). Roles are read from the database on every request, so a change takes effect at
 once, and are intersected with the roles the current model defines.
 
-Data is served by the preview runtime for now: there is no separate production data plane yet.
+``_open()`` selects the highest-stage environment that has ``data_url`` (ProductionStore) and falls back to the
+preview store when no such environment exists (FR-030). Row-level security, field access and validation are
+enforced uniformly by the runtime service on every data and aggregate operation (FR-060–FR-063, FR-064).
 """
 
 from __future__ import annotations
