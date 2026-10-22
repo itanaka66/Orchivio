@@ -475,7 +475,19 @@ class FlowRunner:
         pk = held[info.pk.name]
         if t == "change":
             row = self.data.update_record(vt.name, actor, pk, self._values(run, sc, step, cfg.get("values")))
-            sc.values[name] = self.data.eval_record(vt.name, row, actor)
+            updated = self.data.eval_record(vt.name, row, actor)
+            sc.values[name] = updated
+            pk_field = info.pk.name
+            for var in list(sc.values):
+                if var == name:
+                    continue
+                val = sc.values[var]
+                if not isinstance(val, list):
+                    continue
+                lt = sc.types.get(var)
+                if lt is None or lt.elem is None or lt.elem.name != vt.name:
+                    continue
+                sc.values[var] = [updated if isinstance(item, dict) and item.get(pk_field) == pk else item for item in val]
             span.detail = f"updated {vt.name}"
         else:
             self.data.delete(vt.name, actor, pk)

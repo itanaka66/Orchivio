@@ -198,14 +198,14 @@ class FlowChecker:
                 return
             defs[name] = (step.id, t, scope)
 
-        ancestors = {s.id: self._ancestors(s.id) for s in f.steps}
+        dominators = self._dominators()
         order = self._topological()
         for sid in order:  # definitions are collected in graph order so later steps can use earlier ones
             step = self.steps[sid]
             cfg = step.config
             env = {n: t for n, t in params.items()}
             for vname, (dsid, t, scope) in defs.items():
-                visible = dsid in ancestors[sid] and (scope is None or sid in scope)
+                visible = dsid in dominators[sid] and (scope is None or sid in scope)
                 if visible:
                     env[vname] = t
             self._check_step(step, cfg, env, define)
@@ -263,6 +263,23 @@ class FlowChecker:
                     seen.add(p)
                     q.append(p)
         return seen
+
+    def _dominators(self) -> dict[str, set[str]]:
+        """For each step id, the set of step ids that dominate it (lie on every path from start).
+
+        A step A dominates step B when every path from start to B passes through A.
+        Variables defined at A are only visible at B when A dominates B; without that
+        guarantee the variable is unset on at least one path to B.
+        """
+        all_ids = {s.id for s in self.flow.steps}
+        dom: dict[str, set[str]] = {sid: set(all_ids) for sid in all_ids}
+        dom[self.start_id] = {self.start_id}
+        for sid in self._topological():
+            if sid == self.start_id:
+                continue
+            preds = self.pred[sid]
+            dom[sid] = ({sid} | set.intersection(*(dom[p] for p in preds))) if preds else {sid}
+        return dom
 
     def _topological(self) -> list[str]:
         indeg = {s.id: len(self.pred[s.id]) for s in self.flow.steps}
