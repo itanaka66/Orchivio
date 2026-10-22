@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import hmac
 import secrets
 from datetime import timedelta
 
@@ -15,6 +14,7 @@ from orchivio import telemetry
 from orchivio.auth import (
     DUMMY_HASH,
     hash_password,
+    hash_token,
     needs_rehash,
     new_token,
     password_problem,
@@ -234,3 +234,64 @@ def logout_all(request: Request, response: Response, principal: Principal = Depe
     response.delete_cookie(request.app.state.settings.session_cookie_name, path="/")
     response.status_code = 204
     return response
+
+
+# --- Password reset (FR-067) ------------------------------------------------------------------
+
+
+class PasswordResetRequestIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    email: str = Field(min_length=1, max_length=320)
+
+
+class PasswordResetConfirmIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    token: str = Field(min_length=1, max_length=200)
+    new_password: str = Field(min_length=1, max_length=200)
+
+
+@router.post("/auth/password-reset", status_code=204)
+def password_reset_request(body: PasswordResetRequestIn, request: Request, db: Session = Depends(get_db)) -> Response:
+    """Issue a password-reset token for a platform user.
+
+    Returns 204 regardless of whether the email exists (prevents enumeration).
+    The token is included in the ``X-Reset-Token`` response header — the caller
+    is responsible for delivering it to the user (e.g. via email).
+    Token expires in 1 hour and can only be used once.
+    """
+    user = db.scalar(select(User).where(func.lower(User.email) == body.email.lower()))
+    if user is None or user.status != "active" or user.password_hash is None:
+        return Response(status_code=204)
+    plain, tok_hash = new_token("prt_")
+    user.reset_token_hash = tok_hash
+    user.reset_token_expires_at = utcnow() + timedelta(hours=1)
+    audit(db, request, "auth.password_reset_request", actor_id=None, target_type="user", target_id=str(user.id))
+    db.commit()
+    return Response(status_code=204, headers={"X-Reset-Token": plain})
+
+
+@router.post("/auth/password-reset/confirm", status_code=204)
+def password_reset_confirm(body: PasswordResetConfirmIn, request: Request, db: Session = Depends(get_db)) -> Response:
+    """Consume a password-reset token and set a new password. Revokes all active sessions."""
+    tok_hash = hash_token(body.token)
+    now = utcnow()
+    user = db.scalar(
+        select(User).where(
+            User.reset_token_hash == tok_hash,
+            User.reset_token_expires_at > now,
+        )
+    )
+    if user is None:
+        raise api_error(400, "invalid_token", "token is invalid or expired")
+    problem = password_problem(body.new_password)
+    if problem:
+        raise api_error(422, "weak_password", problem)
+    user.password_hash = hash_password(body.new_password)
+    user.reset_token_hash = None
+    user.reset_token_expires_at = None
+    from sqlalchemy import update as _update
+    db.execute(_update(UserSession).where(UserSession.user_id == user.id, UserSession.revoked_at.is_(None))
+               .values(revoked_at=now))
+    audit(db, request, "auth.password_reset_confirm", actor_id=None, target_type="user", target_id=str(user.id))
+    db.commit()
+    return Response(status_code=204)

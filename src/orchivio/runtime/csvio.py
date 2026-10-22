@@ -219,7 +219,7 @@ def import_csv(data: AppData, entity: str, user: AppUser, content: bytes | str, 
                     existing = data.list(entity, user, filters={key_field: values[key_field]}, limit=2, offset=0)
                     matched = existing["items"]
                     if len(matched) > 1:
-                        errs = [{"field": key_field, "message": f"multiple rows match this key value"}]
+                        errs = [{"field": key_field, "message": "multiple rows match this key value"}]
                     elif len(matched) == 1:
                         pk_name = data._info(entity).pk.name
                         data.update(entity, user, matched[0][pk_name], values)

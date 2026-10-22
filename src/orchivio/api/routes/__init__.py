@@ -14,6 +14,7 @@ from . import (
     governance,
     inbound,
     integrations,
+    invitations,
     jobs,
     logs,
     mcp,
@@ -34,4 +35,4 @@ from . import (
 )
 
 ALL = (auth, orgs, projects, proposals, ai, preview, testruns, tokens, tools, mcp, jobs, delivery, governance, appusers, appauth, appshell, webhooks, csvdata,
-       inbound, integrations, mcpservers, processes, tasks, pages, oidc, logs, agile, git_sync, registry, branches)
+       inbound, integrations, invitations, mcpservers, processes, tasks, pages, oidc, logs, agile, git_sync, registry, branches)

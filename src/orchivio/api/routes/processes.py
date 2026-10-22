@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import statistics
 import uuid
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
 from typing import Any
 
 from fastapi import APIRouter, Depends, Header, Query, Request
@@ -19,6 +19,7 @@ from orchivio.process.service import aware
 
 from ..deps import (
     Principal,
+    api_error,
     current_principal,
     get_db,
     load_application,
@@ -256,7 +257,7 @@ def analytics_throughput(app_id: uuid.UUID,
             q = q.where(ProcessInstance.started_at <= datetime.fromisoformat(to).replace(tzinfo=UTC))
     except ValueError as e:
         from ..deps import api_error
-        raise api_error(422, "invalid_date", str(e))
+        raise api_error(422, "invalid_date", str(e)) from e
     rows = db.execute(q).all()
     bucket_secs = {"hour": 3600, "day": 86400, "week": 604800}[bucket]
 
@@ -385,6 +386,7 @@ def broadcast_message(app_id: uuid.UUID, message_type: str, body: BroadcastIn, r
         raise api_error(422, "invalid_message_type", "message_type must be 1-100 characters")
     app, _ = load_application(db, principal, app_id, "model.read")
     from sqlalchemy import select as _select
+
     from orchivio.db.models import ProcessInstance as _PI
     waiters = db.scalars(_select(_PI).where(_PI.application_id == app_id, _PI.status == "running")).all()
     signaled = 0

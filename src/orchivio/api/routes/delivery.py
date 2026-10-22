@@ -27,7 +27,14 @@ from orchivio.db.models import (
     PackageDeployment,
     TestRun,
 )
-from orchivio.delivery import PackageError, build_package, public_key_of, run_contract, run_expand, verify_package
+from orchivio.delivery import (
+    PackageError,
+    build_package,
+    public_key_of,
+    run_contract,
+    run_expand,
+    verify_package,
+)
 from orchivio.delivery.package import VerifiedPackage
 from orchivio.runtime import table_prefix
 from orchivio.runtime.production import ProductionStore

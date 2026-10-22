@@ -71,7 +71,6 @@ class _Hooks(Hooks):
 
     def send_message(self, message_type: str, payload: dict[str, Any], target: str) -> None:
         """Broadcast a message to all running instances of this app waiting for message_type (FR-110)."""
-        from sqlalchemy import func as _func
         waiters = self.svc.session.scalars(
             select(ProcessInstance).where(
                 ProcessInstance.application_id == self.inst.application_id,

@@ -12,7 +12,14 @@ from sqlalchemy.orm import Session
 from orchivio.db import BranchError, MergeOutcome, NotFound, RevisionRepository
 from orchivio.db.models import Branch
 
-from ..deps import Principal, api_error, authorize, current_principal, get_db, load_application, not_found, utcnow
+from ..deps import (
+    Principal,
+    api_error,
+    current_principal,
+    get_db,
+    load_application,
+    not_found,
+)
 from ..idempotency import IdempotentRoute
 
 router = APIRouter(tags=["branches"], route_class=IdempotentRoute)
@@ -99,7 +106,7 @@ def create_branch(app_id: uuid.UUID, body: BranchIn, principal: Principal = Depe
     except BranchError as e:
         _branch_fail(e)
     except NotFound:
-        raise not_found("revision")
+        raise not_found("revision") from None
     return _branch_out(branch)
 
 
@@ -143,7 +150,7 @@ def merge_branch(branch_id: uuid.UUID, body: MergeIn, principal: Principal = Dep
     except BranchError as e:
         _branch_fail(e)
     except NotFound:
-        raise not_found("branch")
+        raise not_found("branch") from None
 
     if outcome.status in ("conflicts", "invalid") and outcome.conflicts:
         raise api_error(409, "merge_conflicts", "resolve conflicts before merging",
