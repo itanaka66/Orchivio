@@ -12,6 +12,7 @@ from .base import (
     Usage,
 )
 from .mock import MockProvider
+from .openai_compat import OllamaProvider
 from .validated import StructuredOutputError, Validated, generate_validated
 
 __all__ = [
@@ -24,6 +25,7 @@ __all__ = [
     "LLMTimeout",
     "Message",
     "MockProvider",
+    "OllamaProvider",
     "StructuredOutputError",
     "Usage",
     "Validated",
