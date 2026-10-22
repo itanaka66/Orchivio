@@ -1,6 +1,6 @@
 # Implementation Status
 
-Last updated: 2026-10-23 (FR-013/015 second approver for A3+ proposals; FR-029 cross-module enum expressions in interpreter; FR-064 status corrected to Done; FR-081 retries; FR-094/FR-097 contract migration endpoint; FR-111 admin reassignment; bootstrap endpoint; auto-migrate setting; change-step list refresh; strict dominator-based flow variable scoping). Statuses: **Done** (implemented and
+Last updated: 2026-10-23 (FR-013/015 second approver for A3+ proposals; FR-029 cross-module enum expressions in interpreter; FR-064 status corrected to Done; FR-081 retries; FR-094/FR-097 contract migration endpoint; FR-111 admin reassignment; bootstrap endpoint; auto-migrate setting; change-step list refresh; strict dominator-based flow variable scoping; CSRF token moved to localStorage — new tabs no longer need re-login). Statuses: **Done** (implemented and
 tested), **Library** (implemented as a tested library but not yet wired into a running
 service), **Schema** (data structures only), **Planned**.
 
@@ -108,8 +108,6 @@ Everything not listed is **Planned**.
 
 - Flow runs and hooks work in the preview only; `after_*` hooks and flows run synchronously in the request.
 - The web Studio has the flow builder, story board, preview and administration screens (apps/web/README.md); the administration screens are tested with a fake API, not against a running server; mouse dragging, zoom and canvas rendering are untested in a browser, and no screen-reader testing was done (apps/web/README.md).
-- The CSRF token lives in `sessionStorage`; a new tab needs a new login.
-
 - Request-size limiting trusts `Content-Length`; enforce a body limit at the reverse proxy too.
 - The login throttle is per process; running several API replicas needs a shared store.
 - No email verification for platform (Studio) accounts; registration is open unless

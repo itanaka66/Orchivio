@@ -60,7 +60,7 @@ export class ApiClient {
     private readonly base = '/api/v1',
     private readonly doFetch: typeof fetch = (...args) => fetch(...args),
     private readonly storage: Pick<Storage, 'getItem' | 'setItem' | 'removeItem'> | null =
-      typeof sessionStorage === 'undefined' ? null : sessionStorage,
+      typeof localStorage === 'undefined' ? null : localStorage,
   ) {
     this.csrf = storage?.getItem(CSRF_KEY) ?? null
   }
