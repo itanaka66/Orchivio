@@ -105,6 +105,12 @@ class MigrationRunIn(BaseModel):
     acknowledge_risks: bool = False  # required when phase=contract
 
 
+class ContractIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    dry_run: bool = False
+    acknowledge_risks: bool = False  # required for non-dry-run
+
+
 def _iso(d):
     return d.isoformat() if d else None
 
@@ -124,7 +130,7 @@ def deployment_out(d: PackageDeployment) -> dict[str, Any]:
     return {"id": str(d.id), "environment_id": str(d.environment_id), "package_id": str(d.package_id), "status": d.status,
             "requested_by": str(d.requested_by) if d.requested_by else None, "decided_by": str(d.decided_by) if d.decided_by else None,
             "comment": d.comment, "risks_acknowledged": d.risks_acknowledged, "created_at": _iso(d.created_at),
-            "decided_at": _iso(d.decided_at)}
+            "decided_at": _iso(d.decided_at), "contract_applied_at": _iso(d.contract_applied_at)}
 
 
 # --- keys and artifacts ------------------------------------------------------------------------
@@ -587,3 +593,52 @@ def run_migration(package_id: uuid.UUID, body: MigrationRunIn, request: Request,
           meta={"ops_count": len(applied), "dry_run": body.dry_run})
     db.commit()
     return {"applied": applied, "dry_run": body.dry_run, "phase": body.phase, "ops_count": len(applied)}
+
+
+@router.post("/deployments/{deployment_id}/contract")
+def run_deployment_contract(deployment_id: uuid.UUID, body: ContractIn, request: Request,
+                            principal: Principal = Depends(current_principal),
+                            db: Session = Depends(get_db)) -> dict[str, Any]:
+    """Apply the contract phase of a deployed package's migration plan (FR-097).
+
+    Must be called after all replicas serve the new code. Drops old columns and tables
+    whose data has already been migrated during the expand phase. Requires
+    ``acknowledge_risks=true`` for a real run (pass ``dry_run=true`` to preview).
+
+    Records ``contract_applied_at`` on the deployment once the operations complete.
+    """
+    dep = db.get(PackageDeployment, deployment_id)
+    if dep is None:
+        raise not_found("deployment")
+    env, app, project = _load_env(db, principal, dep.environment_id, "delivery.manage")
+    if dep.status != "deployed":
+        raise api_error(409, "not_deployed", "contract phase can only run on a live deployment")
+    pkg = db.get(DeploymentPackage, dep.package_id)
+    if pkg is None:
+        raise not_found("package")
+    v = _verified(request, pkg)
+    steps: list[dict[str, Any]] = v.migration_plan.get("steps", [])
+    contract_steps = [s for s in steps if s.get("phase") == "contract"]
+    if not contract_steps:
+        return {"applied": [], "dry_run": body.dry_run, "ops_count": 0, "deployment_id": str(dep.id)}
+    if not body.dry_run and not body.acknowledge_risks:
+        raise api_error(409, "approval_required",
+                        "contract migrations drop or narrow data; resend with acknowledge_risks=true",
+                        {"destructive_steps": contract_steps})
+    prefix = table_prefix(app.id)
+    applied: list[str]
+    if body.dry_run:
+        applied = [f"{s['op']} {s['target']}" for s in contract_steps]
+    else:
+        if not env.data_url:
+            raise api_error(409, "no_production_db",
+                            "this environment has no data_url; contract migrations only apply to a production database")
+        engine = ProductionStore(env.data_url).engine
+        with engine.begin() as conn:
+            applied = run_contract(conn, steps, prefix)
+        dep.contract_applied_at = utcnow()
+    audit(db, request, f"migration.contract_{'dry_run' if body.dry_run else 'applied'}",
+          actor_id=principal.user_id, org_id=project.organization_id, target_type="deployment", target_id=dep.id,
+          meta={"ops_count": len(applied), "dry_run": body.dry_run, "environment": env.name})
+    db.commit()
+    return {"applied": applied, "dry_run": body.dry_run, "ops_count": len(applied), "deployment_id": str(dep.id)}

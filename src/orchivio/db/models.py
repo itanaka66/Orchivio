@@ -784,6 +784,7 @@ class PackageDeployment(Base):
     risks_acknowledged: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    contract_applied_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
 class AppUser(Base):
