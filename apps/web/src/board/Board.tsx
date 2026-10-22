@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+﻿import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   ApiError, type ApiClient, type FeedbackItem, type Requirement, type RequirementStatus, type Story, type StoryStatus,
   type TraceLink, type Traceability,
@@ -126,7 +126,7 @@ export function Board({ client, projectId, applicationId, elements, canEdit }: P
       {notice && <p role="status" className="hint">{notice}</p>}
       {savedAt !== null && <p role="status" className="sev-warning">You are looking at the copy saved {savedAt ? new Date(savedAt).toLocaleString() : 'earlier'}: the server cannot be reached. Your changes wait on this device and are sent when you are online; if someone else changed the same item you will be asked which version to keep.</p>}
       {off && !connected && <p className="hint">Offline: changes to requirements and stories wait on this device and are sent when you are back online.</p>}
-      {conflicts.length > 0 && <p role="alert" className="sev-warning">{conflicts.length} change{conflicts.length === 1 ? '' : 's'} could not be applied because someone else changed the item. Decide in “Offline work”.</p>}
+      {conflicts.length > 0 && <p role="alert" className="sev-warning">{conflicts.length} change{conflicts.length === 1 ? '' : 's'} could not be applied because someone else changed the item. Decide in "Offline work".</p>}
       {tab === 'board' && <Columns stories={shownStories} requirements={shownRequirements} canEdit={editable} canCreate={canEdit} waiting={waiting.filter((w) => w.kind === 'story')}
         onAdd={(title) => create('story', title)}
         onMove={(s, status) => change('story', stories.find((x) => x.id === s.id) ?? s, { status, position: Math.max(0, ...stories.map((x) => x.position)) + 1 }, s.title)}
@@ -169,7 +169,7 @@ function StoryEditor({ story, onSave, onClose }: {
   const [acceptance, setAcceptance] = useState(story.acceptance ?? '')
   const dirty = title !== story.title || body !== (story.body ?? '') || acceptance !== (story.acceptance ?? '')
   return (
-    <form role=”dialog” aria-label=”Edit story” className=”card story-editor” onSubmit={(e) => {
+    <form role="dialog" aria-label="Edit story" className="card story-editor" onSubmit={(e) => {
       e.preventDefault()
       const patch: Partial<Pick<Story, 'title' | 'body' | 'acceptance'>> = {}
       if (title !== story.title) patch.title = title
@@ -179,18 +179,18 @@ function StoryEditor({ story, onSave, onClose }: {
       onClose()
     }}>
       <h3>Edit story</h3>
-      <label className=”field”><span>Title</span>
+      <label className="field"><span>Title</span>
         <input required maxLength={300} value={title} onChange={(e) => setTitle(e.target.value)} />
       </label>
-      <label className=”field”><span>User story</span>
-        <textarea rows={4} maxLength={10000} placeholder=”As a … I want … so that …” value={body} onChange={(e) => setBody(e.target.value)} />
+      <label className="field"><span>User story</span>
+        <textarea rows={4} maxLength={10000} placeholder="As a … I want … so that …" value={body} onChange={(e) => setBody(e.target.value)} />
       </label>
-      <label className=”field”><span>Acceptance criteria</span>
-        <textarea rows={4} maxLength={10000} placeholder=”Given … when … then …” value={acceptance} onChange={(e) => setAcceptance(e.target.value)} />
+      <label className="field"><span>Acceptance criteria</span>
+        <textarea rows={4} maxLength={10000} placeholder="Given … when … then …" value={acceptance} onChange={(e) => setAcceptance(e.target.value)} />
       </label>
-      <div className=”toolbar”>
-        <button type=”submit” className=”primary” disabled={!dirty || !title.trim()}>Save</button>
-        <button type=”button” onClick={onClose}>Cancel</button>
+      <div className="toolbar">
+        <button type="submit" className="primary" disabled={!dirty || !title.trim()}>Save</button>
+        <button type="button" onClick={onClose}>Cancel</button>
       </div>
     </form>
   )
@@ -208,47 +208,47 @@ function Columns({ stories, requirements, canEdit, canCreate, waiting, onAdd, on
   return (
     <>
       {canCreate && (
-        <form className=”inline” onSubmit={(e) => { e.preventDefault(); if (title.trim()) { onAdd(title.trim()); setTitle('') } }}>
-          <label className=”field”><span>New story</span><input value={title} maxLength={300} onChange={(e) => setTitle(e.target.value)} placeholder=”As a clerk I want …” /></label>
-          <button type=”submit” disabled={!title.trim()}>Add story</button>
+        <form className="inline" onSubmit={(e) => { e.preventDefault(); if (title.trim()) { onAdd(title.trim()); setTitle('') } }}>
+          <label className="field"><span>New story</span><input value={title} maxLength={300} onChange={(e) => setTitle(e.target.value)} placeholder="As a clerk I want …" /></label>
+          <button type="submit" disabled={!title.trim()}>Add story</button>
         </form>
       )}
-      <WaitingList items={waiting} what=”Stories” />
+      <WaitingList items={waiting} what="Stories" />
       {editing && (
         <StoryEditor story={editing} onSave={(patch) => onEdit(editing, patch)} onClose={() => setEditing(null)} />
       )}
-      <div className=”columns”>
+      <div className="columns">
         {COLUMNS.map((col) => {
           const here = stories.filter((s) => s.status === col.status)
           return (
-            <section key={col.status} className=”column” aria-label={col.title}
+            <section key={col.status} className="column" aria-label={col.title}
               onDragOver={(e) => { if (canEdit) e.preventDefault() }}
               onDrop={(e) => {
                 const id = e.dataTransfer.getData('text/plain')
                 const s = stories.find((x) => x.id === id)
                 if (canEdit && s && s.status !== col.status) onMove(s, col.status)
               }}>
-              <h3>{col.title} <span className=”count”>{here.length}</span></h3>
-              <ul className=”list”>
+              <h3>{col.title} <span className="count">{here.length}</span></h3>
+              <ul className="list">
                 {here.map((s) => (
-                  <li key={s.id} className=”story” draggable={canEdit} onDragStart={(e) => e.dataTransfer.setData('text/plain', s.id)}>
-                    <button type=”button” className=”link story-title” onClick={() => setEditing(s)}><strong>{s.title}</strong></button>
-                    {s.body && <p className=”story-body hint”>{s.body.slice(0, 120)}{s.body.length > 120 ? '…' : ''}</p>}
-                    {s.requirement_id && <small className=”hint”> · {reqTitle.get(s.requirement_id) ?? 'requirement'}</small>}
-                    {s.source !== 'manual' && <small className=”badge badge-warning”>{s.source}</small>}
+                  <li key={s.id} className="story" draggable={canEdit} onDragStart={(e) => e.dataTransfer.setData('text/plain', s.id)}>
+                    <button type="button" className="link story-title" onClick={() => setEditing(s)}><strong>{s.title}</strong></button>
+                    {s.body && <p className="story-body hint">{s.body.slice(0, 120)}{s.body.length > 120 ? '…' : ''}</p>}
+                    {s.requirement_id && <small className="hint"> · {reqTitle.get(s.requirement_id) ?? 'requirement'}</small>}
+                    {s.source !== 'manual' && <small className="badge badge-warning">{s.source}</small>}
                     {canEdit && (
-                      <div className=”story-actions”>
-                        <button type=”button” className=”link” aria-label={`Edit story ${s.title}`} onClick={() => setEditing(s)}>Edit</button>
-                        <label><span className=”sr-only”>Move “{s.title}” to</span>
+                      <div className="story-actions">
+                        <button type="button" className="link" aria-label={`Edit story ${s.title}`} onClick={() => setEditing(s)}>Edit</button>
+                        <label><span className="sr-only">Move "{s.title}" to</span>
                           <select value={s.status} onChange={(e) => onMove(s, e.target.value as StoryStatus)}>
                             {COLUMNS.map((c) => <option key={c.status} value={c.status}>{c.title}</option>)}
                           </select>
                         </label>
-                        <button type=”button” className=”link” aria-label={`Delete story ${s.title}`} onClick={() => onDelete(s)}>Delete</button>
+                        <button type="button" className="link" aria-label={`Delete story ${s.title}`} onClick={() => onDelete(s)}>Delete</button>
                       </div>
                     )}
                     {!canEdit && s.acceptance && (
-                      <details className=”story-acceptance”><summary className=”hint”>Acceptance criteria</summary><p>{s.acceptance}</p></details>
+                      <details className="story-acceptance"><summary className="hint">Acceptance criteria</summary><p>{s.acceptance}</p></details>
                     )}
                   </li>
                 ))}
@@ -279,7 +279,7 @@ function Requirements({ requirements, canEdit, canCreate, waiting, canExtract, o
             {r.body && <p className="hint">{r.body}</p>}
             {canEdit && (
               <div className="story-actions">
-                <label><span className="sr-only">Status of “{r.title}”</span>
+                <label><span className="sr-only">Status of "{r.title}"</span>
                   <select value={r.status} onChange={(e) => onStatus(r, e.target.value as RequirementStatus)}>
                     {REQUIREMENT_STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}
                   </select>
