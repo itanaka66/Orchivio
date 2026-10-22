@@ -467,33 +467,122 @@ def _requires_of(db: Session, row: RegistryInstall) -> list[dict[str, str]]:
 
 
 def _resolve(request: Request, db: Session, principal: Principal, ref: str, spec: str):
-    """The install order (dependencies first) for ``ref`` at ``spec``: ``(chosen, order, root_ref)``. One version per package; a second request
-    that the chosen version does not satisfy, or a cycle, is a conflict (no backtracking)."""
+    """The install order (dependencies first) for ``ref`` at ``spec``: ``(chosen, order, root_ref)``.
+
+    Uses backtracking: when a version conflict occurs the resolver tries progressively older
+    versions of the package whose dependency caused the conflict rather than failing immediately.
+    Candidates are tried newest-first; at most 10 candidates per package are examined to keep
+    worst-case cost bounded.  A genuine cycle is still a hard error.
+    """
+    mine = _member_orgs(db, principal)
+    _org_slug_cache: dict[uuid.UUID, str] = {}
+    _ver_cache: dict[str, Any] = {}  # artifact_key -> verified
+
+    def _slug(org_id: uuid.UUID) -> str:
+        if org_id not in _org_slug_cache:
+            org_obj = db.get(Organization, org_id)
+            _org_slug_cache[org_id] = org_obj.slug if org_obj else ""
+        return _org_slug_cache[org_id]
+
+    def _ver(entry: RegistryEntry) -> Any:
+        if entry.artifact_key not in _ver_cache:
+            _ver_cache[entry.artifact_key] = _verified(request, entry)
+        return _ver_cache[entry.artifact_key]
+
+    def _candidates(pref: str, pspec: str) -> tuple[str, list[RegistryEntry]]:
+        """Return (norm_key, candidates_newest_first) or raise api_error."""
+        m = REF.match(pref)
+        if not m:
+            raise api_error(422, "invalid_package", f"use <organization-slug>/<name> (got '{pref}')")
+        org = db.scalar(select(Organization).where(Organization.slug == m.group(1)))
+        rows = list(db.scalars(select(RegistryEntry).where(
+            RegistryEntry.organization_id == org.id, RegistryEntry.name == m.group(2),
+        ))) if org else []
+        rows = [r for r in rows if _readable(db, principal, r, mine) and r.yanked_at is None and r.kind == "module"]
+        if not rows:
+            raise api_error(404, "package_not_found", f"no readable module versions for '{pref}'")
+        norm_key = f"{m.group(1)}/{m.group(2)}"
+        live = {r.version: r for r in rows}
+        s = pspec.strip()
+        try:
+            if s[:1].isdigit():
+                v_str = str(Version.parse(s))
+                cands: list[RegistryEntry] = [live[v_str]] if v_str in live else []
+            elif s in ("latest", "*"):
+                best_v = max(live, key=lambda v: Version.parse(v))
+                cands = [live[best_v]]
+            else:
+                cands = sorted(
+                    [r for r in live.values() if satisfies(Version.parse(r.version), s)],
+                    key=lambda r: Version.parse(r.version), reverse=True,
+                )
+        except VersionError as e:
+            raise api_error(422, "invalid_version", str(e)) from e
+        if not cands:
+            raise api_error(404, "no_matching_version",
+                          f"no version of '{pref}' matches '{pspec}'", {"available": sorted(live)})
+        return norm_key, cands[:10]  # cap to bound backtracking cost
+
+    def _ver_satisfies(ver_str: str, pspec: str) -> bool:
+        s = pspec.strip()
+        try:
+            v = Version.parse(ver_str)
+            return satisfies(v, s) if s[:1] in "^~>*l" else str(v) == str(Version.parse(s))
+        except VersionError:
+            return True  # malformed spec: do not reject
+
+    def _solve(
+        pref: str, pspec: str, parent_key: str | None,
+        chosen: dict[str, tuple[RegistryEntry, Any, str | None, list[str]]],
+        order: list[str],
+        path: list[str],
+    ) -> tuple[bool, str]:
+        """Try to resolve pref@pspec. Returns (success, norm_key).
+        On success chosen and order are updated; on failure they are restored."""
+        norm_key, cands = _candidates(pref, pspec)
+
+        if norm_key in path:
+            raise api_error(409, "dependency_cycle",
+                          "packages depend on each other: " + " -> ".join(path + [norm_key]))
+
+        if norm_key in chosen:
+            # Already resolved by another branch — check the existing version satisfies this spec too.
+            if not _ver_satisfies(chosen[norm_key][0].version, pspec):
+                return False, norm_key  # caller must try a different version of itself
+            chosen[norm_key][3].append(pspec)
+            return True, norm_key
+
+        child_path = path + [norm_key]
+        for entry in cands:
+            v = _ver(entry)
+            # Snapshot for rollback in case this candidate's subtree conflicts.
+            snap_chosen = {k: (e, vv, p, list(ss)) for k, (e, vv, p, ss) in chosen.items()}
+            snap_order = list(order)
+            all_ok = True
+            for req in v.manifest.get("requires", []):
+                ok, _ = _solve(req["package"], req.get("range", "latest"), norm_key, chosen, order, child_path)
+                if not ok:
+                    all_ok = False
+                    break
+            if all_ok:
+                chosen[norm_key] = (entry, v, parent_key, [pspec])
+                order.append(norm_key)
+                return True, norm_key
+            # Rollback and try next candidate.
+            chosen.clear()
+            chosen.update(snap_chosen)
+            order.clear()
+            order.extend(snap_order)
+
+        return False, norm_key  # no candidate worked for this package
+
     chosen: dict[str, tuple[RegistryEntry, Any, str | None, list[str]]] = {}
     order: list[str] = []
-    visiting: list[str] = []
-
-    def visit(pref: str, pspec: str, parent: str | None) -> str:
-        entry, slug = _find(db, principal, pref, pspec, kind="module")
-        key = f"{slug}/{entry.name}"
-        if key in chosen:
-            if not satisfies(Version.parse(chosen[key][0].version), pspec if pspec[:1] in "^~>*l" else pspec):
-                raise api_error(409, "dependency_conflict", f"'{key}' is needed at {pspec} by '{parent}' but {chosen[key][0].version} was already selected",
-                                {"package": key, "selected": chosen[key][0].version, "wanted": pspec, "by": parent})
-            chosen[key][3].append(pspec)
-            return key
-        if key in visiting:
-            raise api_error(409, "dependency_cycle", "the packages depend on each other: " + " -> ".join([*visiting, key]))
-        visiting.append(key)
-        verified = _verified(request, entry)
-        for req in verified.manifest.get("requires", []):
-            visit(req["package"], req.get("range", "latest"), key)
-        visiting.pop()
-        chosen[key] = (entry, verified, parent, [pspec])
-        order.append(key)
-        return key
-
-    root = visit(ref, spec, None)
+    ok, root = _solve(ref, spec, None, chosen, order, [])
+    if not ok:
+        raise api_error(409, "dependency_conflict",
+                      f"no version combination of '{ref}' and its dependencies satisfies all constraints",
+                      {"package": ref, "spec": spec})
     return chosen, order, root
 
 
