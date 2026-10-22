@@ -142,10 +142,12 @@ class FlowRunner:
     def __init__(self, model: AppModel, data: AppData, *, limits: Limits = DEFAULT_LIMITS,
                  clock: Callable[[], datetime] = lambda: datetime.now(UTC),
                  constants: Mapping[str, Any] | None = None,
-                 breakpoints: frozenset[str] = frozenset()) -> None:
+                 breakpoints: frozenset[str] = frozenset(),
+                 step_hook: Callable[[str, dict[str, Any]], None] | None = None) -> None:
         self.model, self.data, self.limits, self.clock = model, data, limits, clock
         self.constants: dict[str, Any] = dict(constants) if constants else {}
         self.breakpoints = breakpoints
+        self.step_hook = step_hook
         self.schema = data.schema
         self.flows: dict[str, tuple[ModuleDef, FlowDef]] = {
             f"{m.key}.{f.key}": (m, f) for m in model.modules for f in m.flows
@@ -261,7 +263,10 @@ class FlowRunner:
             finally:
                 span.ms = round((time.perf_counter() - t0) * 1000, 3)
             if step.id in self.breakpoints:
-                span.detail = json.dumps({"vars": sc.values, "detail": span.detail or None}, default=str)
+                snap = dict(sc.values)
+                span.detail = json.dumps({"vars": snap, "detail": span.detail or None}, default=str)
+                if self.step_hook is not None:
+                    self.step_hook(step.id, snap)
             if nxt == END:
                 return END
             step_id = nxt

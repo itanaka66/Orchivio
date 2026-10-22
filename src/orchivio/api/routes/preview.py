@@ -9,10 +9,14 @@ grants rights inside the simulated application, which are decided by the model's
 from __future__ import annotations
 
 import base64
+import json
+import threading
+import time
 import uuid
+from dataclasses import dataclass, field as dc_field
 from typing import Any
 
-from fastapi import APIRouter, Depends, Header, Query, Request
+from fastapi import APIRouter, Depends, Header, Query, Request, Response
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -33,6 +37,90 @@ from orchivio.runtime import (
 from ..deps import Principal, api_error, audit, current_principal, get_db, load_application
 
 router = APIRouter(tags=["preview"])
+
+# --- live debug sessions (FR-057) -----------------------------------------------------------
+_MAX_SESSIONS = 50
+_PAUSE_TIMEOUT = 300.0  # seconds before a paused session auto-aborts
+
+
+@dataclass
+class _DebugSession:
+    sid: str
+    state: str = "running"  # running | paused | done | error
+    paused_at: str | None = None
+    vars: dict = dc_field(default_factory=dict)
+    result: dict | None = None
+    error: str | None = None
+    resume_event: threading.Event = dc_field(default_factory=threading.Event)
+    abort_event: threading.Event = dc_field(default_factory=threading.Event)
+
+
+_sessions: dict[str, _DebugSession] = {}
+_sessions_lock = threading.Lock()
+
+
+def _make_step_hook(sess: _DebugSession, breakpoints: frozenset[str]):
+    """Return a hook callable that pauses execution at named breakpoints."""
+    from orchivio.logic import FlowError
+
+    def _hook(step_id: str, vars_snap: dict) -> None:
+        if sess.abort_event.is_set():
+            raise FlowError("debug session aborted by client", step_id)
+        if step_id not in breakpoints:
+            return
+        with _sessions_lock:
+            sess.state = "paused"
+            sess.paused_at = step_id
+            sess.vars = dict(vars_snap)
+            sess.resume_event.clear()
+        deadline = time.monotonic() + _PAUSE_TIMEOUT
+        while not sess.resume_event.wait(timeout=1.0):
+            if sess.abort_event.is_set():
+                raise FlowError("debug session aborted by client", step_id)
+            if time.monotonic() > deadline:
+                raise FlowError("debug session timed out waiting for resume", step_id)
+
+    return _hook
+
+
+def _run_debug_thread(
+    sess: _DebugSession,
+    preview_store,
+    audit_sink,
+    integration_clients,
+    mcp_broker,
+    app_id: uuid.UUID,
+    org_id: uuid.UUID,
+    model,
+    model_hash: str,
+    flow: str,
+    args: dict,
+    user,
+    dry_run: bool,
+    breakpoints: frozenset[str],
+) -> None:
+    from orchivio.logic import FlowError, FlowHooks, FlowRunner
+
+    try:
+        data = preview_store.open(
+            app_id, model, model_hash,
+            audit=audit_sink, organization_id=org_id,
+            hooks=FlowHooks(model), integrations=integration_clients(app_id),
+            mcp_broker=mcp_broker,
+        )
+        hook = _make_step_hook(sess, breakpoints)
+        result = FlowRunner(model, data, breakpoints=breakpoints, step_hook=hook).run(flow, args, user, dry_run=dry_run)
+        with _sessions_lock:
+            sess.state = "done"
+            sess.result = result.as_dict()
+    except FlowError as e:
+        with _sessions_lock:
+            sess.state = "error"
+            sess.error = e.message
+    except Exception as e:
+        with _sessions_lock:
+            sess.state = "error"
+            sess.error = str(e)
 
 
 class SeedIn(BaseModel):
@@ -183,9 +271,6 @@ def debug_flow_stream(app_id: uuid.UUID, flow: str, body: DebugFlowIn, request: 
     except ImportError:
         raise api_error(503, "sse_unavailable", "install orchivio[server] for SSE streaming support") from None
 
-    import json
-    import time
-
     data, user = _open(request, db, principal, app_id, "model.propose", x_preview_user, x_preview_roles)
     q = flow if "." in flow else f"{data.model.modules[0].key}.{flow}"
     target = next(((m, f) for m in data.model.modules for f in m.flows if f"{m.key}.{f.key}" == q), None)
@@ -205,6 +290,129 @@ def debug_flow_stream(app_id: uuid.UUID, flow: str, body: DebugFlowIn, request: 
             yield {"data": json.dumps({"type": "error", "message": e.message})}
 
     return EventSourceResponse(event_generator())
+
+
+# --- live debug sessions (FR-057) -----------------------------------------------------------
+
+
+class StartDebugSessionIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    args: dict[str, Any] = Field(default_factory=dict)
+    breakpoints: list[str] = Field(default_factory=list, max_length=50)
+    dry_run: bool = False
+
+
+@router.post("/applications/{app_id}/preview/flows/{flow}/debug-session", status_code=201)
+def start_debug_session(
+    app_id: uuid.UUID, flow: str, body: StartDebugSessionIn, request: Request,
+    x_preview_user: str | None = Header(default=None, alias="X-Preview-User"),
+    x_preview_roles: str | None = Header(default=None, alias="X-Preview-Roles"),
+    principal: Principal = Depends(current_principal), db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    """Start a live-stepping debug session for a Server Flow (FR-057).
+
+    The session runs the flow in a background thread and pauses at each named breakpoint until
+    ``resume`` is called. Poll ``GET .../debug-session/{id}`` to observe state and captured vars.
+    """
+    app, project = load_application(db, principal, app_id, "model.propose")
+    rev = _current(db, app)
+    model = to_model(rev)
+    roles = frozenset(r.strip() for r in (x_preview_roles or "").split(",") if r.strip())
+    unknown = sorted(roles - set(model.security.roles))
+    if unknown:
+        raise api_error(422, "unknown_role", "X-Preview-Roles names roles the model does not define",
+                        {"unknown": unknown, "defined": model.security.roles})
+    user_id = (x_preview_user or f"studio:{principal.user_id}").strip()
+    if not 1 <= len(user_id) <= 64:
+        raise api_error(422, "invalid_request", "X-Preview-User must be 1-64 characters")
+    st = request.app.state.preview_store.status(app.id)
+    if st is None:
+        raise api_error(409, "preview_not_built", "reset the preview first")
+    if st["model_hash"] != rev.model_hash:
+        raise api_error(409, "preview_stale", "the model changed since the preview was built; reset it")
+    q = flow if "." in flow else f"{model.modules[0].key}.{flow}"
+    target = next(((m, f) for m in model.modules for f in m.flows if f"{m.key}.{f.key}" == q), None)
+    if target is None:
+        raise api_error(404, "unknown_flow", "unknown flow")
+    if target[1].kind != "server":
+        raise api_error(422, "not_runnable", "client flows run in the browser, not in the preview server")
+    sid = str(uuid.uuid4())
+    sess = _DebugSession(sid=sid)
+    with _sessions_lock:
+        if len(_sessions) >= _MAX_SESSIONS:
+            stale = [k for k, v in _sessions.items() if v.state in ("done", "error")][:10]
+            for k in stale:
+                del _sessions[k]
+        _sessions[sid] = sess
+    user = AppUser(user_id, roles)
+    thread = threading.Thread(
+        target=_run_debug_thread,
+        args=(
+            sess, request.app.state.preview_store, request.app.state.audit_sink,
+            request.app.state.integration_clients, request.app.state.mcp_broker,
+            app_id, project.organization_id, model, rev.model_hash,
+            q, body.args, user, body.dry_run, frozenset(body.breakpoints),
+        ),
+        daemon=True,
+    )
+    thread.start()
+    return {"session_id": sid, "state": "running"}
+
+
+@router.get("/applications/{app_id}/preview/flows/{flow}/debug-session/{session_id}")
+def get_debug_session(
+    app_id: uuid.UUID, flow: str, session_id: str, request: Request,
+    principal: Principal = Depends(current_principal), db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    """Poll the state of a live-stepping debug session (FR-057)."""
+    load_application(db, principal, app_id, "model.propose")
+    with _sessions_lock:
+        sess = _sessions.get(session_id)
+    if sess is None:
+        raise api_error(404, "unknown_session", "no such debug session (may have expired)")
+    return {
+        "session_id": sess.sid, "state": sess.state,
+        "paused_at": sess.paused_at,
+        "vars": sess.vars if sess.state == "paused" else {},
+        "result": sess.result,
+        "error": sess.error,
+    }
+
+
+@router.post("/applications/{app_id}/preview/flows/{flow}/debug-session/{session_id}/resume")
+def resume_debug_session(
+    app_id: uuid.UUID, flow: str, session_id: str, request: Request,
+    principal: Principal = Depends(current_principal), db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    """Resume a paused debug session, letting it run to the next breakpoint or completion (FR-057)."""
+    load_application(db, principal, app_id, "model.propose")
+    with _sessions_lock:
+        sess = _sessions.get(session_id)
+    if sess is None:
+        raise api_error(404, "unknown_session", "no such debug session")
+    if sess.state != "paused":
+        raise api_error(409, "not_paused", f"session is '{sess.state}', not paused")
+    with _sessions_lock:
+        sess.state = "running"
+        sess.paused_at = None
+    sess.resume_event.set()
+    return {"session_id": sess.sid, "state": "running"}
+
+
+@router.delete("/applications/{app_id}/preview/flows/{flow}/debug-session/{session_id}", status_code=204)
+def abort_debug_session(
+    app_id: uuid.UUID, flow: str, session_id: str, request: Request,
+    principal: Principal = Depends(current_principal), db: Session = Depends(get_db),
+) -> Response:
+    """Abort and discard a debug session (FR-057). Safe to call in any state."""
+    load_application(db, principal, app_id, "model.propose")
+    with _sessions_lock:
+        sess = _sessions.pop(session_id, None)
+    if sess is None:
+        raise api_error(404, "unknown_session", "no such debug session")
+    sess.abort_event.set()
+    sess.resume_event.set()  # unblock if currently paused
+    return Response(status_code=204)
 
 
 # --- data ----------------------------------------------------------------------------------

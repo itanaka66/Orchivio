@@ -69,7 +69,7 @@ service), **Schema** (data structures only), **Planned**.
 | FR-055 | Scheduled jobs | Done | Cron schedules on server flows, planned once across workers, missed-run policy; `environment_id` threaded into `job_runs` (migration 0022), scheduler resolves highest-stage environment and passes it to the queue; worker uses `ProductionStore(env.data_url)` when `environment_id` is set, falling back to `PreviewStore` |
 | FR-056 | Background task queues | Done (preview) | Leases, retry with exponential backoff, dead-letter queue, per-app concurrency; at-least-once. PostgreSQL path untested |
 | FR-054 | Entity event hooks | Done (preview) | before/after create/update/delete bound to server flows, atomic, bounded recursion |
-| FR-057 | Flow debugger | Partial | Step trace with ids and an overlay in the editor; `POST /applications/{id}/preview/flows/{flow}/debug` with `breakpoints` (variable capture into span detail) and `dry_run` (transactional rollback); no live stepping |
+| FR-057 | Flow debugger | Done | Step trace with ids and an overlay in the editor; `POST .../debug` (variable capture + dry_run); `POST .../debug/stream` (SSE); live-stepping via `POST .../debug-session` (pause/resume/abort background thread at named breakpoints) |
 | FR-058 | Flow unit tests | Done | Declarative tests in the model, run in generated test runs |
 | FR-122 | Dependency graph | Done | Built and stored per revision; find-usages endpoint |
 | FR-120 | Model linter | Done | 21 rules, suppressions with justification, blocking errors, stored per revision |
