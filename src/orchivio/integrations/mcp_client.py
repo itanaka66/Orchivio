@@ -35,9 +35,14 @@ from .ssrf import DestinationError
 PROTOCOLS = ("2025-06-18", "2025-03-26")
 MAX_RESPONSE_BYTES = 256 * 1024
 MAX_TOOL_TEXT = 8000
+MAX_RESOURCE_TEXT = 32_000
+MAX_PROMPT_TEXT = 16_000
 MAX_ARGUMENT_BYTES = 2000
 MAX_TOOLS = 100
+MAX_RESOURCES = 200
+MAX_PROMPTS = 100
 TOOL_NAME = re.compile(r"^[A-Za-z0-9_.-]{1,64}$")
+PROMPT_NAME = re.compile(r"^[A-Za-z0-9_.-]{1,64}$")
 _CONTROL = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
 
 
@@ -49,6 +54,19 @@ class McpError(Exception):
 class ToolOutput:
     text: str
     is_error: bool
+    truncated: bool
+
+
+@dataclass(frozen=True)
+class ResourceOutput:
+    text: str
+    mime_type: str
+    truncated: bool
+
+
+@dataclass(frozen=True)
+class PromptOutput:
+    text: str
     truncated: bool
 
 
@@ -191,6 +209,86 @@ class McpClient:
         truncated = len(text) > MAX_TOOL_TEXT
         return ToolOutput(text[:MAX_TOOL_TEXT], bool(result.get("isError")), truncated)
 
+    def list_resources(self) -> list[dict[str, Any]]:
+        """Normalised resource descriptions (URI, name, description, mimeType)."""
+        out: list[dict[str, Any]] = []
+        cursor = None
+        for _ in range(10):
+            result = self._rpc("resources/list", {"cursor": cursor} if cursor else {})
+            for r in (result.get("resources") if isinstance(result, dict) else None) or []:
+                if not isinstance(r, dict):
+                    continue
+                uri = r.get("uri")
+                if not isinstance(uri, str) or not uri or len(uri) > 2000:
+                    continue
+                out.append({"uri": uri,
+                            "name": clean_text(r.get("name") or uri, 200),
+                            "description": clean_text(r.get("description"), 500),
+                            "mimeType": clean_text(r.get("mimeType") or "text/plain", 100)})
+            cursor = result.get("nextCursor") if isinstance(result, dict) else None
+            if not cursor or len(out) >= MAX_RESOURCES:
+                break
+        return out[:MAX_RESOURCES]
+
+    def read_resource(self, uri: str) -> ResourceOutput:
+        result = self._rpc("resources/read", {"uri": uri})
+        if not isinstance(result, dict):
+            raise McpError("the resource result is malformed")
+        parts: list[str] = []
+        mime = "text/plain"
+        for c in result.get("contents") or []:
+            if not isinstance(c, dict):
+                continue
+            if c.get("mimeType"):
+                mime = clean_text(c["mimeType"], 100)
+            if c.get("type") == "text" or "text" in c:
+                parts.append(str(c.get("text") or ""))
+            elif c.get("type") == "blob":
+                parts.append(f"[binary content, mimeType={mime}]")
+        text = clean_text("\n".join(parts), MAX_RESOURCE_TEXT + 1)
+        truncated = len(text) > MAX_RESOURCE_TEXT
+        return ResourceOutput(text[:MAX_RESOURCE_TEXT], mime, truncated)
+
+    def list_prompts(self) -> list[dict[str, Any]]:
+        """Normalised prompt descriptions (name, description, arguments)."""
+        out: list[dict[str, Any]] = []
+        cursor = None
+        for _ in range(5):
+            result = self._rpc("prompts/list", {"cursor": cursor} if cursor else {})
+            for p in (result.get("prompts") if isinstance(result, dict) else None) or []:
+                if isinstance(p, dict) and isinstance(p.get("name"), str) and PROMPT_NAME.match(p["name"]):
+                    args: list[dict[str, Any]] = []
+                    for a in p.get("arguments") or []:
+                        if isinstance(a, dict) and isinstance(a.get("name"), str):
+                            args.append({"name": a["name"], "description": clean_text(a.get("description"), 200),
+                                         "required": bool(a.get("required"))})
+                    out.append({"name": p["name"], "description": clean_text(p.get("description"), 500),
+                                "arguments": args})
+            cursor = result.get("nextCursor") if isinstance(result, dict) else None
+            if not cursor or len(out) >= MAX_PROMPTS:
+                break
+        return out[:MAX_PROMPTS]
+
+    def get_prompt(self, name: str, arguments: dict[str, str] | None = None) -> PromptOutput:
+        params: dict[str, Any] = {"name": name}
+        if arguments:
+            params["arguments"] = {k: str(v)[:500] for k, v in list(arguments.items())[:20]}
+        result = self._rpc("prompts/get", params)
+        if not isinstance(result, dict):
+            raise McpError("the prompt result is malformed")
+        parts: list[str] = []
+        for msg in result.get("messages") or []:
+            if not isinstance(msg, dict):
+                continue
+            content = msg.get("content")
+            if isinstance(content, str):
+                parts.append(content)
+            elif isinstance(content, dict) and content.get("type") == "text":
+                parts.append(str(content.get("text") or ""))
+        text = clean_text("\n".join(parts), MAX_PROMPT_TEXT + 1)
+        truncated = len(text) > MAX_PROMPT_TEXT
+        return PromptOutput(text[:MAX_PROMPT_TEXT], truncated)
+
 
 def _find_response(resp: Any, rid: int | None) -> dict[str, Any] | None:
     ctype = (getattr(resp, "content_type", "") or "").lower()
@@ -226,11 +324,49 @@ class CatalogTool:
     input_schema: dict[str, Any]
 
 
+@dataclass(frozen=True)
+class CatalogResource:
+    server: str
+    uri: str
+    name: str
+    description: str
+    mime_type: str
+
+
+@dataclass(frozen=True)
+class CatalogPrompt:
+    server: str
+    name: str
+    description: str
+    arguments: list[dict[str, Any]]
+
+
 @dataclass
 class CallRecord:
     server: str
     tool: str
     args_sha256: str
+    ok: bool
+    error: str | None = None
+    text: str = ""
+    truncated: bool = False
+
+
+@dataclass
+class ResourceRecord:
+    server: str
+    uri: str
+    ok: bool
+    mime_type: str = "text/plain"
+    error: str | None = None
+    text: str = ""
+    truncated: bool = False
+
+
+@dataclass
+class PromptRecord:
+    server: str
+    name: str
     ok: bool
     error: str | None = None
     text: str = ""
@@ -305,6 +441,114 @@ class ToolBroker:
                 rec.ok, rec.text, rec.truncated = True, out.text, out.truncated
                 sp.set_attribute("mcp.output_chars", len(out.text))
             telemetry.count("orchivio.mcp.tool_calls", outcome="ok")
+        return records
+
+    def resource_catalog(self, organization_id: uuid.UUID) -> list[CatalogResource]:
+        """Resources that are registered, enabled by an admin, and still advertised by their server."""
+        out: list[CatalogResource] = []
+        with self.sessions() as s:
+            for srv in s.scalars(select(McpServer).where(McpServer.organization_id == organization_id, McpServer.status == "active")
+                                 .order_by(McpServer.name)):
+                for r in srv.resources or []:
+                    pol = (srv.resource_policy or {}).get(r["uri"])
+                    if pol and pol.get("enabled") is True:
+                        out.append(CatalogResource(srv.name, r["uri"], r.get("name", r["uri"]),
+                                                   r.get("description", ""), r.get("mimeType", "text/plain")))
+        return out
+
+    def read_resources(self, organization_id: uuid.UUID,
+                       requested: list[tuple[str, str]], max_reads: int = 5) -> list[ResourceRecord]:
+        """Fetch model-requested resources that survive the allowlist check."""
+        allowed = {(c.server, c.uri): c for c in self.resource_catalog(organization_id)}
+        records: list[ResourceRecord] = []
+        clients: dict[str, McpClient | McpError] = {}
+        seen: set[tuple[str, str]] = set()
+        executed = 0
+        for server, uri in requested:
+            rec = ResourceRecord(server, uri, ok=False)
+            records.append(rec)
+            if (server, uri) not in allowed:
+                rec.error = "refused: not an enabled resource"
+                continue
+            if (server, uri) in seen:
+                rec.error = "refused: duplicate read"
+                continue
+            if executed >= max_reads:
+                rec.error = "refused: read limit reached"
+                continue
+            seen.add((server, uri))
+            executed += 1
+            if server not in clients:
+                clients[server] = self._connect(organization_id, server)
+            client = clients[server]
+            if isinstance(client, McpError):
+                rec.error = str(client)
+                continue
+            with telemetry.span("mcp.resource_read", kind="client", **{"mcp.server": server, "mcp.resource": uri[:200]}) as sp:
+                try:
+                    out = client.read_resource(uri)
+                except McpError as e:
+                    rec.error = str(e)
+                    sp.set_error("mcp error")
+                    telemetry.count("orchivio.mcp.resource_reads", outcome="error")
+                    continue
+                rec.ok, rec.text, rec.mime_type, rec.truncated = True, out.text, out.mime_type, out.truncated
+                sp.set_attribute("mcp.output_chars", len(out.text))
+            telemetry.count("orchivio.mcp.resource_reads", outcome="ok")
+        return records
+
+    def prompt_catalog(self, organization_id: uuid.UUID) -> list[CatalogPrompt]:
+        """Prompts that are registered and enabled by an admin."""
+        out: list[CatalogPrompt] = []
+        with self.sessions() as s:
+            for srv in s.scalars(select(McpServer).where(McpServer.organization_id == organization_id, McpServer.status == "active")
+                                 .order_by(McpServer.name)):
+                for p in srv.prompts or []:
+                    pol = (srv.prompt_policy or {}).get(p["name"])
+                    if pol and pol.get("enabled") is True:
+                        out.append(CatalogPrompt(srv.name, p["name"], p.get("description", ""),
+                                                 p.get("arguments", [])))
+        return out
+
+    def get_prompts(self, organization_id: uuid.UUID,
+                    requested: list[tuple[str, str, dict[str, str] | None]], max_gets: int = 3) -> list[PromptRecord]:
+        """Fetch model-requested prompts that survive the allowlist check."""
+        allowed = {(c.server, c.name): c for c in self.prompt_catalog(organization_id)}
+        records: list[PromptRecord] = []
+        clients: dict[str, McpClient | McpError] = {}
+        seen: set[tuple[str, str]] = set()
+        executed = 0
+        for server, name, args in requested:
+            rec = PromptRecord(server, name, ok=False)
+            records.append(rec)
+            if (server, name) not in allowed:
+                rec.error = "refused: not an enabled prompt"
+                continue
+            if (server, name) in seen:
+                rec.error = "refused: duplicate get"
+                continue
+            if executed >= max_gets:
+                rec.error = "refused: get limit reached"
+                continue
+            seen.add((server, name))
+            executed += 1
+            if server not in clients:
+                clients[server] = self._connect(organization_id, server)
+            client = clients[server]
+            if isinstance(client, McpError):
+                rec.error = str(client)
+                continue
+            with telemetry.span("mcp.prompt_get", kind="client", **{"mcp.server": server, "mcp.prompt": name}) as sp:
+                try:
+                    out = client.get_prompt(name, args)
+                except McpError as e:
+                    rec.error = str(e)
+                    sp.set_error("mcp error")
+                    telemetry.count("orchivio.mcp.prompt_gets", outcome="error")
+                    continue
+                rec.ok, rec.text, rec.truncated = True, out.text, out.truncated
+                sp.set_attribute("mcp.output_chars", len(out.text))
+            telemetry.count("orchivio.mcp.prompt_gets", outcome="ok")
         return records
 
     def _connect(self, organization_id: uuid.UUID, name: str) -> McpClient | McpError:
