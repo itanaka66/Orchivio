@@ -83,6 +83,16 @@ def run_expand(conn: Connection, plan: list[dict[str, Any]], prefix: str) -> lis
                 f'ALTER TABLE "{tbl}" ADD COLUMN IF NOT EXISTS "{col}" {_pg_type(step.get("type", "text"))} {null_kw}'
             ))
             applied.append(f"add_column {tbl}.{col}")
+            # FR-034: copy existing data when a field is renamed (copy_from is set by plan_migration)
+            if step.get("copy_from"):
+                src = str(step["copy_from"])
+                src_parts = src.rsplit(".", 1)
+                old_tbl = _tbl(prefix, src_parts[0]) if len(src_parts) == 2 else tbl
+                old_col = src_parts[1] if len(src_parts) == 2 else src
+                conn.execute(text(f'UPDATE "{old_tbl}" SET "{col}" = "{old_col}" WHERE "{col}" IS NULL'))
+                applied.append(f"copy_data {old_tbl}.{old_col} -> {tbl}.{col}")
+            elif step.get("backfill_required"):
+                applied.append(f"WARNING {tbl}.{col} is required but has no default; backfill before running contract")
 
         elif op == "rename_table":
             old_tbl = _tbl(prefix, step["from"])
