@@ -169,7 +169,7 @@ class _Checker:
 
     def _list(self, items: tuple[Node, ...], node: Node) -> Type:
         if not items:
-            raise self.fail("empty list literals are not supported", node)
+            return list_t(NULL)  # x in [] is always false; type is valid
         elem = self.check(items[0])
         for it in items[1:]:
             elem = self._unify(elem, self.check(it), it)
@@ -274,6 +274,8 @@ class _Checker:
         if op == "in":
             if rt.kind != "list" or rt.elem is None:
                 raise self.fail("right side of 'in' must be a list", node)
+            if rt.elem.kind == "null":  # empty list literal — always false, any type is valid
+                return BOOL
             if lt.nullable or not compatible(lt, rt.elem):
                 raise self.fail(f"cannot test {lt} against list of {rt.elem}", node)
             return BOOL

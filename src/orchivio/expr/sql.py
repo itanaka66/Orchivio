@@ -108,6 +108,8 @@ class _Compiler:
                 return self.column(n)
             case Member(obj=o, name=n):
                 return self._member(node, o, n)
+            case ListLit(items=items) if not items:
+                return "(1 = 0)"  # empty list: x in [] is always false
             case ListLit():
                 raise NotCompilable("list used outside 'in'")
             case Unary(op=op, operand=o):
@@ -149,6 +151,8 @@ class _Compiler:
                 return f"({self.c(left)} IN ({', '.join(self.scalar_param(i) for i in items)}))"
             if not isinstance(right, ListLit):
                 raise NotCompilable("'in' requires a list literal")
+            if not right.items:
+                return "(1 = 0)"  # x in [] is always false
             items = ", ".join(self.c(i) for i in right.items)
             return f"({self.c(left)} IN ({items}))"
         if op in ("&&", "||"):
@@ -157,8 +161,10 @@ class _Compiler:
             return f"COALESCE({self.c(left)}, {self.c(right)})"
         if op in ("==", "!="):
             return self._equality(node)
-        if op in ("/", "%"):
-            raise NotCompilable("division is not compiled (zero-divisor semantics differ)")
+        if op == "/":
+            return f"({self.c(left)} / NULLIF({self.c(right)}, 0))"
+        if op == "%":
+            return f"({self.c(left)} % NULLIF({self.c(right)}, 0))"
         if op == "+" and self.types[left].kind == "string":
             return f"({self.c(left)} || {self.c(right)})"
         sql_op = {"<": "<", "<=": "<=", ">": ">", ">=": ">=", "+": "+", "-": "-", "*": "*"}[op]
