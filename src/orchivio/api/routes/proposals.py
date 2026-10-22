@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session
 
 from orchivio.db import ModelInvalid, ProposalRepository
 from orchivio.db.models import Proposal
-from orchivio.db.proposals import NoChanges, NotPending, Stale
+from orchivio.db.proposals import NoChanges, NotPending, SelfApprovalForbidden, Stale
 from orchivio.policy import ApprovalLevel, can_approve
 
 from ..deps import Principal, api_error, authorize, current_principal, get_db, load_application
@@ -49,6 +49,7 @@ class ProposalOut(BaseModel):
     status: str
     created_by: uuid.UUID | None
     approved_by: uuid.UUID | None
+    second_approved_by: uuid.UUID | None
     created_at: datetime
     decided_at: datetime | None
 
@@ -66,7 +67,8 @@ def proposal_out(p: Proposal) -> ProposalOut:
         id=p.id, application_id=p.application_id, ai_job_id=p.ai_job_id, base_revision_id=p.base_revision_id,
         result_revision_id=p.result_revision_id, source=p.source, title=p.title,
         approval_level=ApprovalLevel(p.approval_level).name, status=p.status, created_by=p.created_by,
-        approved_by=p.approved_by, created_at=p.created_at, decided_at=p.decided_at)
+        approved_by=p.approved_by, second_approved_by=p.second_approved_by,
+        created_at=p.created_at, decided_at=p.decided_at)
 
 
 def proposal_detail(p: Proposal, include_model: bool = False) -> ProposalDetail:
@@ -105,7 +107,7 @@ def create_proposal(app_id: uuid.UUID, body: ProposalIn, principal: Principal = 
 
 
 @router.get("/applications/{app_id}/proposals", response_model=Page[ProposalOut])
-def list_proposals(app_id: uuid.UUID, status: str | None = Query(None, pattern="^(pending|rejected|applied|superseded)$"),
+def list_proposals(app_id: uuid.UUID, status: str | None = Query(None, pattern="^(pending|pending_second_approval|rejected|applied|superseded)$"),
                    limit: int = Query(50, ge=1, le=200), offset: int = Query(0, ge=0),
                    principal: Principal = Depends(current_principal), db: Session = Depends(get_db)) -> Page[ProposalOut]:
     app, _ = load_application(db, principal, app_id, "model.read")
@@ -144,6 +146,8 @@ def decide(proposal_id: uuid.UUID, body: DecisionIn, principal: Principal = Depe
                                 f"this proposal is {level.name}; resend with acknowledge_risks=true",
                                 {"level": level.name, "diff": p.change_set_json.get("diff")})
             repo.approve(p, principal.user_id, comment=body.comment, organization_id=org)
+    except SelfApprovalForbidden as e:
+        raise api_error(409, "self_approval_forbidden", str(e)) from e
     except NotPending as e:
         raise api_error(409, "not_pending", str(e)) from e
     except Stale as e:

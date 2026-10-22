@@ -1,6 +1,6 @@
 # Implementation Status
 
-Last updated: 2026-10-22 (FR-010/089/094/097/099; corrected FR-030/055/067/086/094/096/112; FR-098 story editor; FR-099 element pick+screenshot; FR-113 Studio dashboard; FR-034 data copy for renames; FR-036 SDK bundle; FR-129 offline correction; FR-087 MCP resources/prompts; status corrections for FR-030/060-063/067/126/129). Statuses: **Done** (implemented and
+Last updated: 2026-10-23 (FR-013/015 second approver for A3+ proposals; FR-064 status corrected to Done; FR-081 retries; FR-111 admin reassignment). Statuses: **Done** (implemented and
 tested), **Library** (implemented as a tested library but not yet wired into a running
 service), **Schema** (data structures only), **Planned**.
 
@@ -36,7 +36,7 @@ service), **Schema** (data structures only), **Planned**.
 | FR-050 | Typed expression language | Done | Parser, checker, interpreter, limits |
 | FR-051 | Computed fields | Done | Type-checked, cycle detection; virtual (read) and stored (write) in the preview runtime |
 | FR-060..063 | Two-plane security, row constraints | Done | `resolve_access()` + `row_predicate()` in `security/access.py` enforce role-gated entity access, SQL row predicates and field-allow-lists on every data operation in both preview and production planes (simulated and real end users) |
-| FR-064 | Field-level read/write access | Done (preview runtime) | Allow-lists per rule; removed from responses, not filterable or sortable, write checks, flows act as the caller; other query paths (exports, aggregates) do not exist yet |
+| FR-064 | Field-level read/write access | Done | Allow-lists per rule; removed from responses, not filterable or sortable, write checks, flows act as the caller; exports and aggregates enforce field-level access via `readable_fields()` in both preview and production stores |
 | FR-067 | End-user authentication for generated apps | Partial | Local accounts, forced first-login password change, anonymous opt-in, and OIDC (code flow + PKCE, JIT provisioning, claim-to-role mapping); self-registration (`POST /apps/{id}/auth/register`, controlled by `model.security.allow_registration`); self-service password-reset token flow (`POST /apps/{id}/auth/reset-request` + `reset-confirm`); TOTP MFA (setup/confirm/disable via `/auth/mfa/*`, TOTP code required on login when enabled, `pyotp` optional dep); single logout (`POST /auth/logout-all` revokes all sessions); app-plane endpoints serve production data via `ProductionStore`; no SAML |
 | FR-066 | Consistency checker | Done | 5 checks |
 | FR-086 | Studio MCP server | Done (MVP) | Read/search/usages/lint/validate/proposal/tests/explain/proposal.await tools, proposal-only writes, audit, rate limit; SSE stream of proposal status events (`GET /mcp`, `EventSourceResponse`); exercised only with a test client, not a real MCP agent |
@@ -119,15 +119,13 @@ Everything not listed is **Planned**.
 - No email verification for platform (Studio) accounts; registration is open unless
   `ORCHIVIO_ALLOW_REGISTRATION=false`. Password reset and TOTP MFA are supported. There is no first-user bootstrap other than registering.
 - Members can be invited by email (`POST /organizations/{id}/invitations`); the invite token is returned in `X-Invite-Token` for the caller to deliver.
-- Risky revisions are confirmed by a flag from the same caller; a second approver and the
-  proposal workflow are planned.
+- Risky (A3+) proposals require a second approver (a different user) via a second `POST /proposals/{id}/approval` call; A0–A2 proposals still apply on the first approval.
 - Database migrations are not run automatically at start-up (`alembic upgrade head`).
 - Expressions: no relationship traversal (`record.owner.name`), no object literals (see EXPRESSION-SPEC.md).
 - Enumerations from another module cannot be named inside expressions.
 - Application end-user accounts are local to each app (local accounts, OIDC, TOTP MFA, single logout); no SAML.
 - AI calls and test runs are synchronous inside the request; no job-queue offload yet.
 - Generated tests run on SQLite only; PostgreSQL SQL paths are unverified.
-- No second approver for risky proposals; `acknowledge_risks` is a flag from an admin.
 - Linter rules are heuristics (for example sensitive field names); expect false positives and use
   suppressions with a justification.
 - Schema 1.1 has no flows, processes, integrations or hooks (entity `hooks` validate with a

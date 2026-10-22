@@ -86,7 +86,7 @@ def _in(column: str, values: tuple[str, ...], name: str) -> CheckConstraint:
 MEMBER_ROLES = ("owner", "admin", "editor", "viewer")
 USER_STATUS = ("active", "disabled")
 JOB_STATUS = ("queued", "running", "succeeded", "failed", "cancelled")
-PROPOSAL_STATUS = ("pending", "approved", "rejected", "applied", "superseded")
+PROPOSAL_STATUS = ("pending", "pending_second_approval", "approved", "rejected", "applied", "superseded")
 
 
 class User(Base):
@@ -280,9 +280,10 @@ class Proposal(Base):
     title: Mapped[str] = mapped_column(String(300), nullable=False, default="")
     change_set_json: Mapped[dict[str, Any]] = mapped_column(PortableJSON, nullable=False)
     approval_level: Mapped[int] = mapped_column(Integer, nullable=False)
-    status: Mapped[str] = mapped_column(String(16), nullable=False, default="pending")
+    status: Mapped[str] = mapped_column(String(32), nullable=False, default="pending")
     created_by: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id"))
     approved_by: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id"))
+    second_approved_by: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id"))
     created_at: Mapped[datetime] = _created()
     decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 

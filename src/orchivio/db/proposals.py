@@ -40,6 +40,10 @@ class Stale(ProposalError):
     code = "stale_proposal"
 
 
+class SelfApprovalForbidden(ProposalError):
+    code = "self_approval_forbidden"
+
+
 def _now() -> datetime:
     return datetime.now(UTC)
 
@@ -124,7 +128,14 @@ class ProposalRepository:
 
     def approve(self, proposal: Proposal, by: uuid.UUID, *, comment: str | None = None,
                 organization_id: uuid.UUID | None = None) -> Proposal:
-        """Approve and apply in one step: stores the proposed model as a new revision."""
+        """Approve a proposal.
+
+        For A0–A2 proposals (and second approvals): stores the proposed model as a new revision.
+        For A3+ proposals on first call: transitions to ``pending_second_approval`` without applying.
+        The second approver must be a different user from the first.
+        """
+        if proposal.status == "pending_second_approval":
+            return self._second_approve(proposal, by, comment=comment, organization_id=organization_id)
         self._require_pending(proposal)
         app = self.session.get(Application, proposal.application_id, with_for_update=True)
         if app is None:
@@ -134,6 +145,17 @@ class ProposalRepository:
             proposal.decided_at = _now()
             self._audit("proposal.superseded", proposal, by, organization_id, {})
             raise Stale("the model changed after this proposal was made; propose again")
+        level = ApprovalLevel(proposal.approval_level)
+        if level >= ApprovalLevel.A3:
+            # First of two required approvals: hold for a second approver
+            proposal.status = "pending_second_approval"
+            proposal.approved_by = by
+            cs = dict(proposal.change_set_json)
+            cs["first_approval"] = {"by": str(by), "comment": comment}
+            proposal.change_set_json = cs
+            self._audit("proposal.pending_second_approval", proposal, by, organization_id,
+                        {"level": level.name, "comment": comment})
+            return proposal
         rev = self.revisions.create(
             proposal.application_id,
             AppModel.model_validate(proposal.change_set_json["model"]),
@@ -152,9 +174,40 @@ class ProposalRepository:
                     {"revision_no": rev.revision_no, "comment": comment})
         return proposal
 
+    def _second_approve(self, proposal: Proposal, by: uuid.UUID, *, comment: str | None = None,
+                        organization_id: uuid.UUID | None = None) -> Proposal:
+        if proposal.approved_by == by:
+            raise SelfApprovalForbidden("the second approver must be a different person than the first")
+        app = self.session.get(Application, proposal.application_id, with_for_update=True)
+        if app is None:
+            raise NotFound(f"application {proposal.application_id}")
+        if app.current_revision_id != proposal.base_revision_id:
+            proposal.status = "superseded"
+            proposal.decided_at = _now()
+            self._audit("proposal.superseded", proposal, by, organization_id, {})
+            raise Stale("the model changed after this proposal was made; propose again")
+        rev = self.revisions.create(
+            proposal.application_id,
+            AppModel.model_validate(proposal.change_set_json["model"]),
+            created_by=by,
+            message=f"Proposal: {proposal.title}"[:1000],
+            organization_id=organization_id,
+        )
+        proposal.status = "applied"
+        proposal.second_approved_by = by
+        proposal.decided_at = _now()
+        proposal.result_revision_id = rev.id
+        cs = dict(proposal.change_set_json)
+        cs["decision"] = {"by": str(proposal.approved_by), "outcome": "approved", "comment": None,
+                          "second_by": str(by), "second_comment": comment}
+        proposal.change_set_json = cs
+        self._audit("proposal.approved", proposal, by, organization_id,
+                    {"revision_no": rev.revision_no, "comment": comment})
+        return proposal
+
     @staticmethod
     def _require_pending(p: Proposal) -> None:
-        if p.status != "pending":
+        if p.status not in ("pending", "pending_second_approval"):
             raise NotPending(f"proposal is {p.status}")
 
     def _audit(self, action: str, p: Proposal, actor: uuid.UUID | None, org: uuid.UUID | None, meta: dict[str, Any]) -> None:
