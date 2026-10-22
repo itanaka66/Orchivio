@@ -130,6 +130,7 @@ export function Board({ client, projectId, applicationId, elements, canEdit }: P
       {tab === 'board' && <Columns stories={shownStories} requirements={shownRequirements} canEdit={editable} canCreate={canEdit} waiting={waiting.filter((w) => w.kind === 'story')}
         onAdd={(title) => create('story', title)}
         onMove={(s, status) => change('story', stories.find((x) => x.id === s.id) ?? s, { status, position: Math.max(0, ...stories.map((x) => x.position)) + 1 }, s.title)}
+        onEdit={(s, patch) => change('story', stories.find((x) => x.id === s.id) ?? s, patch, patch.title ?? s.title)}
         onDelete={(s) => change('story', stories.find((x) => x.id === s.id) ?? s, null, s.title)} />}
       {tab === 'requirements' && <Requirements requirements={shownRequirements} canEdit={editable} canCreate={canEdit} waiting={waiting.filter((w) => w.kind === 'requirement')} canExtract={editable && !!applicationId}
         onAdd={(title, body) => create('requirement', title, body)}
@@ -158,48 +159,96 @@ function WaitingList({ items, what }: { items: Waiting[]; what: string }) {
   )
 }
 
-function Columns({ stories, requirements, canEdit, canCreate, waiting, onAdd, onMove, onDelete }: {
+function StoryEditor({ story, onSave, onClose }: {
+  story: Story
+  onSave: (patch: Partial<Pick<Story, 'title' | 'body' | 'acceptance'>>) => void
+  onClose: () => void
+}) {
+  const [title, setTitle] = useState(story.title)
+  const [body, setBody] = useState(story.body ?? '')
+  const [acceptance, setAcceptance] = useState(story.acceptance ?? '')
+  const dirty = title !== story.title || body !== (story.body ?? '') || acceptance !== (story.acceptance ?? '')
+  return (
+    <form role=”dialog” aria-label=”Edit story” className=”card story-editor” onSubmit={(e) => {
+      e.preventDefault()
+      const patch: Partial<Pick<Story, 'title' | 'body' | 'acceptance'>> = {}
+      if (title !== story.title) patch.title = title
+      if (body !== (story.body ?? '')) patch.body = body
+      if (acceptance !== (story.acceptance ?? '')) patch.acceptance = acceptance
+      onSave(patch)
+      onClose()
+    }}>
+      <h3>Edit story</h3>
+      <label className=”field”><span>Title</span>
+        <input required maxLength={300} value={title} onChange={(e) => setTitle(e.target.value)} />
+      </label>
+      <label className=”field”><span>User story</span>
+        <textarea rows={4} maxLength={10000} placeholder=”As a … I want … so that …” value={body} onChange={(e) => setBody(e.target.value)} />
+      </label>
+      <label className=”field”><span>Acceptance criteria</span>
+        <textarea rows={4} maxLength={10000} placeholder=”Given … when … then …” value={acceptance} onChange={(e) => setAcceptance(e.target.value)} />
+      </label>
+      <div className=”toolbar”>
+        <button type=”submit” className=”primary” disabled={!dirty || !title.trim()}>Save</button>
+        <button type=”button” onClick={onClose}>Cancel</button>
+      </div>
+    </form>
+  )
+}
+
+function Columns({ stories, requirements, canEdit, canCreate, waiting, onAdd, onMove, onEdit, onDelete }: {
   stories: Story[]; requirements: Requirement[]; canEdit: boolean; canCreate: boolean; waiting: Waiting[]
-  onAdd: (title: string) => void; onMove: (s: Story, status: StoryStatus) => void; onDelete: (s: Story) => void
+  onAdd: (title: string) => void; onMove: (s: Story, status: StoryStatus) => void
+  onEdit: (s: Story, patch: Partial<Pick<Story, 'title' | 'body' | 'acceptance'>>) => void
+  onDelete: (s: Story) => void
 }) {
   const [title, setTitle] = useState('')
+  const [editing, setEditing] = useState<Story | null>(null)
   const reqTitle = useMemo(() => new Map(requirements.map((r) => [r.id, r.title])), [requirements])
   return (
     <>
       {canCreate && (
-        <form className="inline" onSubmit={(e) => { e.preventDefault(); if (title.trim()) { onAdd(title.trim()); setTitle('') } }}>
-          <label className="field"><span>New story</span><input value={title} maxLength={300} onChange={(e) => setTitle(e.target.value)} placeholder="As a clerk I want …" /></label>
-          <button type="submit" disabled={!title.trim()}>Add story</button>
+        <form className=”inline” onSubmit={(e) => { e.preventDefault(); if (title.trim()) { onAdd(title.trim()); setTitle('') } }}>
+          <label className=”field”><span>New story</span><input value={title} maxLength={300} onChange={(e) => setTitle(e.target.value)} placeholder=”As a clerk I want …” /></label>
+          <button type=”submit” disabled={!title.trim()}>Add story</button>
         </form>
       )}
-      <WaitingList items={waiting} what="Stories" />
-      <div className="columns">
+      <WaitingList items={waiting} what=”Stories” />
+      {editing && (
+        <StoryEditor story={editing} onSave={(patch) => onEdit(editing, patch)} onClose={() => setEditing(null)} />
+      )}
+      <div className=”columns”>
         {COLUMNS.map((col) => {
           const here = stories.filter((s) => s.status === col.status)
           return (
-            <section key={col.status} className="column" aria-label={col.title}
+            <section key={col.status} className=”column” aria-label={col.title}
               onDragOver={(e) => { if (canEdit) e.preventDefault() }}
               onDrop={(e) => {
                 const id = e.dataTransfer.getData('text/plain')
                 const s = stories.find((x) => x.id === id)
                 if (canEdit && s && s.status !== col.status) onMove(s, col.status)
               }}>
-              <h3>{col.title} <span className="count">{here.length}</span></h3>
-              <ul className="list">
+              <h3>{col.title} <span className=”count”>{here.length}</span></h3>
+              <ul className=”list”>
                 {here.map((s) => (
-                  <li key={s.id} className="story" draggable={canEdit} onDragStart={(e) => e.dataTransfer.setData('text/plain', s.id)}>
-                    <strong>{s.title}</strong>
-                    {s.requirement_id && <small className="hint"> · {reqTitle.get(s.requirement_id) ?? 'requirement'}</small>}
-                    {s.source !== 'manual' && <small className="badge badge-warning">{s.source}</small>}
+                  <li key={s.id} className=”story” draggable={canEdit} onDragStart={(e) => e.dataTransfer.setData('text/plain', s.id)}>
+                    <button type=”button” className=”link story-title” onClick={() => setEditing(s)}><strong>{s.title}</strong></button>
+                    {s.body && <p className=”story-body hint”>{s.body.slice(0, 120)}{s.body.length > 120 ? '…' : ''}</p>}
+                    {s.requirement_id && <small className=”hint”> · {reqTitle.get(s.requirement_id) ?? 'requirement'}</small>}
+                    {s.source !== 'manual' && <small className=”badge badge-warning”>{s.source}</small>}
                     {canEdit && (
-                      <div className="story-actions">
-                        <label><span className="sr-only">Move “{s.title}” to</span>
+                      <div className=”story-actions”>
+                        <button type=”button” className=”link” aria-label={`Edit story ${s.title}`} onClick={() => setEditing(s)}>Edit</button>
+                        <label><span className=”sr-only”>Move “{s.title}” to</span>
                           <select value={s.status} onChange={(e) => onMove(s, e.target.value as StoryStatus)}>
                             {COLUMNS.map((c) => <option key={c.status} value={c.status}>{c.title}</option>)}
                           </select>
                         </label>
-                        <button type="button" className="link" aria-label={`Delete story ${s.title}`} onClick={() => onDelete(s)}>Delete</button>
+                        <button type=”button” className=”link” aria-label={`Delete story ${s.title}`} onClick={() => onDelete(s)}>Delete</button>
                       </div>
+                    )}
+                    {!canEdit && s.acceptance && (
+                      <details className=”story-acceptance”><summary className=”hint”>Acceptance criteria</summary><p>{s.acceptance}</p></details>
                     )}
                   </li>
                 ))}

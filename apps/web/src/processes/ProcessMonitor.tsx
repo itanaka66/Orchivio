@@ -2,18 +2,21 @@ import { useState } from 'react'
 import { type ApiClient } from '../api/client'
 import { Loading, Panel, useApi } from '../admin/kit'
 
-interface StepMetric { step_id: string; count: number; avg_ms: number; median_ms: number; p90_ms: number }
-interface FlowMetric { flow_id: string; name: string; total: number; completed: number; failed: number; avg_duration_ms: number }
-interface ThroughputPoint { date: string; started: number; completed: number; failed: number }
+interface ThroughputItem { process: string; status: string; bucket: string; count: number }
+interface ThroughputResp { bucket: string; items: ThroughputItem[] }
+interface BottleneckItem { process: string; step_id: string; token_count: number }
+interface BottlenecksResp { items: BottleneckItem[]; running_instances_sampled: number }
+interface DurationItem { process: string; count: number; avg_seconds: number; median_seconds: number; p90_seconds: number }
+interface DurationsResp { items: DurationItem[] }
 
 type Tab = 'throughput' | 'bottlenecks' | 'durations'
 
 export function ProcessMonitor({ client, appId }: { client: ApiClient; appId: string }) {
   const [tab, setTab] = useState<Tab>('throughput')
 
-  const throughput = useApi(() => client.request<{ items: ThroughputPoint[] }>('GET', `/applications/${appId}/process-metrics/throughput?days=30`), [client, appId])
-  const bottlenecks = useApi(() => client.request<{ items: StepMetric[] }>('GET', `/applications/${appId}/process-metrics/bottlenecks`), [client, appId])
-  const durations = useApi(() => client.request<{ items: FlowMetric[] }>('GET', `/applications/${appId}/process-metrics/durations`), [client, appId])
+  const throughput = useApi(() => client.request<ThroughputResp>('GET', `/applications/${appId}/process-analytics/throughput?days=30`), [client, appId])
+  const bottlenecks = useApi(() => client.request<BottlenecksResp>('GET', `/applications/${appId}/process-analytics/bottlenecks`), [client, appId])
+  const durations = useApi(() => client.request<DurationsResp>('GET', `/applications/${appId}/process-analytics/durations`), [client, appId])
 
   return (
     <Panel title="Process Monitor">
@@ -28,23 +31,31 @@ export function ProcessMonitor({ client, appId }: { client: ApiClient; appId: st
       {tab === 'throughput' && (
         <div role="tabpanel">
           <Loading loading={throughput.loading} error={throughput.error} />
-          <ThroughputChart data={throughput.data?.items ?? []} />
+          <ThroughputChart items={throughput.data?.items ?? []} />
         </div>
       )}
 
       {tab === 'bottlenecks' && (
         <div role="tabpanel">
           <Loading loading={bottlenecks.loading} error={bottlenecks.error} />
+          {bottlenecks.data && (
+            <p className="hint" style={{ marginBottom: '0.5rem' }}>
+              {bottlenecks.data.running_instances_sampled} running instance{bottlenecks.data.running_instances_sampled === 1 ? '' : 's'} sampled
+            </p>
+          )}
           <table className="trace">
-            <thead><tr><th>Step</th><th>Executions</th><th>Avg (ms)</th></tr></thead>
+            <thead><tr><th>Process</th><th>Step</th><th>Tokens waiting</th></tr></thead>
             <tbody>
-              {(bottlenecks.data?.items ?? []).sort((a, b) => b.count - a.count).map((s) => (
-                <tr key={s.step_id}>
+              {(bottlenecks.data?.items ?? []).map((s) => (
+                <tr key={`${s.process}:${s.step_id}`}>
+                  <td>{s.process}</td>
                   <td><code>{s.step_id}</code></td>
-                  <td>{s.count}</td>
-                  <td style={{ background: heatColor(s.avg_ms, bottlenecks.data?.items ?? []) }}>{s.avg_ms.toFixed(0)}</td>
+                  <td>{s.token_count}</td>
                 </tr>
               ))}
+              {(bottlenecks.data?.items ?? []).length === 0 && !bottlenecks.loading && (
+                <tr><td colSpan={3} className="hint">No waiting tokens.</td></tr>
+              )}
             </tbody>
           </table>
         </div>
@@ -54,17 +65,20 @@ export function ProcessMonitor({ client, appId }: { client: ApiClient; appId: st
         <div role="tabpanel">
           <Loading loading={durations.loading} error={durations.error} />
           <table className="trace">
-            <thead><tr><th>Flow</th><th>Total</th><th>Completed</th><th>Failed</th><th>Avg (ms)</th></tr></thead>
+            <thead><tr><th>Process</th><th>Count</th><th>Avg (s)</th><th>Median (s)</th><th>P90 (s)</th></tr></thead>
             <tbody>
-              {(durations.data?.items ?? []).sort((a, b) => b.avg_duration_ms - a.avg_duration_ms).map((f) => (
-                <tr key={f.flow_id}>
-                  <td>{f.name || f.flow_id}</td>
-                  <td>{f.total}</td>
-                  <td>{f.completed}</td>
-                  <td>{f.failed}</td>
-                  <td>{f.avg_duration_ms.toFixed(0)}</td>
+              {(durations.data?.items ?? []).map((f) => (
+                <tr key={f.process}>
+                  <td>{f.process}</td>
+                  <td>{f.count}</td>
+                  <td>{f.avg_seconds.toFixed(1)}</td>
+                  <td>{f.median_seconds.toFixed(1)}</td>
+                  <td>{f.p90_seconds.toFixed(1)}</td>
                 </tr>
               ))}
+              {(durations.data?.items ?? []).length === 0 && !durations.loading && (
+                <tr><td colSpan={5} className="hint">No completed instances yet.</td></tr>
+              )}
             </tbody>
           </table>
         </div>
@@ -73,16 +87,21 @@ export function ProcessMonitor({ client, appId }: { client: ApiClient; appId: st
   )
 }
 
-function heatColor(val: number, all: StepMetric[]): string {
-  const max = Math.max(...all.map((s) => s.avg_ms), 1)
-  const ratio = val / max
-  const r = Math.round(ratio * 200)
-  return `rgba(${r + 55}, ${255 - r}, 0, 0.25)`
-}
+function ThroughputChart({ items }: { items: ThroughputItem[] }) {
+  if (!items.length) return <p className="hint">No data for the last 30 days.</p>
 
-function ThroughputChart({ data }: { data: ThroughputPoint[] }) {
-  if (!data.length) return <p className="hint">No data for the last 30 days.</p>
-  const maxVal = Math.max(...data.flatMap((d) => [d.started, d.completed, d.failed]), 1)
+  // Aggregate by bucket: count started (all), completed, failed
+  const byBucket = new Map<string, { started: number; completed: number; failed: number }>()
+  for (const item of items) {
+    const entry = byBucket.get(item.bucket) ?? { started: 0, completed: 0, failed: 0 }
+    entry.started += item.count
+    if (item.status === 'completed') entry.completed += item.count
+    if (item.status === 'failed') entry.failed += item.count
+    byBucket.set(item.bucket, entry)
+  }
+  const data = Array.from(byBucket.entries()).sort((a, b) => a[0].localeCompare(b[0]))
+
+  const maxVal = Math.max(...data.map(([, d]) => d.started), 1)
   const barW = 20
   const gap = 4
   const h = 120
@@ -92,14 +111,15 @@ function ThroughputChart({ data }: { data: ThroughputPoint[] }) {
   return (
     <div style={{ overflowX: 'auto' }}>
       <svg width={w} height={h + 32} aria-label="Throughput chart" role="img">
-        {data.map((d, i) => {
+        {data.map(([bucket, d], i) => {
           const x = pad + i * (barW + gap)
           const bH = (d.started / maxVal) * h
           const cH = (d.completed / maxVal) * h
           const fH = (d.failed / maxVal) * h
           const segW = Math.floor(barW / 3)
+          const label = bucket.slice(0, 10) // ISO date prefix
           return (
-            <g key={d.date}>
+            <g key={bucket}>
               <rect x={x} y={h - bH} width={segW} height={bH} fill="var(--accent, #4a90e2)" opacity={0.7}>
                 <title>Started: {d.started}</title>
               </rect>
@@ -111,7 +131,7 @@ function ThroughputChart({ data }: { data: ThroughputPoint[] }) {
               </rect>
               {i % 5 === 0 && (
                 <text x={x} y={h + 20} fontSize={9} fill="currentColor" opacity={0.5}>
-                  {d.date.slice(5)}
+                  {label.slice(5)}
                 </text>
               )}
             </g>

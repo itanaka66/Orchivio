@@ -15,6 +15,7 @@ import { DiffReview } from './proposals/DiffReview'
 import { ModelExplorer } from './model/ModelExplorer'
 import { PageDesigner } from './pages/PageDesigner'
 import { ProcessDesigner } from './processes/ProcessDesigner'
+import { ProcessMonitor } from './processes/ProcessMonitor'
 import { Preview } from './preview/Preview'
 import { PwaBar } from './pwa/PwaBar'
 import { clearShellCaches } from './pwa/register'
@@ -32,6 +33,7 @@ interface AdminTarget { org: Org; project: Project; application?: Application; m
 interface PreviewTarget { application: Application; model: Json; roles: string[]; canEdit: boolean }
 interface PagesTarget { application: Application; model: Json; canEdit: boolean }
 interface ProcessTarget { application: Application; model: Json; canEdit: boolean }
+interface MonitorTarget { application: Application }
 interface AITarget { application: Application; model: Json | null; canEdit: boolean }
 interface ReviewTarget { application: Application; canEdit: boolean }
 interface ModelTarget { application: Application; model: Json }
@@ -54,6 +56,7 @@ function Studio({ client }: { client: ApiClient }) {
   const [pages, setPages] = useState<PagesTarget | null>(null)
   const [admin, setAdmin] = useState<AdminTarget | null>(null)
   const [processes, setProcesses] = useState<ProcessTarget | null>(null)
+  const [monitor, setMonitor] = useState<MonitorTarget | null>(null)
   const [review, setReview] = useState<ReviewTarget | null>(null)
   const [aiBuilder, setAiBuilder] = useState<AITarget | null>(null)
   const [explorer, setExplorer] = useState<ModelTarget | null>(null)
@@ -187,6 +190,18 @@ function Studio({ client }: { client: ApiClient }) {
         <FeedbackWidget client={client} applicationId={processes.application.id} page="studio:processes" />
       </div>
     )
+  } else if (monitor) {
+    overlay = (
+      <div className="shell">
+        <header className="topbar">
+          <button type="button" className="link" onClick={() => setMonitor(null)}>← Back</button>
+          <span>{monitor.application.name} · Process monitor</span>
+          <span className="spacer" />
+          {user && <span>{user.display_name}</span>}
+        </header>
+        <main className="page wide"><ProcessMonitor client={client} appId={monitor.application.id} /></main>
+      </div>
+    )
   } else if (review) {
     overlay = (
       <div className="shell">
@@ -262,7 +277,7 @@ function Studio({ client }: { client: ApiClient }) {
       {user && <OfflinePanel />}
       {user ? (
         <Browser client={client} user={user} onOpen={setOpen} onBoard={setBoard} onPreview={setPreview} onPages={setPages} onAdmin={setAdmin}
-                 onProcesses={setProcesses} onReview={setReview} onAI={setAiBuilder} onExplorer={setExplorer}
+                 onProcesses={setProcesses} onMonitor={setMonitor} onReview={setReview} onAI={setAiBuilder} onExplorer={setExplorer}
                  onData={setDataView} onLogout={signOut} />
       ) : (
         <Login client={client} onUser={setUser} />
@@ -382,7 +397,7 @@ function useLoad<T>(load: () => Promise<T>, deps: unknown[]): { data: T | null; 
   return state
 }
 
-function Browser({ client, user, onOpen, onBoard, onPreview, onPages, onAdmin, onProcesses, onReview, onAI, onExplorer, onData, onLogout }: { client: ApiClient; user: User; onOpen: (o: Open) => void; onBoard: (b: BoardTarget) => void; onPreview: (p: PreviewTarget) => void; onPages: (p: PagesTarget) => void; onAdmin: (a: AdminTarget) => void; onProcesses: (t: ProcessTarget) => void; onReview: (t: ReviewTarget) => void; onAI: (t: AITarget) => void; onExplorer: (t: ModelTarget) => void; onData: (t: DataTarget) => void; onLogout: () => void }) {
+function Browser({ client, user, onOpen, onBoard, onPreview, onPages, onAdmin, onProcesses, onMonitor, onReview, onAI, onExplorer, onData, onLogout }: { client: ApiClient; user: User; onOpen: (o: Open) => void; onBoard: (b: BoardTarget) => void; onPreview: (p: PreviewTarget) => void; onPages: (p: PagesTarget) => void; onAdmin: (a: AdminTarget) => void; onProcesses: (t: ProcessTarget) => void; onMonitor: (t: MonitorTarget) => void; onReview: (t: ReviewTarget) => void; onAI: (t: AITarget) => void; onExplorer: (t: ModelTarget) => void; onData: (t: DataTarget) => void; onLogout: () => void }) {
   const [orgVersion, setOrgVersion] = useState(0)
   const orgs = useLoad(() => client.organizations(), [client, orgVersion])
   const [org, setOrg] = useState<Org | null>(null)
@@ -544,9 +559,12 @@ function Browser({ client, user, onOpen, onBoard, onPreview, onPages, onAdmin, o
           )}
         </p>
       )}
-      {app && revision.data && canEdit && (
+      {app && revision.data && (
         <p>
-          <button type="button" onClick={() => onProcesses({ application: app, model: revision.data!.model_json, canEdit })}>Open process designer</button>
+          {canEdit && (
+            <><button type="button" onClick={() => onProcesses({ application: app, model: revision.data!.model_json, canEdit })}>Open process designer</button>{' '}</>
+          )}
+          <button type="button" onClick={() => onMonitor({ application: app })}>Monitor processes</button>
         </p>
       )}
       {app && revision.data && (
