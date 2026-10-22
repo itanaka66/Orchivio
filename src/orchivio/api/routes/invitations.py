@@ -6,7 +6,7 @@ import uuid
 from datetime import timedelta
 
 from fastapi import APIRouter, Depends, Request, Response
-from pydantic import BaseModel, ConfigDict, EmailStr, Field
+from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
@@ -32,7 +32,7 @@ _VALID_ROLES = {"owner", "admin", "editor", "viewer"}
 
 class InviteIn(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    email: EmailStr
+    email: str = Field(max_length=320)
     role: str = Field(default="editor", pattern="^(owner|admin|editor|viewer)$")
 
 

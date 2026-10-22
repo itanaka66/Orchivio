@@ -283,4 +283,40 @@ def export_csv(data: AppData, entity: str, user: AppUser, *, limit: int = 10_000
     return b"\xef\xbb\xbf" + out.getvalue().encode("utf-8"), len(rows)
 
 
-__all__ = ["CsvError", "ImportResult", "RowError", "export_csv", "import_csv"]
+def export_xlsx(data: AppData, entity: str, user: AppUser, *, limit: int = 10_000) -> tuple[bytes, int]:
+    """Excel (.xlsx) bytes and row count."""
+    import openpyxl  # noqa: PLC0415
+
+    rows = data.export_rows(entity, user, limit=limit)
+    info = data._info(entity)
+    visible = data.readable_fields(entity, user)
+    names = [f.name for f in info.entity.fields if visible is None or f.name in visible]
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.append(names)
+    for r in rows:
+        ws.append([r.get(n) for n in names])
+    buf = io.BytesIO()
+    wb.save(buf)
+    return buf.getvalue(), len(rows)
+
+
+def import_xlsx(data: AppData, entity: str, user: AppUser, raw: bytes, **opts) -> "ImportResult":
+    """Convert an .xlsx file to CSV bytes, then delegate to import_csv."""
+    import openpyxl  # noqa: PLC0415
+
+    try:
+        wb = openpyxl.load_workbook(io.BytesIO(raw), read_only=True, data_only=True)
+    except Exception as e:
+        raise CsvError("cannot read Excel file", []) from e
+    ws = wb.active
+    out = io.StringIO(newline="")
+    w = csv.writer(out, lineterminator="\r\n")
+    for row in ws.iter_rows(values_only=True):
+        w.writerow(["" if v is None else str(v) for v in row])
+    csv_bytes = out.getvalue().encode("utf-8")
+    opts.setdefault("delimiter", ",")
+    return import_csv(data, entity, user, csv_bytes, **opts)
+
+
+__all__ = ["CsvError", "ImportResult", "RowError", "export_csv", "export_xlsx", "import_csv", "import_xlsx"]

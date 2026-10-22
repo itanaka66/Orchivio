@@ -15,7 +15,7 @@ from sqlalchemy.orm import Session
 
 from orchivio.ai import AIBuilder, BuilderError, ToolContext, ToolInfo
 from orchivio.db import ModelInvalid, ProposalRepository, to_model
-from orchivio.db.models import Application, AppRevision
+from orchivio.db.models import AIConversation, AIMessage, Application, AppRevision
 from orchivio.db.proposals import NoChanges, finish_ai_job, month_cost_usd, start_ai_job
 from orchivio.llm import NO_USAGE, LLMError, LLMProvider, Usage
 
@@ -35,10 +35,16 @@ router = APIRouter(tags=["ai"])
 MAX_TEXT = 20_000
 
 
+class ConversationIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    title: str = Field(default="", max_length=300)
+
+
 class RequirementsIn(BaseModel):
     model_config = ConfigDict(extra="forbid")
     requirements: str = Field(min_length=1, max_length=MAX_TEXT)
     register_requirements: bool = Field(default=False, description="also store the requirements the text states as draft requirement rows (needs story.manage)")
+    conversation_id: uuid.UUID | None = Field(default=None, description="continue an existing AI conversation (stores messages and links the job)")
 
 
 class ProposeIn(RequirementsIn):
@@ -57,6 +63,33 @@ class ProposeOut(BaseModel):
     proposal: ProposalDetail
     usage: dict[str, Any]
     registered_requirements: dict[str, Any] | None = None
+
+
+_HISTORY_PREFIX = "\n\n<previous_conversation_turns>\n{turns}\n</previous_conversation_turns>\n\n<new_requirements>\n"
+_HISTORY_SUFFIX = "\n</new_requirements>"
+_MAX_HISTORY_MESSAGES = 10
+
+
+def _build_history_text(db: Session, conversation_id: uuid.UUID) -> str:
+    """Return the last N messages of a conversation as a prefixed text block."""
+    msgs = (
+        db.query(AIMessage)
+        .filter(AIMessage.conversation_id == conversation_id)
+        .order_by(AIMessage.created_at.desc())
+        .limit(_MAX_HISTORY_MESSAGES)
+        .all()
+    )
+    if not msgs:
+        return ""
+    lines = []
+    for m in reversed(msgs):
+        lines.append(f"[{m.role}]: {m.content[:2000]}")
+    return "\n".join(lines)
+
+
+def _append_messages(db: Session, conversation_id: uuid.UUID, user_text: str, assistant_text: str, meta: dict[str, Any]) -> None:
+    db.add(AIMessage(conversation_id=conversation_id, role="user", content=user_text[:4000]))
+    db.add(AIMessage(conversation_id=conversation_id, role="assistant", content=assistant_text[:4000], meta=meta))
 
 
 def _usage(u: Usage, attempts: int) -> dict[str, Any]:
@@ -110,14 +143,50 @@ def _provider_failed(e: LLMError):
     return api_error(502, "ai_provider_error", "the AI provider failed to answer")
 
 
+@router.post("/applications/{app_id}/ai/conversations", status_code=201)
+def create_conversation(app_id: uuid.UUID, body: ConversationIn, principal: Principal = Depends(current_principal),
+                        db: Session = Depends(get_db)) -> dict[str, Any]:
+    app, project = load_application(db, principal, app_id, "model.propose")
+    conv = AIConversation(project_id=project.id, created_by=principal.user_id, title=body.title)
+    db.add(conv)
+    db.commit()
+    return {"id": str(conv.id), "title": conv.title, "status": conv.status, "created_at": conv.created_at.isoformat()}
+
+
+@router.get("/applications/{app_id}/ai/conversations")
+def list_conversations(app_id: uuid.UUID, principal: Principal = Depends(current_principal),
+                       db: Session = Depends(get_db)) -> list[dict[str, Any]]:
+    app, project = load_application(db, principal, app_id, "model.read")
+    convs = (db.query(AIConversation).filter(AIConversation.project_id == project.id)
+             .order_by(AIConversation.created_at.desc()).limit(50).all())
+    return [{"id": str(c.id), "title": c.title, "status": c.status, "created_at": c.created_at.isoformat()} for c in convs]
+
+
+@router.get("/applications/{app_id}/ai/conversations/{conv_id}")
+def get_conversation(app_id: uuid.UUID, conv_id: uuid.UUID, principal: Principal = Depends(current_principal),
+                     db: Session = Depends(get_db)) -> dict[str, Any]:
+    app, project = load_application(db, principal, app_id, "model.read")
+    conv = db.get(AIConversation, conv_id)
+    if conv is None or conv.project_id != project.id:
+        raise api_error(404, "not_found", "conversation not found")
+    msgs = db.query(AIMessage).filter(AIMessage.conversation_id == conv_id).order_by(AIMessage.created_at).all()
+    return {"id": str(conv.id), "title": conv.title, "status": conv.status, "created_at": conv.created_at.isoformat(),
+            "messages": [{"id": str(m.id), "role": m.role, "content": m.content, "created_at": m.created_at.isoformat()} for m in msgs]}
+
+
 @router.post("/applications/{app_id}/ai/analyze")
 def analyze(app_id: uuid.UUID, body: RequirementsIn, request: Request,
             principal: Principal = Depends(current_principal), db: Session = Depends(get_db)) -> dict[str, Any]:
     provider, app, project = _guard(request, db, principal, app_id, "model.propose")
+    effective_req = body.requirements
+    if body.conversation_id:
+        history = _build_history_text(db, body.conversation_id)
+        if history:
+            effective_req = _HISTORY_PREFIX.format(turns=history) + body.requirements + _HISTORY_SUFFIX
     job = start_ai_job(db, project_id=project.id, application_id=app.id, type="analyze_requirements",
                        created_by=principal.user_id, input_text=body.requirements, template="analyze_requirements@1")
     try:
-        r = AIBuilder(provider).analyze(body.requirements)
+        r = AIBuilder(provider).analyze(effective_req)
     except BuilderError as e:
         finish_ai_job(job, ok=False, usage=_usage(e.usage, e.attempts), error=str(e))
         db.commit()
@@ -126,9 +195,13 @@ def analyze(app_id: uuid.UUID, body: RequirementsIn, request: Request,
         finish_ai_job(job, ok=False, error=str(e))
         db.commit()
         raise _provider_failed(e) from e
-    finish_ai_job(job, ok=True, provider=r.provider, model=r.model_name, usage=_usage(r.usage, r.attempts))
+    usage = _usage(r.usage, r.attempts)
+    finish_ai_job(job, ok=True, provider=r.provider, model=r.model_name, usage=usage)
+    if body.conversation_id:
+        _append_messages(db, body.conversation_id, body.requirements,
+                         str(r.analysis.model_dump()), {"job_id": str(job.id), "type": "analyze"})
     db.commit()
-    out = {"job_id": str(job.id), "analysis": r.analysis.model_dump(), "usage": _usage(r.usage, r.attempts)}
+    out = {"job_id": str(job.id), "analysis": r.analysis.model_dump(), "usage": usage}
     if body.register_requirements:
         out["registered_requirements"] = auto_register(request, db, provider, principal, app, project, body.requirements)
     return out
@@ -147,7 +220,7 @@ def propose(app_id: uuid.UUID, body: ProposeIn, request: Request,
         except LLMError as e:
             raise _provider_failed(e) from e
     out = run_proposal(db, provider, principal, app, project, body.requirements, body.title,
-                       context=context, tool_calls=calls, extra_usage=plan_usage)
+                       context=context, tool_calls=calls, extra_usage=plan_usage, conversation_id=body.conversation_id)
     if body.register_requirements:
         out.registered_requirements = auto_register(request, db, provider, principal, app, project, body.requirements)
     return out
@@ -180,12 +253,17 @@ def gather_tool_context(request: Request, db: Session, provider: LLMProvider, pr
 def run_proposal(db: Session, provider: LLMProvider, principal: Principal, app: Application, project,
                  requirements: str, title: str | None, job_type: str = "propose_model", *,
                  context: list[ToolContext] | None = None, tool_calls: list[dict[str, Any]] | None = None,
-                 extra_usage: Usage = NO_USAGE) -> ProposeOut:
+                 extra_usage: Usage = NO_USAGE, conversation_id: uuid.UUID | None = None) -> ProposeOut:
     """Ask the provider for a model, store it as a pending proposal and record the job."""
+    effective_req = requirements
+    if conversation_id:
+        history = _build_history_text(db, conversation_id)
+        if history:
+            effective_req = _HISTORY_PREFIX.format(turns=history) + requirements + _HISTORY_SUFFIX
     job = start_ai_job(db, project_id=project.id, application_id=app.id, type=job_type,
                        created_by=principal.user_id, input_text=requirements,
                        template="propose_model_with_context@1" if context else "propose_model@1")
-    body = ProposeIn(requirements=requirements[:MAX_TEXT], title=title)
+    body = ProposeIn(requirements=effective_req[:MAX_TEXT], title=title)
     try:
         r = AIBuilder(provider).propose_model(body.requirements, _current_model(db, app), context or None)
     except BuilderError as e:
@@ -211,6 +289,9 @@ def run_proposal(db: Session, provider: LLMProvider, principal: Principal, app: 
             raise api_error(409, "no_changes", "the AI proposed no change to the current model") from e
         raise api_error(422, "ai_output_invalid", "the AI could not produce a valid model") from e
     finish_ai_job(job, ok=True, provider=r.provider, model=r.model_name, usage=usage, result_ref=f"proposal:{proposal.id}")
+    if conversation_id:
+        _append_messages(db, conversation_id, requirements,
+                         f"proposal:{proposal.id}", {"job_id": str(job.id), "type": "propose"})
     db.commit()
     return ProposeOut(job_id=job.id, proposal=proposal_detail(proposal), usage=usage)
 
