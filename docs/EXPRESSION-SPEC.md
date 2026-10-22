@@ -19,6 +19,7 @@ unary    := ('!' | '-') unary | postfix
 postfix  := primary ( ('.' | '?.') name ( '(' args ')' )? )*
 primary  := number | string | true | false | null | $var | name | name '(' args ')'
           | '(' expr ')' | '[' expr (',' expr)* ']'
+          | '{' ( name ':' expr (',' name ':' expr)* )? '}'
 ```
 
 Strings use `'…'` or `"…"` with escapes `\\ \' \" \n \t`. Numbers with a `.` are `decimal`,
@@ -41,9 +42,11 @@ have the entity as `record`.
 
 ## 3. Types
 
-`int`, `decimal`, `string`, `bool`, `datetime`, `enum:Name`, `ref:Entity`, `list<T>`, `null`.
+`int`, `decimal`, `string`, `bool`, `datetime`, `enum:Name`, `ref:Entity`, `list<T>`, `object`, `null`.
 Any type can be nullable (written `T?` in messages). `int` converts to `decimal` implicitly;
 nothing else converts. `uuid` fields are `string`; `date` is `datetime`.
+`object` is the type of an object literal `{key: expr, …}`; field names must be unique.
+Object literals are not compilable to SQL predicates.
 
 ## 4. Null safety
 
@@ -109,5 +112,5 @@ All errors derive from `ExprError` and carry a character offset: `ParseError`,
 
 ## 9. Future
 
-Object literals and flow variables (Server Flows), relationship traversal compiled to joins,
-`$env` constants, TypeScript evaluator for client-side visibility (DESIGN.md §8.5).
+Relationship traversal compiled to joins, `$env` constants, TypeScript evaluator for
+client-side visibility (DESIGN.md §8.5).

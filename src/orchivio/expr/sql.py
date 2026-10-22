@@ -26,6 +26,7 @@ from .ast import (
     Literal,
     Member,
     Node,
+    ObjLit,
     Ternary,
     Unary,
     Var,
@@ -112,6 +113,8 @@ class _Compiler:
                 return "(1 = 0)"  # empty list: x in [] is always false
             case ListLit():
                 raise NotCompilable("list used outside 'in'")
+            case ObjLit():
+                raise NotCompilable("object literals cannot be used in SQL predicates")
             case Unary(op=op, operand=o):
                 return f"(NOT {self.c(o)})" if op == "!" else f"(-{self.c(o)})"
             case Binary():

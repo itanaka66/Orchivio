@@ -22,6 +22,7 @@ from .ast import (
     Literal,
     Member,
     Node,
+    ObjLit,
     Ternary,
     Unary,
     Var,
@@ -82,6 +83,8 @@ class _Evaluator:
                 return self._ident(n, node)
             case ListLit(items=items):
                 return [self.ev(i) for i in items]
+            case ObjLit(fields=fields):
+                return {k: self.ev(v) for k, v in fields}
             case Member(obj=o, name=n, safe=safe):
                 obj = self.ev(o)
                 if obj is None:

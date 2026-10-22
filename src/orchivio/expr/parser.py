@@ -16,6 +16,7 @@ from .ast import (
     Literal,
     Member,
     Node,
+    ObjLit,
     Ternary,
     Unary,
     Var,
@@ -29,7 +30,7 @@ _TOKEN_RE = re.compile(
   | (?P<str>'(?:[^'\\]|\\.)*'|"(?:[^"\\]|\\.)*")
   | (?P<var>\$[A-Za-z_][A-Za-z0-9_]*)
   | (?P<id>[A-Za-z_][A-Za-z0-9_]*)
-  | (?P<op>\?\?|\?\.|&&|\|\||==|!=|<=|>=|[-+*/%<>!?:.,()\[\]])
+  | (?P<op>\?\?|\?\.|&&|\|\||==|!=|<=|>=|[-+*/%<>!?:.,()\[\]{}])
     """,
     re.VERBOSE,
 )
@@ -250,6 +251,26 @@ class _Parser:
             if len(items) > self.limits.max_list_size:
                 raise LimitExceeded("list literal too large", t.pos)
             return ListLit(tuple(items), t.pos)
+        if self.is_op("{"):
+            self.advance()
+            fields: list[tuple[str, Node]] = []
+            if not self.is_op("}"):
+                if self.tok.kind != "id":
+                    raise ParseError("expected field name", self.tok.pos)
+                key = self.advance().text
+                self.expect_op(":")
+                val = self.expr()
+                fields.append((key, val))
+                while self.is_op(","):
+                    self.advance()
+                    if self.tok.kind != "id":
+                        raise ParseError("expected field name", self.tok.pos)
+                    key = self.advance().text
+                    self.expect_op(":")
+                    val = self.expr()
+                    fields.append((key, val))
+            self.expect_op("}")
+            return ObjLit(tuple(fields), t.pos)
         raise ParseError(f"unexpected {t.text or 'end of input'!r}", t.pos)
 
 

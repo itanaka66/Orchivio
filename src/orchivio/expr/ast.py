@@ -51,6 +51,14 @@ class ListLit:
 
 
 @dataclass(frozen=True)
+class ObjLit:
+    """``{key: expr, ...}`` object literal. Fields are name-value pairs."""
+
+    fields: tuple[tuple[str, Node], ...]
+    pos: int = 0
+
+
+@dataclass(frozen=True)
 class Member:
     obj: Node
     name: str
@@ -89,7 +97,7 @@ class Ternary:
     pos: int = 0
 
 
-Node = Literal | Var | Ident | ListLit | Member | Call | Unary | Binary | Ternary
+Node = Literal | Var | Ident | ListLit | ObjLit | Member | Call | Unary | Binary | Ternary
 
 
 # --- types ----------------------------------------------------------------

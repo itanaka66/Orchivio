@@ -26,6 +26,7 @@ from .ast import (
     Literal,
     Member,
     Node,
+    ObjLit,
     Ternary,
     Type,
     Unary,
@@ -120,6 +121,8 @@ class _Checker:
                 return self._ident(n, node)
             case ListLit(items=items):
                 return self._list(items, node)
+            case ObjLit(fields=fields):
+                return self._obj(fields, node)
             case Member():
                 return self._member(node)
             case Call():
@@ -176,6 +179,15 @@ class _Checker:
         if elem.kind == "null" or elem.nullable:
             raise self.fail("list elements cannot be null", node)
         return list_t(elem)
+
+    def _obj(self, fields: tuple[tuple[str, Node], ...], node: Node) -> Type:
+        seen: set[str] = set()
+        for name, val in fields:
+            if name in seen:
+                raise self.fail(f"duplicate field '{name}'", node)
+            seen.add(name)
+            self.check(val)
+        return Type("object")
 
     def _member(self, node: Member) -> Type:
         ot = self.check(node.obj)
