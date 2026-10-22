@@ -1,6 +1,6 @@
 # Implementation Status
 
-Last updated: 2026-10-22 (FR-010/089/094/097/099; corrected FR-086/112). Statuses: **Done** (implemented and
+Last updated: 2026-10-22 (FR-010/089/094/097/099; corrected FR-055/086/096/112). Statuses: **Done** (implemented and
 tested), **Library** (implemented as a tested library but not yet wired into a running
 service), **Schema** (data structures only), **Planned**.
 
@@ -43,7 +43,7 @@ service), **Schema** (data structures only), **Planned**.
 | FR-087 | MCP client for the AI Builder | Partial | Organization registry, discovery, per-tool policy (A0 only), one bounded planning round, untrusted-output handling, audit; no interactive approval for stronger tools, no resources/prompts, no OAuth |
 | FR-094 | Environments and promotion pipeline | Partial | Ordered stages, stage/test/migration/approval gates, separation of duties; `ProductionStore.build()` provisions production tables on both approval path (`decide()`) and no-approval path (`promote()`); no migration executor (`run_expand`/`run_contract` not called on deploy) |
 | FR-095 | Immutable deployment packages | Done (control plane) | Reproducible zip, expand/contract plan, SBOM of direct dependencies, Ed25519 signature; no transitive SBOM |
-| FR-096 | Environment constants and secret references | Partial | Stored, audited and resolved (`resolve_constants`); wired into preview runner and app-plane flow runner (highest-stage environment's constants); entity-hook FlowHooks now also receive constants; vault/aws-sm/gcp-sm/azure-kv secret schemes not yet implemented |
+| FR-096 | Environment constants and secret references | Done | Stored, audited and resolved (`resolve_constants`); wired into preview runner and app-plane flow runner (highest-stage environment's constants); entity-hook FlowHooks now also receive constants; all six secret schemes supported: `env:` (env var), `file:` (text file), `vault:` (HashiCorp Vault KV via HTTP — needs `VAULT_ADDR`/`VAULT_TOKEN`), `aws-sm:` (AWS Secrets Manager via boto3), `gcp-sm:` (GCP Secret Manager via google-cloud-secret-manager), `azure-kv:` (Azure Key Vault via azure-keyvault-secrets + azure-identity); cloud SDKs are optional — missing SDK raises `SecretUnavailable` |
 | FR-097 | Near-zero-downtime migrations | Partial | `delivery/migrate.py` implements `run_expand` and `run_contract`; `POST /packages/{id}/migrations/run` applies phases manually with dry-run support; **expand phase now runs automatically** before `_go_live()` in both `promote()` and `decide()` (errors logged, not raised); contract phase remains manual; PostgreSQL DDL only |
 | FR-081 | Consumed REST via OpenAPI import | Done (MVP) | Typed operations, import as an A3 proposal, allowlisted destinations, SSRF-pinned calls; per application, not per environment; no pagination or retries |
 | FR-082 | Inbound and outbound webhooks | Done (MVP) | Outbound: signed CloudEvents, retries, dead letters, circuit breaker, SSRF guard. Inbound: signature-verified, replay-protected, payload-mapped, queued flow runs; secrets by reference only; limiter is per process |
@@ -66,7 +66,7 @@ service), **Schema** (data structures only), **Planned**.
 | FR-091 | Branches and semantic merge | Done | Three-way merge by element id with typed conflicts and per-conflict resolution; Studio screen for branches and merge; no per-branch preview |
 | FR-052 | Server Flows | Done (preview) | Modelled, validated, edited visually and executed transactionally under the caller's security; no elevation, no production deployment |
 | FR-053 | Client Flows | Done (browser runtime) | Modelled, validated and executed in the browser: `apps/web/src/flow/runner.ts` implements `runClientFlow` with start/decision/call_flow/end steps, wired into `App.tsx`; STATUS.md previously claimed no browser runtime but it is fully implemented |
-| FR-055 | Scheduled jobs | Partial | Cron schedules on server flows, planned once across workers, missed-run policy; `environment_id` threaded into `job_runs` (migration 0022), scheduler resolves highest-stage environment and passes it to the queue; runs in the preview runtime only (no production executor) |
+| FR-055 | Scheduled jobs | Done | Cron schedules on server flows, planned once across workers, missed-run policy; `environment_id` threaded into `job_runs` (migration 0022), scheduler resolves highest-stage environment and passes it to the queue; worker uses `ProductionStore(env.data_url)` when `environment_id` is set, falling back to `PreviewStore` |
 | FR-056 | Background task queues | Done (preview) | Leases, retry with exponential backoff, dead-letter queue, per-app concurrency; at-least-once. PostgreSQL path untested |
 | FR-054 | Entity event hooks | Done (preview) | before/after create/update/delete bound to server flows, atomic, bounded recursion |
 | FR-057 | Flow debugger | Partial | Step trace with ids and an overlay in the editor; `POST /applications/{id}/preview/flows/{flow}/debug` with `breakpoints` (variable capture into span detail) and `dry_run` (transactional rollback); no live stepping |
@@ -106,8 +106,7 @@ Everything not listed is **Planned**.
 
 ## Known limitations
 
-- Flow runs and hooks work in the preview only; `after_*` hooks and flows run synchronously in the request, there
-  are no scheduled jobs, task queues or retries (FR-055/056).
+- Flow runs and hooks work in the preview only; `after_*` hooks and flows run synchronously in the request.
 - A `change` step refreshes its own variable, but copies of the same record held in lists are not refreshed.
 - Flow variable scoping is checked as "defined upstream on some path"; the engine fails at run time if a
   variable is unset on the path actually taken.
@@ -126,7 +125,7 @@ Everything not listed is **Planned**.
 - Expressions: no relationship traversal (`record.owner.name`), no empty list literals, no
   object literals; `/` and `%` do not compile to SQL (see EXPRESSION-SPEC.md).
 - Enumerations from another module cannot be named inside expressions.
-- No application end-user accounts: the runtime exists only as the preview with simulated identities.
+- Application end-user accounts are local to each app; no SAML, MFA or single logout.
 - AI calls and test runs are synchronous inside the request; no job-queue offload yet.
 - Generated tests run on SQLite only; PostgreSQL SQL paths are unverified.
 - No second approver for risky proposals; `acknowledge_risks` is a flag from an admin.
