@@ -26,7 +26,7 @@ from orchivio.integrations import (
     resolve_secret,
 )
 from orchivio.integrations.dispatcher import SECRET_REF
-from orchivio.integrations.mcp_client import McpClient, McpError
+from orchivio.integrations.mcp_client import McpClient, McpError, clean_text
 
 from ..deps import Principal, api_error, audit, authorize, current_principal, get_db, not_found
 
@@ -56,13 +56,35 @@ class ToolPolicyIn(BaseModel):
     level: str = Field(default="A0", pattern="^A[0-4]$")
 
 
+class ResourcePolicyIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    enabled: bool
+
+
+class PromptPolicyIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    enabled: bool
+
+
 def server_out(s: McpServer) -> dict[str, Any]:
-    policy = s.tool_policy or {}
-    return {"id": str(s.id), "name": s.name, "url": s.url, "secret_ref": s.secret_ref, "status": s.status,
-            "discovered_at": s.discovered_at.isoformat() if s.discovered_at else None,
-            "tools": [{"name": t["name"], "description": t.get("description", ""), "input_schema": t.get("input_schema", {}),
-                       "enabled": bool(policy.get(t["name"], {}).get("enabled")), "level": policy.get(t["name"], {}).get("level", "A0")}
-                      for t in s.tools or []]}
+    tool_pol = s.tool_policy or {}
+    res_pol = s.resource_policy or {}
+    prompt_pol = s.prompt_policy or {}
+    return {
+        "id": str(s.id), "name": s.name, "url": s.url, "secret_ref": s.secret_ref, "status": s.status,
+        "discovered_at": s.discovered_at.isoformat() if s.discovered_at else None,
+        "tools": [{"name": t["name"], "description": t.get("description", ""), "input_schema": t.get("input_schema", {}),
+                   "enabled": bool(tool_pol.get(t["name"], {}).get("enabled")),
+                   "level": tool_pol.get(t["name"], {}).get("level", "A0")}
+                  for t in s.tools or []],
+        "resources": [{"uri": r["uri"], "name": r.get("name", r["uri"]), "description": r.get("description", ""),
+                       "mimeType": r.get("mimeType", "text/plain"),
+                       "enabled": bool(res_pol.get(r["uri"], {}).get("enabled"))}
+                      for r in s.resources or []],
+        "prompts": [{"name": p["name"], "description": p.get("description", ""), "arguments": p.get("arguments", []),
+                     "enabled": bool(prompt_pol.get(p["name"], {}).get("enabled"))}
+                    for p in s.prompts or []],
+    }
 
 
 def _load(db: Session, principal: Principal, org_id: uuid.UUID, name: str) -> McpServer:
@@ -123,7 +145,9 @@ def update_server(org_id: uuid.UUID, name: str, body: ServerPatch, request: Requ
     _check(request, body.url, body.secret_ref)
     changed = []
     if body.url is not None and body.url != s.url:
-        s.url, s.tools, s.tool_policy, s.discovered_at = body.url, [], {}, None  # a different server: nothing stays approved
+        s.url, s.tools, s.tool_policy = body.url, [], {}
+        s.resources, s.resource_policy = [], {}
+        s.prompts, s.prompt_policy, s.discovered_at = [], {}, None  # a different server: nothing stays approved
         changed.append("url")
     if body.secret_ref is not None:
         s.secret_ref = body.secret_ref
@@ -166,13 +190,22 @@ def discover(org_id: uuid.UUID, name: str, request: Request, principal: Principa
     try:
         client.initialize()
         tools = client.list_tools()
+        resources = client.list_resources()
+        prompts = client.list_prompts()
     except McpError as e:
         raise api_error(502, "mcp_server_error", str(e)) from e
-    names = {t["name"] for t in tools}
-    policy = {k: v for k, v in (s.tool_policy or {}).items() if k in names}
-    s.tools, s.tool_policy, s.discovered_at = tools, policy, datetime.now(UTC)
+    tool_names = {t["name"] for t in tools}
+    tool_policy = {k: v for k, v in (s.tool_policy or {}).items() if k in tool_names}
+    res_uris = {r["uri"] for r in resources}
+    res_policy = {k: v for k, v in (s.resource_policy or {}).items() if k in res_uris}
+    prompt_names = {p["name"] for p in prompts}
+    prompt_policy = {k: v for k, v in (s.prompt_policy or {}).items() if k in prompt_names}
+    s.tools, s.tool_policy = tools, tool_policy
+    s.resources, s.resource_policy = resources, res_policy
+    s.prompts, s.prompt_policy = prompts, prompt_policy
+    s.discovered_at = datetime.now(UTC)
     audit(db, request, "mcp_server.discovered", actor_id=principal.user_id, org_id=org_id, target_type="mcp_server", target_id=s.id,
-          meta={"name": s.name, "tools": len(tools), "dropped_policies": len((s.tool_policy or {}).keys() - policy.keys())})
+          meta={"name": s.name, "tools": len(tools), "resources": len(resources), "prompts": len(prompts)})
     db.commit()
     return server_out(s)
 
@@ -192,5 +225,38 @@ def set_tool_policy(org_id: uuid.UUID, name: str, tool: str, body: ToolPolicyIn,
     s.tool_policy = policy
     audit(db, request, "mcp_server.tool_policy", actor_id=principal.user_id, org_id=org_id, target_type="mcp_server", target_id=s.id,
           meta={"name": s.name, "tool": tool, "enabled": body.enabled, "level": body.level})
+    db.commit()
+    return server_out(s)
+
+
+@router.put("/organizations/{org_id}/mcp-servers/{name}/resources")
+def set_resource_policy(org_id: uuid.UUID, name: str, body: ResourcePolicyIn, request: Request,
+                        uri: str = Query(..., max_length=2000),
+                        principal: Principal = Depends(current_principal), db: Session = Depends(get_db)) -> dict[str, Any]:
+    """Enable or disable one resource URI. The URI must have been returned by the server's last discovery."""
+    s = _load(db, principal, org_id, name)
+    if not any(r["uri"] == uri for r in s.resources or []):
+        raise api_error(404, "unknown_resource", "discover the server's resources first; this server does not offer that URI")
+    policy = dict(s.resource_policy or {})
+    policy[uri] = {"enabled": body.enabled}
+    s.resource_policy = policy
+    audit(db, request, "mcp_server.resource_policy", actor_id=principal.user_id, org_id=org_id, target_type="mcp_server", target_id=s.id,
+          meta={"name": s.name, "uri": uri[:200], "enabled": body.enabled})
+    db.commit()
+    return server_out(s)
+
+
+@router.put("/organizations/{org_id}/mcp-servers/{name}/prompts/{prompt}")
+def set_prompt_policy(org_id: uuid.UUID, name: str, prompt: str, body: PromptPolicyIn, request: Request,
+                      principal: Principal = Depends(current_principal), db: Session = Depends(get_db)) -> dict[str, Any]:
+    """Enable or disable one prompt. The prompt name must have been returned by the server's last discovery."""
+    s = _load(db, principal, org_id, name)
+    if not re.fullmatch(r"[A-Za-z0-9_.-]{1,64}", prompt) or not any(p["name"] == prompt for p in s.prompts or []):
+        raise api_error(404, "unknown_prompt", "discover the server's prompts first; this server does not offer that prompt")
+    policy = dict(s.prompt_policy or {})
+    policy[prompt] = {"enabled": body.enabled}
+    s.prompt_policy = policy
+    audit(db, request, "mcp_server.prompt_policy", actor_id=principal.user_id, org_id=org_id, target_type="mcp_server", target_id=s.id,
+          meta={"name": s.name, "prompt": prompt, "enabled": body.enabled})
     db.commit()
     return server_out(s)

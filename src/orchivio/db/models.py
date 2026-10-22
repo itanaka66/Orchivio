@@ -976,6 +976,10 @@ class McpServer(Base):
     status: Mapped[str] = mapped_column(String(10), nullable=False, default="active")
     tools: Mapped[list[Any]] = mapped_column(PortableJSON, nullable=False, default=list)  # last discovery, normalised
     tool_policy: Mapped[dict[str, Any]] = mapped_column(PortableJSON, nullable=False, default=dict)  # name -> {enabled, level}
+    resources: Mapped[list[Any]] = mapped_column(PortableJSON, nullable=False, default=list)  # last discovery: {uri, name, description, mimeType}
+    resource_policy: Mapped[dict[str, Any]] = mapped_column(PortableJSON, nullable=False, default=dict)  # uri -> {enabled}
+    prompts: Mapped[list[Any]] = mapped_column(PortableJSON, nullable=False, default=list)  # last discovery: {name, description, arguments}
+    prompt_policy: Mapped[dict[str, Any]] = mapped_column(PortableJSON, nullable=False, default=dict)  # name -> {enabled}
     discovered_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_by: Mapped[uuid.UUID | None] = mapped_column(Uuid)
     created_at: Mapped[datetime] = _created()
