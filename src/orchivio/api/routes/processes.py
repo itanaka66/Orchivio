@@ -170,6 +170,38 @@ def migrate_instance(instance_id: uuid.UUID, request: Request,
     return instance_out(inst)
 
 
+class ReassignIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    assignee_user: str | None = Field(default=None, max_length=64,
+                                      description="User ID to assign to, or null to release back to the role pool.")
+    assignee_role: str | None = Field(default=None, max_length=64,
+                                      description="New role key, or null to keep the existing one.")
+
+
+def _load_task(db: Session, principal: Principal, task_id: uuid.UUID, action: str):
+    task = db.get(UserTask, task_id)
+    if task is None:
+        raise not_found("task")
+    load_application(db, principal, task.application_id, action)
+    return task
+
+
+@router.post("/user-tasks/{task_id}/reassign")
+def admin_reassign(task_id: uuid.UUID, body: ReassignIn, request: Request,
+                   principal: Principal = Depends(current_principal), db: Session = Depends(get_db)) -> dict[str, Any]:
+    """Admin: reassign an open task to a specific user or release it back to the role pool (FR-111)."""
+    task = _load_task(db, principal, task_id, "model.propose")
+    actor = f"studio:{principal.user_id}"
+    try:
+        service(request, db).reassign(task, actor, body.assignee_user, body.assignee_role)
+    except ServiceError as e:
+        db.rollback()
+        raise failure(e) from e
+    db.commit()
+    db.refresh(task)
+    return task_out(task, None, utcnow())
+
+
 @router.get("/applications/{app_id}/user-tasks", response_model=Page[dict])
 def all_tasks(app_id: uuid.UUID, status: str | None = Query(None, pattern="^(open|completed|cancelled)$"), limit: int = Query(50, ge=1, le=200),
               offset: int = Query(0, ge=0), principal: Principal = Depends(current_principal), db: Session = Depends(get_db)) -> Page[Any]:

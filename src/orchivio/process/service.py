@@ -237,6 +237,22 @@ class ProcessService:
         task.assignee_user, task.delegated_by = str(target.id), user_id
         self._event(task, "task_delegated", user_id, {"to": str(target.id)})
 
+    def reassign(self, task: UserTask, actor: str, assignee_user: str | None, assignee_role: str | None) -> None:
+        """Admin reassignment: set assignee_user and/or assignee_role, bypassing normal role checks.
+
+        Pass assignee_user=None to release back to the role pool. assignee_role=None keeps the existing role.
+        """
+        self.session.refresh(task)
+        self._open_task(task)
+        if assignee_role is not None:
+            task.assignee_role = assignee_role if assignee_role else None
+        task.assignee_user = assignee_user
+        task.delegated_by = None  # admin override clears delegation chain
+        self._event(task, "task_reassigned", actor, {
+            "to": assignee_user,
+            "role": task.assignee_role,
+        })
+
     def complete(self, task: UserTask, user_id: str, roles: frozenset[str], outcome: str, result: dict[str, Any]) -> ProcessInstance:
         with telemetry.span("process.task.complete", outcome=outcome[:31]):
             return self._complete(task, user_id, roles, outcome, result)
