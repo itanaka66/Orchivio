@@ -439,6 +439,15 @@ def promote(package_id: uuid.UUID, body: PromoteIn, request: Request, principal:
     db.flush()
     if not env.requires_approval:
         _go_live(db, dep, now)
+        if env.data_url:
+            from orchivio.db import to_model as _to_model
+            rev = db.get(AppRevision, v.manifest.get("revision_id")) if v.manifest.get("revision_id") else None
+            if rev is not None:
+                try:
+                    ProductionStore(env.data_url).build(app.id, _to_model(rev), rev.model_hash or "")
+                except Exception:  # noqa: BLE001
+                    import logging as _logging
+                    _logging.getLogger("orchivio.delivery").exception("production store build failed for env %s", env.id)
     audit(db, request, "deployment.requested" if env.requires_approval else "deployment.deployed", actor_id=principal.user_id,
           org_id=project.organization_id, target_type="deployment", target_id=dep.id,
           meta={"environment": env.name, "package": str(pkg.id), "digest": pkg.digest, "destructive_steps": len(risky)})
