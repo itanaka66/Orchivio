@@ -39,7 +39,9 @@ class ServerIn(BaseModel):
     model_config = ConfigDict(extra="forbid")
     name: str = Field(pattern=NAME)
     url: str = Field(max_length=2000)
-    secret_ref: str | None = Field(default=None, max_length=300, description="env:NAME or file:/path with the bearer token")
+    secret_ref: str | None = Field(default=None, max_length=300, description="env:NAME or file:/path with the bearer token or OAuth2 client_secret")
+    oauth_client_id: str | None = Field(default=None, max_length=300, description="OAuth2 client_credentials: client_id (requires secret_ref for client_secret and oauth_token_endpoint)")
+    oauth_token_endpoint: str | None = Field(default=None, max_length=2000, description="OAuth2 token endpoint URL")
 
 
 class ServerPatch(BaseModel):
@@ -47,6 +49,9 @@ class ServerPatch(BaseModel):
     url: str | None = Field(default=None, max_length=2000)
     secret_ref: str | None = Field(default=None, max_length=300)
     clear_secret: bool = False
+    oauth_client_id: str | None = Field(default=None, max_length=300)
+    clear_oauth: bool = False
+    oauth_token_endpoint: str | None = Field(default=None, max_length=2000)
     status: str | None = Field(default=None, pattern="^(active|disabled)$")
 
 
@@ -72,6 +77,7 @@ def server_out(s: McpServer) -> dict[str, Any]:
     prompt_pol = s.prompt_policy or {}
     return {
         "id": str(s.id), "name": s.name, "url": s.url, "secret_ref": s.secret_ref, "status": s.status,
+        "oauth_client_id": s.oauth_client_id, "oauth_token_endpoint": s.oauth_token_endpoint,
         "discovered_at": s.discovered_at.isoformat() if s.discovered_at else None,
         "tools": [{"name": t["name"], "description": t.get("description", ""), "input_schema": t.get("input_schema", {}),
                    "enabled": bool(tool_pol.get(t["name"], {}).get("enabled")),
@@ -117,7 +123,9 @@ def register(org_id: uuid.UUID, body: ServerIn, request: Request, principal: Pri
     _check(request, body.url, body.secret_ref)
     if db.scalar(select(McpServer.id).where(McpServer.organization_id == org_id, McpServer.name == body.name)):
         raise api_error(409, "name_taken", "a server with this name is already registered")
-    s = McpServer(organization_id=org_id, name=body.name, url=body.url, secret_ref=body.secret_ref, created_by=principal.user_id)
+    s = McpServer(organization_id=org_id, name=body.name, url=body.url, secret_ref=body.secret_ref,
+                  oauth_client_id=body.oauth_client_id, oauth_token_endpoint=body.oauth_token_endpoint,
+                  created_by=principal.user_id)
     db.add(s)
     db.flush()
     audit(db, request, "mcp_server.registered", actor_id=principal.user_id, org_id=org_id, target_type="mcp_server", target_id=s.id,
@@ -155,6 +163,15 @@ def update_server(org_id: uuid.UUID, name: str, body: ServerPatch, request: Requ
     if body.clear_secret:
         s.secret_ref = None
         changed.append("secret_ref")
+    if body.oauth_client_id is not None:
+        s.oauth_client_id = body.oauth_client_id
+        changed.append("oauth_client_id")
+    if body.oauth_token_endpoint is not None:
+        s.oauth_token_endpoint = body.oauth_token_endpoint
+        changed.append("oauth_token_endpoint")
+    if body.clear_oauth:
+        s.oauth_client_id, s.oauth_token_endpoint = None, None
+        changed.append("oauth")
     if body.status is not None:
         s.status = body.status
         changed.append("status")
@@ -186,7 +203,9 @@ def discover(org_id: uuid.UUID, name: str, request: Request, principal: Principa
             secret = resolve_secret(s.secret_ref)
         except SecretUnavailable as e:
             raise api_error(422, "secret_unavailable", str(e)) from e
-    client = McpClient(s.url, request.app.state.mcp_transport, secret=secret, timeout=request.app.state.settings.webhook_timeout_seconds)
+    client = McpClient(s.url, request.app.state.mcp_transport, secret=secret,
+                       oauth_client_id=s.oauth_client_id, oauth_token_endpoint=s.oauth_token_endpoint,
+                       timeout=request.app.state.settings.webhook_timeout_seconds)
     try:
         client.initialize()
         tools = client.list_tools()

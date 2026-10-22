@@ -17,6 +17,7 @@ from __future__ import annotations
 import hashlib
 import json
 import re
+import time
 import uuid
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -127,13 +128,55 @@ def check_arguments(schema: dict[str, Any], args: Any) -> str | None:
 
 
 class McpClient:
-    """One session with one server (Streamable HTTP; the server may answer with JSON or a single SSE message)."""
+    """One session with one server (Streamable HTTP; the server may answer with JSON or a single SSE message).
 
-    def __init__(self, url: str, transport: RequestTransport, *, secret: str | None = None, timeout: float = 15.0) -> None:
+    Auth options (mutually exclusive, in priority order):
+    * ``oauth_client_id`` + ``oauth_token_endpoint`` + ``secret`` (client_secret) — OAuth2
+      client_credentials grant; a token is fetched before the first call and cached for its
+      lifetime (minus 30 s); ``secret`` is the client_secret value (already resolved).
+    * ``secret`` alone — used as a static Bearer token for every request.
+    """
+
+    def __init__(self, url: str, transport: RequestTransport, *, secret: str | None = None,
+                 oauth_client_id: str | None = None, oauth_token_endpoint: str | None = None,
+                 timeout: float = 15.0) -> None:
         self.url, self.transport, self.secret, self.timeout = url, transport, secret, timeout
+        self.oauth_client_id = oauth_client_id
+        self.oauth_token_endpoint = oauth_token_endpoint
+        self._oauth_token: str | None = None
+        self._oauth_expires_at: float = 0.0
         self.session_id: str | None = None
         self.version = PROTOCOLS[0]
         self._next_id = 1
+
+    def _bearer(self) -> str | None:
+        """Return the current Bearer token, refreshing via OAuth2 if configured."""
+        if not self.oauth_client_id or not self.oauth_token_endpoint:
+            return self.secret
+        now = time.monotonic()
+        if self._oauth_token and now < self._oauth_expires_at:
+            return self._oauth_token
+        body = f"grant_type=client_credentials&client_id={self.oauth_client_id}"
+        if self.secret:
+            body += f"&client_secret={self.secret}"
+        tok_headers = {"Content-Type": "application/x-www-form-urlencoded", "Accept": "application/json"}
+        try:
+            resp = self.transport.request("POST", self.oauth_token_endpoint, tok_headers,
+                                          body.encode(), timeout=self.timeout, max_bytes=32_768)
+        except (DestinationError, OSError) as e:
+            raise McpError(f"OAuth token request failed: {type(e).__name__}") from e
+        if resp.status != 200:
+            raise McpError(f"OAuth token endpoint returned HTTP {resp.status}")
+        try:
+            tok = json.loads(resp.body)
+        except ValueError as e:
+            raise McpError("OAuth token response is not valid JSON") from e
+        if not isinstance(tok, dict) or not isinstance(tok.get("access_token"), str):
+            raise McpError("OAuth token response missing access_token")
+        self._oauth_token = tok["access_token"]
+        expires_in = tok.get("expires_in")
+        self._oauth_expires_at = now + (float(expires_in) - 30) if isinstance(expires_in, (int, float)) and expires_in > 60 else now + 270
+        return self._oauth_token
 
     def _rpc(self, method: str, params: dict[str, Any] | None = None, *, notify: bool = False) -> Any:
         msg: dict[str, Any] = {"jsonrpc": "2.0", "method": method}
@@ -146,8 +189,9 @@ class McpClient:
             msg["id"] = rid
         headers = {"Content-Type": "application/json", "Accept": "application/json, text/event-stream",
                    "MCP-Protocol-Version": self.version, "User-Agent": "Orchivio-MCP-Client/1"}
-        if self.secret:
-            headers["Authorization"] = f"Bearer {self.secret}"
+        bearer = self._bearer()
+        if bearer:
+            headers["Authorization"] = f"Bearer {bearer}"
         if self.session_id:
             headers["Mcp-Session-Id"] = self.session_id
         try:
@@ -558,13 +602,17 @@ class ToolBroker:
             if srv is None:
                 return McpError("the server is not available")
             url, ref = srv.url, srv.secret_ref
+            oauth_client_id = srv.oauth_client_id
+            oauth_token_endpoint = srv.oauth_token_endpoint
         secret = None
         if ref:
             try:
                 secret = self.secrets(ref)
             except SecretUnavailable:
                 return McpError("the server's credential is not available")
-        client = McpClient(url, self.transport, secret=secret, timeout=self.timeout)
+        client = McpClient(url, self.transport, secret=secret,
+                           oauth_client_id=oauth_client_id, oauth_token_endpoint=oauth_token_endpoint,
+                           timeout=self.timeout)
         try:
             client.initialize()
         except McpError as e:
