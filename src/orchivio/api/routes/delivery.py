@@ -6,7 +6,6 @@ which stage, with every gate and approval behind it. Running that package elsewh
 
 from __future__ import annotations
 
-import re
 import uuid
 from typing import Any
 
@@ -36,6 +35,7 @@ from orchivio.delivery import (
     verify_package,
 )
 from orchivio.delivery.package import VerifiedPackage
+from orchivio.integrations.dispatcher import SECRET_REF
 from orchivio.runtime import table_prefix
 from orchivio.runtime.production import ProductionStore
 
@@ -55,7 +55,6 @@ from ..schemas import Page
 router = APIRouter(tags=["delivery"])
 
 ENV_NAME = r"^[a-z][a-z0-9-]{0,39}$"
-SECRET_REF = re.compile(r"^(env|vault|file|aws-sm|gcp-sm|azure-kv):[A-Za-z0-9_./:@-]{1,250}$")
 SECRETISH = re.compile(r"(secret|password|passwd|token|api[_-]?key|private|credential)", re.I)
 
 

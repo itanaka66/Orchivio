@@ -42,7 +42,7 @@ from .transport import Transport, sign
 log = logging.getLogger("orchivio.webhooks")
 
 PATTERN = re.compile(r"^[A-Za-z0-9_.*-]{1,200}$")
-SECRET_REF = re.compile(r"^(env|file):[A-Za-z0-9_./:\\-]{1,250}$")
+SECRET_REF = re.compile(r"^(env|vault|file|aws-sm|gcp-sm|azure-kv):[A-Za-z0-9_./:@#-]{1,250}$")
 RETRYABLE_STATUS = {408, 425, 429}
 MAX_ERROR = 500
 
@@ -59,16 +59,143 @@ def matches(patterns: list[str], event_type: str) -> bool:
     return any(fnmatch.fnmatchcase(event_type, p) for p in patterns)
 
 
+def _resolve_vault(path: str) -> str:
+    """HashiCorp Vault KV backend.  Needs VAULT_ADDR and VAULT_TOKEN env vars.
+
+    Path format: ``secret/data/myapp`` (KV v2) or ``secret/myapp`` (KV v1).
+    Append ``#field`` to extract a specific key from the JSON payload; without
+    it the whole secret string is returned (only works for single-string KV v1
+    secrets).
+    """
+    import json as _json
+    import urllib.error as _uerr
+    import urllib.request as _ureq
+
+    path, _, field = path.partition("#")
+    addr = os.environ.get("VAULT_ADDR", "http://127.0.0.1:8200").rstrip("/")
+    token = os.environ.get("VAULT_TOKEN", "")
+    if not token:
+        raise SecretUnavailable("VAULT_TOKEN is not set")
+    url = f"{addr}/v1/{path}"
+    req = _ureq.Request(url, headers={"X-Vault-Token": token})
+    try:
+        with _ureq.urlopen(req, timeout=5) as resp:  # noqa: S310
+            data = _json.loads(resp.read())
+    except _uerr.HTTPError as exc:
+        raise SecretUnavailable(f"vault returned HTTP {exc.code} for {path}") from exc
+    except OSError as exc:
+        raise SecretUnavailable(f"vault unreachable: {exc}") from exc
+    # KV v2 wraps the payload under data.data; KV v1 uses data directly
+    payload = data.get("data", {})
+    if "data" in payload:
+        payload = payload["data"]
+    if field:
+        val = payload.get(field)
+        if not val:
+            raise SecretUnavailable(f"vault secret {path} has no field {field!r}")
+        return str(val)
+    # KV v1: data is {"value": "..."} or a bare string (rare)
+    if isinstance(payload, str):
+        return payload
+    raise SecretUnavailable(f"vault secret {path}: specify a field with #fieldname")
+
+
+def _resolve_aws_sm(name: str) -> str:
+    """AWS Secrets Manager backend.  Relies on the standard boto3 credential chain."""
+    try:
+        import boto3  # type: ignore[import]
+    except ImportError as exc:
+        raise SecretUnavailable("boto3 is not installed; cannot resolve aws-sm: secret refs") from exc
+    import json as _json
+    client = boto3.client("secretsmanager")
+    try:
+        resp = client.get_secret_value(SecretId=name)
+    except Exception as exc:  # noqa: BLE001
+        raise SecretUnavailable(f"aws-sm: could not retrieve {name}: {exc}") from exc
+    secret = resp.get("SecretString") or ""
+    if not secret:
+        raise SecretUnavailable(f"aws-sm: {name} has no string value")
+    # If the secret is JSON, try to return it as-is (callers can use #field)
+    return secret
+
+
+def _resolve_gcp_sm(resource: str) -> str:
+    """GCP Secret Manager backend.  Relies on Application Default Credentials.
+
+    Resource format: ``projects/PROJECT/secrets/NAME/versions/VERSION``.
+    """
+    try:
+        from google.cloud import secretmanager as _sm  # type: ignore[import]
+    except ImportError as exc:
+        raise SecretUnavailable(
+            "google-cloud-secret-manager is not installed; cannot resolve gcp-sm: secret refs"
+        ) from exc
+    client = _sm.SecretManagerServiceClient()
+    try:
+        response = client.access_secret_version(name=resource)
+    except Exception as exc:  # noqa: BLE001
+        raise SecretUnavailable(f"gcp-sm: could not access {resource}: {exc}") from exc
+    return response.payload.data.decode("utf-8").strip()
+
+
+def _resolve_azure_kv(uri: str) -> str:
+    """Azure Key Vault backend.  Relies on DefaultAzureCredential.
+
+    URI format: ``https://VAULT.vault.azure.net/secrets/NAME`` (version optional as trailing path segment).
+    """
+    try:
+        from azure.identity import DefaultAzureCredential  # type: ignore[import]
+        from azure.keyvault.secrets import SecretClient  # type: ignore[import]
+    except ImportError as exc:
+        raise SecretUnavailable(
+            "azure-keyvault-secrets and azure-identity are not installed; cannot resolve azure-kv: secret refs"
+        ) from exc
+    # Split vault URL from secret name (and optional version)
+    # Expected: https://VAULT.vault.azure.net/secrets/NAME[/VERSION]
+    parts = uri.split("/secrets/", 1)
+    if len(parts) != 2:
+        raise SecretUnavailable(f"azure-kv: invalid URI format: {uri!r}")
+    vault_url, secret_path = parts[0], parts[1]
+    secret_name = secret_path.split("/")[0]
+    version = secret_path.split("/")[1] if "/" in secret_path else None
+    credential = DefaultAzureCredential()
+    client = SecretClient(vault_url=vault_url, credential=credential)
+    try:
+        secret = client.get_secret(secret_name, version=version)
+    except Exception as exc:  # noqa: BLE001
+        raise SecretUnavailable(f"azure-kv: could not retrieve {secret_name}: {exc}") from exc
+    if not secret.value:
+        raise SecretUnavailable(f"azure-kv: {secret_name} has no value")
+    return secret.value
+
+
 def resolve_secret(ref: str) -> str:
-    """Look a signing secret up at send time. Supports ``env:NAME`` and ``file:/path`` (one line)."""
+    """Resolve a secret reference.
+
+    Supported schemes:
+    - ``env:VAR_NAME`` — environment variable
+    - ``file:/path/to/file`` — single-line text file
+    - ``vault:secret/data/path[#field]`` — HashiCorp Vault (needs VAULT_ADDR + VAULT_TOKEN)
+    - ``aws-sm:secret-name`` — AWS Secrets Manager (uses boto3 credential chain)
+    - ``gcp-sm:projects/P/secrets/S/versions/V`` — GCP Secret Manager (uses ADC)
+    - ``azure-kv:https://VAULT.vault.azure.net/secrets/NAME`` — Azure Key Vault (uses DefaultAzureCredential)
+    """
     scheme, _, value = ref.partition(":")
     if scheme == "env":
-        secret = os.environ.get(value)
+        secret: str | None = os.environ.get(value)
     elif scheme == "file":
         try:
             secret = Path(value).read_text(encoding="utf-8").strip()
         except OSError:
             secret = None
+    elif scheme == "vault":
+        return _resolve_vault(value)
+    elif scheme == "aws-sm":
+        return _resolve_aws_sm(value)
+    elif scheme == "gcp-sm":
+        return _resolve_gcp_sm(value)
+    elif scheme == "azure-kv":
+        return _resolve_azure_kv(f"{scheme}:{value}")
     else:
         raise SecretUnavailable(f"unsupported secret scheme {scheme!r}")
     if not secret:
