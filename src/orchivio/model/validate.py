@@ -137,6 +137,27 @@ class ModuleTypes:
         return ref_t(q, nullable)
 
 
+def enum_scope(index: ModelIndex, module_key: str) -> dict[str, tuple[str, ...]]:
+    """Build the interpreter's enum lookup for *module_key*.
+
+    Returns every qualified name (``mod.Enum``) and every unqualified name (``Enum``).
+    Same-module unqualified names win over cross-module ones, matching the checker's
+    three-stage resolution order.
+    """
+    result: dict[str, tuple[str, ...]] = {}
+    for k, v in index.enums.items():
+        result[k] = tuple(v)
+    for k, v in index.enums.items():
+        mod, name = k.split(".", 1)
+        if mod != module_key:
+            result.setdefault(name, tuple(v))
+    for k, v in index.enums.items():
+        mod, name = k.split(".", 1)
+        if mod == module_key:
+            result[name] = tuple(v)
+    return result
+
+
 def validate_model(model: AppModel) -> list[Issue]:
     return _Validator(model).run()
 

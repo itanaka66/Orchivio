@@ -16,7 +16,7 @@ from typing import Any, Protocol
 
 from orchivio.expr import CheckEnv, EvalContext, ExprError, UserRef, check, evaluate
 from orchivio.expr.ast import BOOL, STRING
-from orchivio.model import AppModel, ModelIndex
+from orchivio.model import AppModel, ModelIndex, enum_scope
 from orchivio.model.processes import process_env
 from orchivio.model.schema import FieldDef, ModuleDef, ProcessDef, ProcessStep, qualify
 
@@ -100,7 +100,7 @@ class Machine:
         self.steps = {s.id: s for s in proc.steps}
         self.env = process_env(self.index, module, proc)
         self.form_names = [f["name"] for s in proc.steps if s.type == "user_task" for f in s.config.get("form", [])]
-        self.enums = {e.name: tuple(e.values) for e in module.enumerations}
+        self.enums = enum_scope(self.index, module.key)
 
     # -- public operations ----------------------------------------------------------------------
 

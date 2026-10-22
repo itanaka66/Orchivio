@@ -18,7 +18,7 @@ from sqlalchemy import Engine, select
 from orchivio import telemetry
 from orchivio.expr import CheckEnv, EvalContext, UserRef, check, evaluate
 from orchivio.expr.ast import BOOL
-from orchivio.model import AppModel
+from orchivio.model import AppModel, enum_scope
 from orchivio.runtime import (
     AppData,
     AppUser,
@@ -168,7 +168,7 @@ class Runner:
         rule = next(r for r in self.model.security.access if r.element_id == c.rule)
         info = self.schema.entities[c.entity]
         res = check(rule.row_constraint, CheckEnv(self.schema.index.types_for(info.module.key), c.entity), BOOL)
-        enums = {e.name: tuple(e.values) for e in info.module.enumerations}
+        enums = enum_scope(self.schema.index, info.module.key)
         rows = self._all_rows(c.entity)
         if not rows:
             raise _Skip("no synthetic rows")

@@ -33,7 +33,7 @@ from orchivio.expr import (
     evaluate,
 )
 from orchivio.expr.ast import BOOL, STRING, list_t
-from orchivio.model import AppModel
+from orchivio.model import AppModel, enum_scope
 from orchivio.model.schema import FieldDef, FlowDef, FlowStep, ModuleDef, qualify
 from orchivio.ports import IntegrationCall, IntegrationError
 from orchivio.runtime import AppData, AppUser, DataError, HookFailed
@@ -281,7 +281,7 @@ class FlowRunner:
         user = run.user
         ctx = EvalContext(
             current_user=UserRef(user.id, user.roles) if user else None, now=self.clock(),
-            enums={e.name: tuple(e.values) for e in sc.module.enumerations}, variables=sc.values)
+            enums=enum_scope(self.schema.index, sc.module.key), variables=sc.values)
         return evaluate(res.ast, ctx)
 
     def _values(self, run: _Run, sc: _Scope, step: FlowStep, mapping: Any) -> dict[str, Any]:

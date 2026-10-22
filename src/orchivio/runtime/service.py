@@ -35,7 +35,7 @@ from orchivio.expr import (
     evaluate,
 )
 from orchivio.expr.ast import BOOL
-from orchivio.model import AppModel
+from orchivio.model import AppModel, enum_scope
 from orchivio.model.schema import FieldDef, parse_field_type, qualify
 from orchivio.ports import AuditRecord, AuditSink, IntegrationClient
 from orchivio.security import record_allowed, resolve_access, resolve_fields, row_predicate
@@ -330,9 +330,8 @@ class AppData:
         return info
 
     def _eval_ctx(self, info: EntityInfo, user: AppUser | None, record: Mapping[str, Any] | None) -> EvalContext:
-        enums = {e.name: tuple(e.values) for e in info.module.enumerations}
         return EvalContext(record=record, current_user=UserRef(user.id, user.roles) if user else None,
-                           now=self.clock(), enums=enums)
+                           now=self.clock(), enums=enum_scope(self.schema.index, info.module.key))
 
     def _guard(self, info: EntityInfo, user: AppUser, op: str):
         decision = resolve_access(self.model, user.roles, info.qualified, op)

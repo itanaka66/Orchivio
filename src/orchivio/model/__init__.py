@@ -15,7 +15,7 @@ from .merge import Conflict, MergeResult, flatten, merge, unflatten
 from .migrate import UnsupportedSchemaVersion, migrate_to_latest
 from .refs import Ref, build_refs, usages
 from .schema import SCHEMA_VERSION, AppModel, canonical_json, model_hash
-from .validate import Issue, ModelIndex, has_errors, validate_flow, validate_model
+from .validate import Issue, ModelIndex, enum_scope, has_errors, validate_flow, validate_model
 
 __all__ = [
     "RULES",
@@ -33,6 +33,7 @@ __all__ = [
     "Ref",
     "Rule",
     "UnsupportedSchemaVersion",
+    "enum_scope",
     "assign_element_ids",
     "blocking",
     "build_archive",

@@ -14,7 +14,7 @@ from sqlalchemy import Engine, select
 
 from orchivio.expr import CheckEnv, EvalContext, ExprError, UserRef, check, evaluate
 from orchivio.expr.ast import BOOL
-from orchivio.model import AppModel
+from orchivio.model import AppModel, enum_scope
 from orchivio.model.schema import FlowDef, FlowTestCase
 from orchivio.ports import MockIntegrations
 from orchivio.runtime import AppUser, DataError, PreviewStore
@@ -78,7 +78,7 @@ def _assert(case: FlowTestCase, result: FlowResult, data, user: AppUser, flow_ke
         if r.where:
             try:
                 res = check(r.where, CheckEnv(data.schema.index.types_for(info.module.key), q), BOOL)
-                enums = {e.name: tuple(e.values) for e in info.module.enumerations}
+                enums = enum_scope(data.schema.index, info.module.key)
                 ctx_user = UserRef(user.id, user.roles)
                 count = sum(
                     1 for row in rows
