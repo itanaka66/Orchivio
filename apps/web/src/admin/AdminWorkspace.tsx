@@ -11,6 +11,7 @@ import { Jobs } from './Jobs'
 import { Logs } from './Logs'
 import { McpServers } from './McpServers'
 import { Modules } from './Modules'
+import { ProjectSettings } from './ProjectSettings'
 import { Oidc } from './Oidc'
 import { Processes } from './Processes'
 import { Registry } from './Registry'
@@ -40,6 +41,7 @@ export const SECTIONS: Section[] = [
   { key: 'git', label: 'Git sync', group: 'Integrations', min: 'admin', scope: 'app' },
   { key: 'mcp', label: 'MCP servers', group: 'Organization', min: 'admin', scope: 'org' },
   { key: 'governance', label: 'Governance', group: 'Organization', min: 'admin', scope: 'org' },
+  { key: 'project-settings', label: 'Project settings', group: 'Organization', min: 'admin', scope: 'org' },
   { key: 'audit', label: 'Audit log', group: 'Organization', min: 'admin', scope: 'org' },
 ]
 
@@ -85,6 +87,7 @@ export function AdminWorkspace({ client, org, project, application, model }: Pro
       git: <GitSync client={client} appId={a} />,
       mcp: <McpServers client={client} orgId={org.id} />,
       governance: <Governance client={client} orgId={org.id} />,
+      'project-settings': <ProjectSettings client={client} projectId={project.id} orgId={org.id} />,
       audit: <AuditLog client={client} orgId={org.id} />,
     }[current.key] ?? body
   }

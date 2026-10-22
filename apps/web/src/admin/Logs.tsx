@@ -29,7 +29,7 @@ export function Logs({ client, appId }: { client: ApiClient; appId: string }) {
         <p className="hint">Operational lines of this application (background jobs, webhook deliveries, integration calls). They never contain record data.</p>
         <div className="toolbar">
           <label>Level <select aria-label="Level" value={level} onChange={(e) => { setLevel(e.target.value); reset() }}>{['debug', 'info', 'warning', 'error'].map((l) => <option key={l} value={l}>{l}</option>)}</select></label>
-          <label>Source <select aria-label="Source" value={source} onChange={(e) => { setSource(e.target.value); reset() }}>{['', 'job', 'webhook', 'integration'].map((s) => <option key={s} value={s}>{s || 'any'}</option>)}</select></label>
+          <label>Source <select aria-label="Source" value={source} onChange={(e) => { setSource(e.target.value); reset() }}>{['', 'flow', 'job', 'webhook', 'integration', 'process', 'gitsync'].map((s) => <option key={s} value={s}>{s || 'any'}</option>)}</select></label>
           <label>Search <input aria-label="Search" value={q} onChange={(e) => { setQ(e.target.value); reset() }} /></label>
           <button type="button" onClick={() => { reset(); logs.reload() }}>Refresh</button>
         </div>

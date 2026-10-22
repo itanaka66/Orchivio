@@ -18,8 +18,8 @@ from orchivio import telemetry
 from orchivio.db.models import AppLog
 
 LOGGER = telemetry.APP_LOGGER
-ALLOWED_FIELDS = frozenset({"event", "flow", "trigger", "outcome", "status", "status_class", "attempt", "attempts", "integration",
-                            "destination", "operation", "webhook", "event_type", "environment", "duration_ms"})
+ALLOWED_FIELDS = frozenset({"event", "flow", "process", "trigger", "outcome", "status", "status_class", "attempt", "attempts",
+                            "integration", "destination", "operation", "webhook", "event_type", "environment", "duration_ms"})
 _LEVEL = {logging.DEBUG: "debug", logging.INFO: "info", logging.WARNING: "warning", logging.ERROR: "error", logging.CRITICAL: "error"}
 PRUNE_EVERY = 200
 
