@@ -340,6 +340,64 @@ def process_versions(app_id: uuid.UUID, principal: Principal = Depends(current_p
     return {"revisions": out}
 
 
+class BulkMigrateIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    dry_run: bool = False
+
+
+@router.post("/applications/{app_id}/process-instances/bulk-migrate")
+def bulk_migrate(app_id: uuid.UUID, body: BulkMigrateIn, request: Request,
+                 principal: Principal = Depends(current_principal), db: Session = Depends(get_db)) -> dict[str, Any]:
+    """Migrate all stale running instances (migration_policy='migrate') to the current revision (FR-112)."""
+    app, _ = load_application(db, principal, app_id, "model.propose")
+    svc = service(request, db)
+    stale = svc.stale_instances(app)
+    actor = f"studio:{principal.user_id}"
+    migrated_items, skipped_items = [], []
+    for inst in stale:
+        if body.dry_run or inst.migration_policy != "migrate":
+            skipped_items.append({**instance_out(inst), "reason": "policy:pin" if inst.migration_policy != "migrate" else "dry_run"})
+        else:
+            try:
+                svc.migrate_to_current(inst, app, actor)
+                db.flush()
+                db.refresh(inst)
+                migrated_items.append(instance_out(inst))
+            except ServiceError as e:
+                skipped_items.append({**instance_out(inst), "reason": e.code})
+    if not body.dry_run:
+        db.commit()
+    return {"migrated": len(migrated_items), "skipped": len(skipped_items), "dry_run": body.dry_run,
+            "current_revision_id": str(app.current_revision_id) if app.current_revision_id else None,
+            "instances": migrated_items + skipped_items}
+
+
+class BroadcastIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    payload: dict[str, Any] = Field(default_factory=dict)
+
+
+@router.post("/applications/{app_id}/process-messages/{message_type}", status_code=202)
+def broadcast_message(app_id: uuid.UUID, message_type: str, body: BroadcastIn, request: Request,
+                      principal: Principal = Depends(current_principal), db: Session = Depends(get_db)) -> dict[str, Any]:
+    """Broadcast a message to all running instances waiting for message_type (FR-110)."""
+    if not message_type or not 1 <= len(message_type) <= 100:
+        raise api_error(422, "invalid_message_type", "message_type must be 1-100 characters")
+    app, _ = load_application(db, principal, app_id, "model.read")
+    from sqlalchemy import select as _select
+    from orchivio.db.models import ProcessInstance as _PI
+    waiters = db.scalars(_select(_PI).where(_PI.application_id == app_id, _PI.status == "running")).all()
+    signaled = 0
+    for inst in waiters:
+        try:
+            service(request, db).signal(inst, message_type, body.payload, f"studio:{principal.user_id}")
+            signaled += 1
+        except ServiceError:
+            pass
+    db.commit()
+    return {"message_type": message_type, "signaled": signaled}
+
+
 class SignalIn(BaseModel):
     model_config = ConfigDict(extra="forbid")
     message: str = Field(min_length=1, max_length=100)

@@ -18,6 +18,8 @@ from __future__ import annotations
 
 import hashlib
 import io
+
+from orchivio import telemetry
 import json
 import uuid
 import zipfile
@@ -114,6 +116,12 @@ def _artifact_files(root: Path | None) -> dict[str, Path]:
 def backup(engine: Engine, *, artifacts_dir: Path | str | None = None, exclude: Iterable[str] = DEFAULT_EXCLUDE,
            now: datetime | None = None) -> bytes:
     """Write a backup archive and return its bytes."""
+    with telemetry.span("backup.run"):
+        return _backup(engine, artifacts_dir=artifacts_dir, exclude=exclude, now=now)
+
+
+def _backup(engine: Engine, *, artifacts_dir: Path | str | None = None, exclude: Iterable[str] = DEFAULT_EXCLUDE,
+            now: datetime | None = None) -> bytes:
     excluded = sorted(set(exclude))
     tables = _tables(excluded)
     files: dict[str, bytes] = {}
@@ -185,6 +193,11 @@ def read_backup(data: bytes) -> tuple[dict[str, Any], dict[str, bytes]]:
 
 def restore(data: bytes, engine: Engine, *, artifacts_dir: Path | str | None = None) -> RestoreReport:
     """Restore into an empty, migrated database. Raises ``BackupError`` and changes nothing on failure."""
+    with telemetry.span("restore.run"):
+        return _restore(data, engine, artifacts_dir=artifacts_dir)
+
+
+def _restore(data: bytes, engine: Engine, *, artifacts_dir: Path | str | None = None) -> RestoreReport:
     manifest, raw = read_backup(data)
     known = {t.name: t for t in Base.metadata.sorted_tables}
     unknown = sorted(set(manifest["tables"]) - set(known))

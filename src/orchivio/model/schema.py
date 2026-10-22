@@ -211,8 +211,8 @@ class FlowDef(Element):
     run_roles: list[KeyName] | None = None  # roles that may run this flow directly through the application API
 
 
-PROCESS_STEP_TYPES = ("start", "user_task", "system_task", "call_process", "decision", "parallel_split", "parallel_join", "timer", "catch_message", "end")
-ProcessStepType = Literal["start", "user_task", "system_task", "call_process", "decision", "parallel_split", "parallel_join", "timer", "catch_message", "end"]
+PROCESS_STEP_TYPES = ("start", "user_task", "system_task", "call_process", "decision", "parallel_split", "parallel_join", "timer", "catch_message", "send_message", "end")
+ProcessStepType = Literal["start", "user_task", "system_task", "call_process", "decision", "parallel_split", "parallel_join", "timer", "catch_message", "send_message", "end"]
 OutcomeName = Annotated[str, StringConstraints(pattern=r"^[a-z][a-z0-9_]{0,30}$")]
 
 

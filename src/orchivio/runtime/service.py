@@ -615,6 +615,48 @@ class AppData:
             raise RowNotFound("record not found")
         return self._present(info, dict(row), user)
 
+    def aggregate(self, entity: str, user: AppUser, group_by: list[str],
+                  metrics: list[dict[str, str]], filters: Mapping[str, Any] | None = None) -> list[dict[str, Any]]:
+        """Group-by aggregate query respecting row-level access and field visibility (FR-060-063).
+
+        ``metrics`` items: ``{"field": str, "fn": "count"|"sum"|"avg"|"min"|"max", "alias": str}``.
+        ``group_by`` fields the user cannot read are silently dropped.
+        """
+        ALLOWED_FNS = {"count": func.count, "sum": func.sum, "avg": func.avg, "min": func.min, "max": func.max}
+        info = self._info(entity)
+        _, pred = self._guard(info, user, "read")
+        t = info.table
+        visible = self.readable_fields(entity, user)
+
+        safe_group = [g for g in group_by if g in t.c and (visible is None or g in visible)]
+        where = [pred]
+        for name, raw in (filters or {}).items():
+            f = next((x for x in info.stored_fields if x.name == name and (visible is None or x.name in visible)), None)
+            if f is None:
+                raise Invalid("unknown filter field", [{"field": name, "message": "not a stored field"}])
+            try:
+                where.append(t.c[name] == coerce_value(self.schema, info.module.key, f, _parse_query_value(f, raw)))
+            except ValueError as e:
+                raise Invalid("invalid filter", [{"field": name, "message": str(e)}]) from e
+
+        select_cols = [t.c[g].label(g) for g in safe_group]
+        for m in metrics:
+            fn_name = m.get("fn", "count")
+            field = m.get("field", "*")
+            alias = m.get("alias") or f"{fn_name}_{field}"
+            agg_fn = ALLOWED_FNS.get(fn_name)
+            if agg_fn is None:
+                raise Invalid("invalid aggregate function", [{"field": alias, "message": f"fn must be one of {sorted(ALLOWED_FNS)}"}])
+            col = t.c[field] if field != "*" and field in t.c and (visible is None or field in visible) else text("1")
+            select_cols.append(agg_fn(col).label(alias))
+
+        q = select(*select_cols).where(*where)
+        if safe_group:
+            q = q.group_by(*[t.c[g] for g in safe_group])
+        with self._conn() as conn:
+            rows = conn.execute(q).mappings().all()
+        return [dict(r) for r in rows]
+
     def create(self, entity: str, user: AppUser, data: Mapping[str, Any]) -> dict[str, Any]:
         info = self._info(entity)
         row = self.create_record(entity, user, data)

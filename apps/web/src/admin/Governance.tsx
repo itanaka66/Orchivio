@@ -90,9 +90,27 @@ function Packs({ client, orgId }: { client: ApiClient; orgId: string }) {
 
 function ComplianceView({ client, orgId }: { client: ApiClient; orgId: string }) {
   const c = useApi(() => client.request<Compliance>('GET', `/organizations/${orgId}/governance/compliance`), [client, orgId])
+  const { run, error, notice } = useAction(c.reload)
+  const [proposalNotice, setProposalNotice] = useState<Record<string, string>>({})
+
+  const createProposal = async (appId: string, violation: Compliance['applications'][0]['violations'][0]) => {
+    const key = `${appId}:${violation.rule}`
+    try {
+      await client.request('POST', `/applications/${appId}/proposals`, {
+        title: `Fix ${violation.rule} violation`,
+        description: `Policy pack "${violation.pack}" reports: ${violation.message}${violation.path ? ` at ${violation.path}` : ''}`,
+        type: 'compliance_fix',
+      })
+      setProposalNotice((p) => ({ ...p, [key]: 'Proposal created.' }))
+    } catch (e) {
+      setProposalNotice((p) => ({ ...p, [key]: e instanceof Error ? e.message : 'Failed.' }))
+    }
+  }
+
   return (
     <Panel title="Compliance">
       <Loading loading={c.loading} error={c.error} />
+      <Feedback error={error} notice={notice} />
       {c.data && (
         <>
           <p>{c.data.packs.length === 0 ? 'No active packs.' : `Against: ${c.data.packs.join(', ')}`}</p>
@@ -101,7 +119,22 @@ function ComplianceView({ client, orgId }: { client: ApiClient; orgId: string })
             {c.data.applications.map((a) => (
               <li key={a.application_id} className="card slim">
                 <strong>{a.project}/{a.application}</strong> <Pill value={a.status} />
-                <ul>{a.violations.map((v, i) => <li key={i} className={v.severity === 'error' ? 'sev-error' : 'sev-warning'}>{v.pack}: {v.message}{v.path ? ` (${v.path})` : ''}</li>)}</ul>
+                <ul>
+                  {a.violations.map((v, i) => {
+                    const key = `${a.application_id}:${v.rule}`
+                    return (
+                      <li key={i} className={v.severity === 'error' ? 'sev-error' : 'sev-warning'} style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                        <span>{v.pack}: {v.message}{v.path ? ` (${v.path})` : ''}</span>
+                        {/* FR-124: create compliance fix proposal */}
+                        <button type="button" className="link" style={{ fontSize: '0.8rem', flexShrink: 0 }}
+                          onClick={() => void run(() => createProposal(a.application_id, v), '')}>
+                          Create proposal
+                        </button>
+                        {proposalNotice[key] && <small className="hint">{proposalNotice[key]}</small>}
+                      </li>
+                    )
+                  })}
+                </ul>
               </li>
             ))}
           </ul>

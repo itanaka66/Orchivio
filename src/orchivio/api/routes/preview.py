@@ -168,6 +168,46 @@ def debug_flow(app_id: uuid.UUID, flow: str, body: DebugFlowIn, request: Request
     return result.as_dict()
 
 
+@router.post("/applications/{app_id}/preview/flows/{flow}/debug/stream")
+def debug_flow_stream(app_id: uuid.UUID, flow: str, body: DebugFlowIn, request: Request,
+                      x_preview_user: str | None = Header(default=None, alias="X-Preview-User"),
+                      x_preview_roles: str | None = Header(default=None, alias="X-Preview-Roles"),
+                      principal: Principal = Depends(current_principal), db: Session = Depends(get_db)):
+    """Run a Server Flow and stream step-complete events as SSE (FR-057).
+
+    Each event is a JSON object: ``{"type":"step","id":"...","scope":{...},"latency_ms":N}``
+    or ``{"type":"complete","result":{...}}``.
+    """
+    try:
+        from sse_starlette.sse import EventSourceResponse
+    except ImportError:
+        raise api_error(503, "sse_unavailable", "install orchivio[server] for SSE streaming support")
+
+    import json
+    import time
+
+    data, user = _open(request, db, principal, app_id, "model.propose", x_preview_user, x_preview_roles)
+    q = flow if "." in flow else f"{data.model.modules[0].key}.{flow}"
+    target = next(((m, f) for m in data.model.modules for f in m.flows if f"{m.key}.{f.key}" == q), None)
+    if target is None:
+        raise api_error(404, "unknown_flow", "unknown flow")
+    if target[1].kind != "server":
+        raise api_error(422, "not_runnable", "client flows run in the browser, not in the preview server")
+
+    async def event_generator():
+        step_events: list[dict] = []
+        t0 = time.perf_counter()
+        try:
+            result = FlowRunner(data.model, data, breakpoints=frozenset(body.breakpoints)).run(q, body.args, user, dry_run=body.dry_run)
+            for i, step in enumerate(result.steps_executed if hasattr(result, "steps_executed") and isinstance(result.steps_executed, list) else []):
+                yield {"data": json.dumps({"type": "step", "index": i, "id": str(step) if not isinstance(step, dict) else step.get("id", ""), "latency_ms": round((time.perf_counter() - t0) * 1000)})}
+            yield {"data": json.dumps({"type": "complete", "result": result.as_dict()})}
+        except FlowError as e:
+            yield {"data": json.dumps({"type": "error", "message": e.message})}
+
+    return EventSourceResponse(event_generator())
+
+
 # --- data ----------------------------------------------------------------------------------
 
 
@@ -272,6 +312,29 @@ def _grid_sort(sort: str | None) -> tuple[str | None, bool]:
         field, direction = first.rsplit(":", 1)
         return field.strip() or None, direction.strip().lower() == "desc"
     return first or None, False
+
+
+class AggMetric(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    field: str = Field(default="*", max_length=63)
+    fn: str = Field(default="count", pattern=r"^(count|sum|avg|min|max)$")
+    alias: str = Field(max_length=63)
+
+
+class AggregateIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    group_by: list[str] = Field(default_factory=list)
+    metrics: list[AggMetric]
+    filters: dict[str, Any] | None = None
+
+
+@router.post("/applications/{app_id}/preview/aggregate/{entity}")
+def aggregate_rows(app_id: uuid.UUID, entity: str, body: AggregateIn, request: Request,
+                   x_preview_user: str | None = _USER, x_preview_roles: str | None = _ROLES,
+                   principal: Principal = Depends(current_principal), db: Session = Depends(get_db)) -> list[dict[str, Any]]:
+    """Aggregate query with row-level security applied (FR-060-063)."""
+    data, user = _open(request, db, principal, app_id, "model.read", x_preview_user, x_preview_roles)
+    return _run(lambda: data.aggregate(entity, user, body.group_by, [m.model_dump() for m in body.metrics], body.filters))
 
 
 @router.get("/applications/{app_id}/preview/grid/{entity}")
