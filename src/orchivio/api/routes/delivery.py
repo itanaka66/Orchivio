@@ -398,6 +398,30 @@ def _go_live(db: Session, dep: PackageDeployment, now) -> None:
     dep.status, dep.decided_at = "deployed", now
 
 
+def _run_expand_production(env: Environment, v: "VerifiedPackage", app_id) -> None:
+    """Run the expand phase of the migration plan against the production DB (FR-097).
+
+    Called before _go_live() so the schema is ready before the new code is served.
+    Errors are logged but never raised — a migration hiccup must not block the deployment record.
+    """
+    if not env.data_url:
+        return
+    steps = v.migration_plan.get("steps", [])
+    if not any(s.get("phase") == "expand" for s in steps):
+        return
+    import logging as _logging
+    _log = _logging.getLogger("orchivio.delivery")
+    try:
+        prefix = table_prefix(app_id)
+        engine = ProductionStore(env.data_url).engine
+        with engine.begin() as conn:
+            applied = run_expand(conn, steps, prefix)
+        if applied:
+            _log.info("expand migration applied %d ops for env %s: %s", len(applied), env.id, applied)
+    except Exception:  # noqa: BLE001
+        _log.exception("expand migration failed for env %s; deployment will proceed", env.id)
+
+
 @router.post("/packages/{package_id}/promote", status_code=201)
 def promote(package_id: uuid.UUID, body: PromoteIn, request: Request, principal: Principal = Depends(current_principal),
             db: Session = Depends(get_db)) -> dict[str, Any]:
@@ -438,6 +462,7 @@ def promote(package_id: uuid.UUID, body: PromoteIn, request: Request, principal:
     db.add(dep)
     db.flush()
     if not env.requires_approval:
+        _run_expand_production(env, v, app.id)
         _go_live(db, dep, now)
         if env.data_url:
             from orchivio.db import to_model as _to_model
@@ -472,8 +497,9 @@ def decide(deployment_id: uuid.UUID, body: DecisionIn, request: Request, princip
         pkg = db.get(DeploymentPackage, dep.package_id)
         v = _verified(request, pkg)  # the bytes may have changed since the request
         _check_base(db, env, v)
+        _run_expand_production(env, v, app.id)
         _go_live(db, dep, now)
-        # FR-094: provision production tables when the environment has a data_url
+        # FR-094/097: provision production tables and run expand migration
         if env.data_url:
             from orchivio.db import to_model as _to_model
             rev = db.get(AppRevision, v.manifest.get("revision_id")) if v.manifest.get("revision_id") else None

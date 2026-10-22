@@ -1,6 +1,6 @@
 # Implementation Status
 
-Last updated: 2026-10-22 (FR-010/089/094/099). Statuses: **Done** (implemented and
+Last updated: 2026-10-22 (FR-010/089/094/097/099; corrected FR-086/112). Statuses: **Done** (implemented and
 tested), **Library** (implemented as a tested library but not yet wired into a running
 service), **Schema** (data structures only), **Planned**.
 
@@ -39,12 +39,12 @@ service), **Schema** (data structures only), **Planned**.
 | FR-064 | Field-level read/write access | Done (preview runtime) | Allow-lists per rule; removed from responses, not filterable or sortable, write checks, flows act as the caller; other query paths (exports, aggregates) do not exist yet |
 | FR-067 | End-user authentication for generated apps | Partial | Local accounts, forced first-login password change, anonymous opt-in, and OIDC (code flow + PKCE, JIT provisioning, claim-to-role mapping); self-registration (`POST /apps/{id}/auth/register`, controlled by `model.security.allow_registration`); self-service password-reset token flow (`POST /apps/{id}/auth/reset-request` + `reset-confirm`); no SAML, MFA or single logout; serves preview data only |
 | FR-066 | Consistency checker | Done | 5 checks |
-| FR-086 | Studio MCP server | Partial | Read/search/usages/lint/validate/proposal/tests tools, proposal-only writes, audit, rate limit; no `model.explain`, no SSE; exercised only with a test client, not a real MCP agent |
+| FR-086 | Studio MCP server | Done (MVP) | Read/search/usages/lint/validate/proposal/tests/explain/proposal.await tools, proposal-only writes, audit, rate limit; SSE stream of proposal status events (`GET /mcp`, `EventSourceResponse`); exercised only with a test client, not a real MCP agent |
 | FR-087 | MCP client for the AI Builder | Partial | Organization registry, discovery, per-tool policy (A0 only), one bounded planning round, untrusted-output handling, audit; no interactive approval for stronger tools, no resources/prompts, no OAuth |
 | FR-094 | Environments and promotion pipeline | Partial | Ordered stages, stage/test/migration/approval gates, separation of duties; `ProductionStore.build()` provisions production tables on both approval path (`decide()`) and no-approval path (`promote()`); no migration executor (`run_expand`/`run_contract` not called on deploy) |
 | FR-095 | Immutable deployment packages | Done (control plane) | Reproducible zip, expand/contract plan, SBOM of direct dependencies, Ed25519 signature; no transitive SBOM |
 | FR-096 | Environment constants and secret references | Partial | Stored, audited and resolved (`resolve_constants`); wired into preview runner and app-plane flow runner (highest-stage environment's constants); entity-hook FlowHooks now also receive constants; vault/aws-sm/gcp-sm/azure-kv secret schemes not yet implemented |
-| FR-097 | Near-zero-downtime migrations | Library | `delivery/migrate.py` implements `run_expand` and `run_contract` against the preview database; `POST /packages/{id}/migrations/run` applies expand or contract phase with dry-run support; PostgreSQL DDL only (no SQLite path) |
+| FR-097 | Near-zero-downtime migrations | Partial | `delivery/migrate.py` implements `run_expand` and `run_contract`; `POST /packages/{id}/migrations/run` applies phases manually with dry-run support; **expand phase now runs automatically** before `_go_live()` in both `promote()` and `decide()` (errors logged, not raised); contract phase remains manual; PostgreSQL DDL only |
 | FR-081 | Consumed REST via OpenAPI import | Done (MVP) | Typed operations, import as an A3 proposal, allowlisted destinations, SSRF-pinned calls; per application, not per environment; no pagination or retries |
 | FR-082 | Inbound and outbound webhooks | Done (MVP) | Outbound: signed CloudEvents, retries, dead letters, circuit breaker, SSRF guard. Inbound: signature-verified, replay-protected, payload-mapped, queued flow runs; secrets by reference only; limiter is per process |
 | FR-083 | Business events | Done (outbox) | Transactional outbox for record created/updated/deleted, relayed at-least-once; no brokers, no custom events |
@@ -52,7 +52,7 @@ service), **Schema** (data structures only), **Planned**.
 | FR-074 | Data grid | Done | Permissioned CSV/xlsx export; cursor-paginated `GET /applications/{id}/preview/grid/{entity}` and `GET /apps/{id}/grid/{entity}` with multi-sort and `filter.<field>` params; `DataGrid` component in Studio wired to preview grid endpoint (sort, filter, inline edit, pagination) |
 | FR-110 | Process definitions | Partial | User tasks, system tasks (flows), decisions, parallel split/join, timers, rework loops, call_process sub-process step (validated + engine + service); no boundary or message events, no editor |
 | FR-111 | Task inbox | Done (MVP) | Role or expression assignment, claim, release, delegation, due dates, one-shot escalation; no notifications or reassignment by admins |
-| FR-112 | Process versioning and instance migration | Partial | `migration_policy` column on instances (`pin`=default, `migrate`); `GET /applications/{id}/process-instances/version-check` lists stale running instances; `PATCH /process-instances/{id}/policy` and `POST /process-instances/{id}/migrate` move stale instances to the current revision; no automatic bulk migration |
+| FR-112 | Process versioning and instance migration | Done | `migration_policy` column on instances (`pin`=default, `migrate`); `GET /applications/{id}/process-instances/version-check` lists stale instances; `PATCH /process-instances/{id}/policy` and `POST /process-instances/{id}/migrate` for individual instances; `POST /applications/{id}/process-instances/bulk-migrate` migrates all stale `policy=migrate` instances in one call (with dry-run support) |
 | FR-113 | Process monitoring | Partial | Instance and task listings, event trail; throughput, bottleneck and duration analytics endpoints added (`/process-analytics/throughput`, `/bottlenecks`, `/durations`); no Studio dashboard yet |
 | FR-065 | Page, action and flow access | Done (server side) | Pages need a listed role and the implied entity rights; columns, actions, `visible_expr`/`editable_expr` and flow-bound actions enforced; direct flow runs need `run_roles`; rendered by the appshell |
 | FR-073 | Conditional visibility and editability | Done (server side) | `visible_expr` filters actions per row, `editable_expr` is checked before an edit is stored |
@@ -119,7 +119,7 @@ Everything not listed is **Planned**.
 - The login throttle is per process; running several API replicas needs a shared store.
 - No email verification, password reset, MFA or SSO; registration is open unless
   `ORCHIVIO_ALLOW_REGISTRATION=false`. There is no first-user bootstrap other than registering.
-- Members can only be added if they already have an account (no invitations).
+- Members can be invited by email (`POST /organizations/{id}/invitations`); the invite token is returned in `X-Invite-Token` for the caller to deliver.
 - Risky revisions are confirmed by a flag from the same caller; a second approver and the
   proposal workflow are planned.
 - Database migrations are not run automatically at start-up (`alembic upgrade head`).
