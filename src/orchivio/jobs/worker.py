@@ -19,10 +19,9 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from orchivio import telemetry
 from orchivio.db import to_model
-from orchivio.db.models import Application, AppRevision, AuditEvent, JobRun, Project
+from orchivio.db.models import Application, AppRevision, AuditEvent, Environment, JobRun, Project
 from orchivio.logic import FlowHooks, FlowRunner
 from orchivio.ports import AuditSink
-from orchivio.db.models import Environment
 from orchivio.runtime import AppUser, PreviewNotBuilt, PreviewStale, PreviewStore
 from orchivio.runtime.production import ProductionStore
 

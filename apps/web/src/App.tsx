@@ -286,20 +286,84 @@ function Login({ client, onUser }: { client: ApiClient; onUser: (u: User) => voi
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
+  const [mode, setMode] = useState<'login' | 'register' | 'reset'>('login')
+  const [displayName, setDisplayName] = useState('')
+  const [resetSent, setResetSent] = useState(false)
+
+  const handleLogin = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setBusy(true)
+    setError('')
+    try { onUser(await client.login(email, password)) }
+    catch (err) { setError(err instanceof ApiError ? err.message : 'Could not reach the server.') }
+    finally { setBusy(false) }
+  }
+
+  const handleRegister = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setBusy(true)
+    setError('')
+    try {
+      await client.register(email, password, displayName)
+      onUser(await client.login(email, password))
+    }
+    catch (err) { setError(err instanceof ApiError ? err.message : 'Registration failed.') }
+    finally { setBusy(false) }
+  }
+
+  const handleReset = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setBusy(true)
+    setError('')
+    try {
+      await client.requestPasswordReset(email)
+      setResetSent(true)
+    }
+    catch { setError('Could not send reset request.') }
+    finally { setBusy(false) }
+  }
+
+  if (mode === 'register') return (
+    <form className="card" onSubmit={handleRegister}>
+      <h2>Build with AI — Create account</h2>
+      <label className="field"><span>Email</span><input type="email" autoComplete="username" required value={email} onChange={(e) => setEmail(e.target.value)} /></label>
+      <label className="field"><span>Name</span><input type="text" autoComplete="name" required value={displayName} onChange={(e) => setDisplayName(e.target.value)} /></label>
+      <label className="field"><span>Password</span><input type="password" autoComplete="new-password" required value={password} onChange={(e) => setPassword(e.target.value)} /></label>
+      {error && <p role="alert" className="sev-error">{error}</p>}
+      <button type="submit" className="primary" disabled={busy}>{busy ? 'Creating…' : 'Create account & build with AI'}</button>
+      <p><button type="button" className="link" onClick={() => { setMode('login'); setError('') }}>Already have an account? Sign in</button></p>
+    </form>
+  )
+
+  if (mode === 'reset') return (
+    <form className="card" onSubmit={handleReset}>
+      <h2>Reset password</h2>
+      {resetSent ? (
+        <p>Check your email for the reset link. <button type="button" className="link" onClick={() => { setMode('login'); setResetSent(false) }}>Back to sign in</button></p>
+      ) : (
+        <>
+          <label className="field"><span>Email</span><input type="email" autoComplete="username" required value={email} onChange={(e) => setEmail(e.target.value)} /></label>
+          {error && <p role="alert" className="sev-error">{error}</p>}
+          <button type="submit" className="primary" disabled={busy}>{busy ? 'Sending…' : 'Send reset link'}</button>
+          <p><button type="button" className="link" onClick={() => { setMode('login'); setError('') }}>Back to sign in</button></p>
+        </>
+      )}
+    </form>
+  )
+
   return (
-    <form className="card" onSubmit={async (e) => {
-      e.preventDefault()
-      setBusy(true)
-      setError('')
-      try { onUser(await client.login(email, password)) }
-      catch (err) { setError(err instanceof ApiError ? err.message : 'Could not reach the server.') }
-      finally { setBusy(false) }
-    }}>
+    <form className="card" onSubmit={handleLogin}>
       <h2>Sign in</h2>
       <label className="field"><span>Email</span><input type="email" autoComplete="username" required value={email} onChange={(e) => setEmail(e.target.value)} /></label>
       <label className="field"><span>Password</span><input type="password" autoComplete="current-password" required value={password} onChange={(e) => setPassword(e.target.value)} /></label>
       {error && <p role="alert" className="sev-error">{error}</p>}
       <button type="submit" className="primary" disabled={busy}>{busy ? 'Signing in…' : 'Sign in'}</button>
+      <p>
+        <button type="button" className="primary" style={{background:'var(--accent)'}} onClick={() => { setMode('register'); setError('') }}>Build with AI →</button>
+      </p>
+      <p>
+        <button type="button" className="link" onClick={() => { setMode('reset'); setError('') }}>Forgot password?</button>
+      </p>
     </form>
   )
 }

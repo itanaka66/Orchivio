@@ -18,8 +18,6 @@ from __future__ import annotations
 
 import hashlib
 import io
-
-from orchivio import telemetry
 import json
 import uuid
 import zipfile
@@ -32,7 +30,7 @@ from typing import Any
 
 from sqlalchemy import Column, DateTime, Engine, Table, Uuid, func, insert, select, text, update
 
-from orchivio import __version__
+from orchivio import __version__, telemetry
 from orchivio.db.models import Base
 from orchivio.ports import LocalArtifactStore
 from orchivio.ports.storage import validate_key

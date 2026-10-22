@@ -19,9 +19,7 @@ from sqlalchemy import (
     String,
     Table,
     create_engine,
-    delete,
     insert,
-    inspect,
     select,
 )
 

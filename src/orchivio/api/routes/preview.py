@@ -181,7 +181,7 @@ def debug_flow_stream(app_id: uuid.UUID, flow: str, body: DebugFlowIn, request: 
     try:
         from sse_starlette.sse import EventSourceResponse
     except ImportError:
-        raise api_error(503, "sse_unavailable", "install orchivio[server] for SSE streaming support")
+        raise api_error(503, "sse_unavailable", "install orchivio[server] for SSE streaming support") from None
 
     import json
     import time
@@ -195,7 +195,6 @@ def debug_flow_stream(app_id: uuid.UUID, flow: str, body: DebugFlowIn, request: 
         raise api_error(422, "not_runnable", "client flows run in the browser, not in the preview server")
 
     async def event_generator():
-        step_events: list[dict] = []
         t0 = time.perf_counter()
         try:
             result = FlowRunner(data.model, data, breakpoints=frozenset(body.breakpoints)).run(q, body.args, user, dry_run=body.dry_run)

@@ -10,13 +10,12 @@ from __future__ import annotations
 import random
 import time
 import uuid
-
-from orchivio import telemetry
 from dataclasses import asdict, dataclass, field
 from typing import Any
 
 from sqlalchemy import Engine, select
 
+from orchivio import telemetry
 from orchivio.expr import CheckEnv, EvalContext, UserRef, check, evaluate
 from orchivio.expr.ast import BOOL
 from orchivio.model import AppModel

@@ -100,6 +100,8 @@ class User(Base):
     status: Mapped[str] = mapped_column(String(16), nullable=False, default="active")
     mfa_secret: Mapped[str | None] = mapped_column(Text, nullable=True)
     mfa_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    reset_token_hash: Mapped[str | None] = mapped_column(String(64))
+    reset_token_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = _created()
 
 
@@ -1139,4 +1141,28 @@ class PolicyPack(Base):
     rules: Mapped[list[Any]] = mapped_column(PortableJSON, nullable=False)
     status: Mapped[str] = mapped_column(String(10), nullable=False, default="active")
     created_by: Mapped[uuid.UUID | None] = mapped_column(Uuid)
+    created_at: Mapped[datetime] = _created()
+
+
+class Invitation(Base):
+    """An invitation for someone to join an organization as a member. Token is single-use and expires."""
+
+    __tablename__ = "invitations"
+    __table_args__ = (
+        _in("role", MEMBER_ROLES, "role"),
+        _in("status", ("pending", "accepted", "cancelled"), "status"),
+    )
+
+    id: Mapped[uuid.UUID] = _id()
+    organization_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    email: Mapped[str] = mapped_column(String(320), nullable=False)
+    role: Mapped[str] = mapped_column(String(16), nullable=False, default="editor")
+    token_hash: Mapped[str] = mapped_column(String(64), nullable=False, unique=True)
+    status: Mapped[str] = mapped_column(String(10), nullable=False, default="pending")
+    created_by: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id"), nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    accepted_by: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id"))
+    accepted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = _created()

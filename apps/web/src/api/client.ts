@@ -110,6 +110,15 @@ export class ApiClient {
     return r.user
   }
 
+  register = (email: string, password: string, display_name: string) =>
+    this.request<{ id: string }>('POST', '/auth/register', { email, password, display_name })
+
+  requestPasswordReset = (email: string) =>
+    this.request<void>('POST', '/auth/password-reset', { email })
+
+  confirmPasswordReset = (token: string, new_password: string) =>
+    this.request<void>('POST', '/auth/password-reset/confirm', { token, new_password })
+
   async logout(): Promise<void> {
     try { await this.request('POST', '/auth/logout') } finally { this.forget() }
   }

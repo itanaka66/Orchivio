@@ -216,13 +216,15 @@ def t_proposal_list(c: Ctx, a: ProposalListArgs) -> Any:
 
 
 def t_explain(c: Ctx, a: ExplainArgs) -> Any:
-    from .ai import ExplainIn, explain as _explain
+    from .ai import ExplainIn
+    from .ai import explain as _explain
     return _explain(a.application_id, ExplainIn(element_id=a.element_id, question=a.question), c.request, c.principal, c.db)
 
 
 def t_proposal_await(c: Ctx, a: ProposalAwaitArgs) -> Any:
-    from .proposals import get_proposal
     import time as _time
+
+    from .proposals import get_proposal
     deadline = _time.monotonic() + a.timeout_seconds
     while True:
         p = get_proposal(a.proposal_id, False, c.principal, c.db).model_dump(mode="json")
@@ -356,10 +358,12 @@ def mcp_get(request: Request, principal: Principal = Depends(current_principal),
     if request.headers.get("accept") != "text/event-stream":
         return Response(status_code=405, headers={"Allow": "POST"})
 
-    from sse_starlette.sse import EventSourceResponse
-    from sqlalchemy import select as _select
-    from orchivio.db.models import Proposal
     import asyncio
+
+    from sqlalchemy import select as _select
+    from sse_starlette.sse import EventSourceResponse
+
+    from orchivio.db.models import Proposal
 
     org_id = principal.token.organization_id
 
