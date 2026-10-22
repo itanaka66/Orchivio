@@ -122,8 +122,7 @@ Everything not listed is **Planned**.
 - Risky revisions are confirmed by a flag from the same caller; a second approver and the
   proposal workflow are planned.
 - Database migrations are not run automatically at start-up (`alembic upgrade head`).
-- Expressions: no relationship traversal (`record.owner.name`), no empty list literals, no
-  object literals; `/` and `%` do not compile to SQL (see EXPRESSION-SPEC.md).
+- Expressions: no relationship traversal (`record.owner.name`), no object literals (see EXPRESSION-SPEC.md).
 - Enumerations from another module cannot be named inside expressions.
 - Application end-user accounts are local to each app (local accounts, OIDC, TOTP MFA, single logout); no SAML.
 - AI calls and test runs are synchronous inside the request; no job-queue offload yet.
