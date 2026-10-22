@@ -27,6 +27,8 @@ from .ssrf import DestinationError
 from .transport import Response
 
 MAX_RESPONSE_BYTES = 1024 * 1024
+_RETRY_STATUSES = frozenset({429, 500, 502, 503, 504})
+_MAX_RETRY_SLEEP = 5.0
 
 
 class RequestTransport(Protocol):
@@ -90,13 +92,33 @@ class RestClient:
         if call.body is not None:
             body = json.dumps(call.body, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
             headers["Content-Type"] = "application/json"
-        try:
-            resp = self.transport.request(call.method, url, telemetry.inject(headers), body, timeout=call.timeout_seconds, max_bytes=MAX_RESPONSE_BYTES)
-        except DestinationError as e:
-            raise IntegrationError(f"destination refused: {e}") from e
-        except OSError as e:
-            raise IntegrationError(f"network error ({type(e).__name__})") from e
-        return IntegrationResult(resp.status, _json(resp))
+        last_exc: OSError | None = None
+        last_resp = None
+        for attempt in range(call.max_retries + 1):
+            if attempt > 0:
+                delay = min(0.5 * attempt, _MAX_RETRY_SLEEP)
+                if last_resp is not None and last_resp.status == 429:
+                    try:
+                        delay = min(float(last_resp.headers.get("retry-after", delay)), _MAX_RETRY_SLEEP)
+                    except (ValueError, TypeError):
+                        pass
+                time.sleep(delay)
+            try:
+                last_resp = self.transport.request(call.method, url, telemetry.inject(headers), body,
+                                                   timeout=call.timeout_seconds, max_bytes=MAX_RESPONSE_BYTES)
+            except DestinationError as e:
+                raise IntegrationError(f"destination refused: {e}") from e
+            except OSError as e:
+                last_exc = e
+                last_resp = None
+                continue
+            last_exc = None
+            if last_resp.status not in _RETRY_STATUSES:
+                return IntegrationResult(last_resp.status, _json(last_resp))
+        if last_exc is not None:
+            raise IntegrationError(f"network error after {call.max_retries + 1} attempt(s) ({type(last_exc).__name__})") from last_exc
+        assert last_resp is not None
+        return IntegrationResult(last_resp.status, _json(last_resp))
 
 
 def _json(resp: Response) -> Any:

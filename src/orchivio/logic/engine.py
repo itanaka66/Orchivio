@@ -363,7 +363,7 @@ class FlowRunner:
             given = self._values(run, sc, step, cfg.get("body"))
             body = {op.body_map.get(k, k): to_json(v) for k, v in given.items() if v is not None}
         try:
-            res = client.call(IntegrationCall(ig.key, op.id, ig.destination, op.method, path, query, body, op.timeout_seconds))
+            res = client.call(IntegrationCall(ig.key, op.id, ig.destination, op.method, path, query, body, op.timeout_seconds, op.max_retries))
         except IntegrationError as e:
             raise FlowError(f"{ig.key}.{op.id}: {e}", step.id, sc.qualified) from e
         span.detail = f"{ig.key}.{op.id} -> HTTP {res.status}"

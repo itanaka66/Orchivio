@@ -26,6 +26,7 @@ class IntegrationCall:
     query: Mapping[str, str] = field(default_factory=dict)
     body: Any = None
     timeout_seconds: int = 10
+    max_retries: int = 2
 
 
 @dataclass(frozen=True)

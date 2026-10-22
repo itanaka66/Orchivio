@@ -45,7 +45,7 @@ service), **Schema** (data structures only), **Planned**.
 | FR-095 | Immutable deployment packages | Done (control plane) | Reproducible zip, expand/contract plan, SBOM of direct dependencies, Ed25519 signature; no transitive SBOM |
 | FR-096 | Environment constants and secret references | Done | Stored, audited and resolved (`resolve_constants`); wired into preview runner and app-plane flow runner (highest-stage environment's constants); entity-hook FlowHooks now also receive constants; all six secret schemes supported: `env:` (env var), `file:` (text file), `vault:` (HashiCorp Vault KV via HTTP — needs `VAULT_ADDR`/`VAULT_TOKEN`), `aws-sm:` (AWS Secrets Manager via boto3), `gcp-sm:` (GCP Secret Manager via google-cloud-secret-manager), `azure-kv:` (Azure Key Vault via azure-keyvault-secrets + azure-identity); cloud SDKs are optional — missing SDK raises `SecretUnavailable` |
 | FR-097 | Near-zero-downtime migrations | Partial | `delivery/migrate.py` implements `run_expand` and `run_contract`; `POST /packages/{id}/migrations/run` applies phases manually with dry-run support; **expand phase now runs automatically** before `_go_live()` in both `promote()` and `decide()` (errors logged, not raised); contract phase remains manual; PostgreSQL DDL only |
-| FR-081 | Consumed REST via OpenAPI import | Done (MVP) | Typed operations, import as an A3 proposal, allowlisted destinations, SSRF-pinned calls; per application, not per environment; no pagination or retries |
+| FR-081 | Consumed REST via OpenAPI import | Done (MVP) | Typed operations, import as an A3 proposal, allowlisted destinations, SSRF-pinned calls, retries with exponential backoff (default 2 retries, configurable 0–5 per operation, respects `Retry-After` on 429); per application, not per environment; no pagination |
 | FR-082 | Inbound and outbound webhooks | Done (MVP) | Outbound: signed CloudEvents, retries, dead letters, circuit breaker, SSRF guard. Inbound: signature-verified, replay-protected, payload-mapped, queued flow runs; secrets by reference only; limiter is per process |
 | FR-083 | Business events | Done (outbox) | Transactional outbox for record created/updated/deleted, relayed at-least-once; no brokers, no custom events |
 | FR-089 | Data import/export with mapping | Done | CSV and Excel (.xlsx): per-row errors, modes (all_or_nothing, skip_errors, upsert), dry run, column mapping, all through app security; upsert mode with `key_field`; Excel via openpyxl for both import and export (`/import-xlsx`, `/export-xlsx` on both app-plane and preview) |
@@ -116,8 +116,8 @@ Everything not listed is **Planned**.
 
 - Request-size limiting trusts `Content-Length`; enforce a body limit at the reverse proxy too.
 - The login throttle is per process; running several API replicas needs a shared store.
-- No email verification, password reset, MFA or SSO; registration is open unless
-  `ORCHIVIO_ALLOW_REGISTRATION=false`. There is no first-user bootstrap other than registering.
+- No email verification for platform (Studio) accounts; registration is open unless
+  `ORCHIVIO_ALLOW_REGISTRATION=false`. Password reset and TOTP MFA are supported. There is no first-user bootstrap other than registering.
 - Members can be invited by email (`POST /organizations/{id}/invitations`); the invite token is returned in `X-Invite-Token` for the caller to deliver.
 - Risky revisions are confirmed by a flag from the same caller; a second approver and the
   proposal workflow are planned.

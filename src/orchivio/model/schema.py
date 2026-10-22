@@ -282,6 +282,7 @@ class IntegrationOperation(_Strict):
     response_kind: Literal["object", "list"] | None = None
     response_map: dict[str, str] = Field(default_factory=dict, max_length=100)
     timeout_seconds: int = Field(default=10, ge=1, le=30)
+    max_retries: int = Field(default=2, ge=0, le=5)
 
 
 class IntegrationDef(Element):
