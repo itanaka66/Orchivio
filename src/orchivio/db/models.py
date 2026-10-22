@@ -980,6 +980,8 @@ class McpServer(Base):
     resource_policy: Mapped[dict[str, Any]] = mapped_column(PortableJSON, nullable=False, default=dict)  # uri -> {enabled}
     prompts: Mapped[list[Any]] = mapped_column(PortableJSON, nullable=False, default=list)  # last discovery: {name, description, arguments}
     prompt_policy: Mapped[dict[str, Any]] = mapped_column(PortableJSON, nullable=False, default=dict)  # name -> {enabled}
+    oauth_client_id: Mapped[str | None] = mapped_column(String(300))  # OAuth2 client_credentials: client_id
+    oauth_token_endpoint: Mapped[str | None] = mapped_column(String(2000))  # OAuth2 token endpoint URL
     discovered_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_by: Mapped[uuid.UUID | None] = mapped_column(Uuid)
     created_at: Mapped[datetime] = _created()
