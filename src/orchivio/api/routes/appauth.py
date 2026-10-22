@@ -12,6 +12,7 @@ Data is served by the preview runtime for now: there is no separate production d
 from __future__ import annotations
 
 import base64
+import binascii
 import uuid
 from dataclasses import dataclass
 from datetime import timedelta
@@ -19,7 +20,7 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, Query, Request, Response
 from pydantic import BaseModel, ConfigDict, Field
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from orchivio.auth import (
@@ -42,6 +43,7 @@ from orchivio.db.models import (
     AuditEvent,
     Environment,
     EnvironmentConstant,
+    FeedbackItem,
     Project,
 )
 from orchivio.delivery import resolve_constants
@@ -533,3 +535,55 @@ def reset_confirm(app_id: uuid.UUID, body: ResetConfirmIn,
         sess.revoked_at = now
     db.commit()
     return Response(status_code=204)
+
+
+# --- end-user feedback (FR-099) ---------------------------------------------------------------
+
+_FEEDBACK_PER_HOUR = 10
+_MAX_SCREENSHOT = 512 * 1024
+_IMAGES = [(b"\x89PNG", "image/png"), (b"\xff\xd8\xff", "image/jpeg")]
+
+
+class AppFeedbackIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    page_key: str = Field(min_length=1, max_length=200)
+    body: str = Field(min_length=1, max_length=2000)
+    element_id: str | None = Field(default=None, max_length=64)
+    screenshot_base64: str | None = Field(default=None, max_length=_MAX_SCREENSHOT * 2)
+
+
+def _decode_screenshot(data: str) -> tuple[bytes, str]:
+    try:
+        raw = base64.b64decode(data, validate=True)
+    except (binascii.Error, ValueError) as e:
+        raise api_error(422, "invalid_screenshot", "the screenshot is not valid base64") from e
+    if len(raw) > _MAX_SCREENSHOT:
+        raise api_error(413, "screenshot_too_large", f"screenshots are limited to {_MAX_SCREENSHOT // 1024} KiB")
+    for magic, kind in _IMAGES:
+        if raw.startswith(magic):
+            return raw, kind
+    raise api_error(422, "invalid_screenshot", "only PNG and JPEG screenshots are accepted")
+
+
+@router.post("/feedback", status_code=201)
+def submit_app_feedback(app_id: uuid.UUID, body: AppFeedbackIn, request: Request,
+                        c: Caller = Depends(usable), db: Session = Depends(get_db)) -> dict[str, Any]:
+    """Submit feedback from within a generated application (FR-099). Rate-limited per user."""
+    user_id = c.user.id if c.user else None
+    recent = db.scalar(select(func.count()).select_from(FeedbackItem).where(
+        FeedbackItem.application_id == c.application.id,
+        FeedbackItem.created_by == user_id,
+        FeedbackItem.created_at >= utcnow() - timedelta(hours=1),
+    ))
+    if (recent or 0) >= _FEEDBACK_PER_HOUR:
+        raise api_error(429, "too_much_feedback", f"at most {_FEEDBACK_PER_HOUR} feedback items per hour")
+    shot, shot_type = _decode_screenshot(body.screenshot_base64) if body.screenshot_base64 else (None, None)
+    f = FeedbackItem(application_id=c.application.id, page_key=body.page_key, element_id=body.element_id,
+                     body=body.body, screenshot=shot, screenshot_type=shot_type, created_by=user_id)
+    db.add(f)
+    db.flush()
+    _audit(db, request, "feedback.submitted", c.application, c.project, user_id,
+           page_key=body.page_key, has_screenshot=shot is not None)
+    db.commit()
+    return {"id": str(f.id), "page_key": f.page_key, "status": f.status,
+            "created_at": f.created_at.isoformat() if f.created_at else None}

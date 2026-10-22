@@ -77,6 +77,7 @@
     state.user = user
     $('who').textContent = user.display_name || user.username || ''
     $('signout').hidden = user.anonymous === true
+    feedbackBtn.hidden = false
     if (user.must_change_password) return changePasswordView()
     return call('GET', 'pages').then(function (r) {
       state.pages = r.items
@@ -127,6 +128,7 @@
   // --- list ------------------------------------------------------------------------------------------------------------------------------------
 
   var PAGE_SIZE = 20
+  var currentPageKey = null
   function cell(v) { return v === null || v === undefined ? '' : typeof v === 'object' ? JSON.stringify(v) : String(v) }
   function columnsOf(page, rows) {
     if (page.fields && page.fields.length) return page.fields.map(function (f) { return { name: f.name, label: f.label } })
@@ -134,6 +136,7 @@
   }
 
   function listView(page, offset) {
+    currentPageKey = page.key
     render([menu(page.key), show('Loading…')])
     call('GET', 'pages/' + encodeURIComponent(page.key) + '/rows?limit=' + PAGE_SIZE + '&offset=' + offset).then(function (data) {
       var rows = data.items || []
@@ -204,6 +207,7 @@
   }
 
   function formView(page, rowId) {
+    currentPageKey = page.key
     var fields = (page.fields || []).filter(function (f) { return !f.read_only })
     var status = show('')
     var load = rowId ? call('GET', 'pages/' + encodeURIComponent(page.key) + '/rows/' + encodeURIComponent(rowId)) : Promise.resolve({})
@@ -231,6 +235,7 @@
   // --- detail ------------------------------------------------------------------------------------------------------------------------------------
 
   function detailView(page, rowId) {
+    currentPageKey = page.key
     if (!rowId) return render([menu(null), show('Choose a record from a list.')])
     render([menu(null), show('Loading…')])
     call('GET', 'pages/' + encodeURIComponent(page.key) + '/rows/' + encodeURIComponent(rowId)).then(function (row) {
@@ -243,12 +248,56 @@
     }).catch(function (e) { sessionProblem(e, [menu(null), show(problem(e), 'error')]) })
   }
 
+  // --- feedback widget (FR-099) ------------------------------------------------------------------------------------------------------------------
+
+  var feedbackOverlay = null
+
+  function showFeedbackModal() {
+    if (feedbackOverlay) return
+    var pageKey = currentPageKey || ''
+    var ta = el('textarea', { rows: 4, placeholder: 'Describe what you noticed or suggest an improvement…', required: true })
+    var status = show('')
+    var overlay = el('div', { role: 'dialog', 'aria-modal': 'true', 'aria-label': 'Send feedback',
+      style: 'position:fixed;inset:0;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;z-index:9999;padding:16px' }, [
+      el('form', { class: 'card', style: 'max-width:460px;width:100%', onsubmit: function (ev) {
+        ev.preventDefault()
+        var bodyText = ta.value.trim()
+        if (!bodyText) return
+        call('POST', 'feedback', { page_key: pageKey || 'unknown', body: bodyText }).then(function () {
+          status.textContent = 'Thank you for your feedback!'
+          status.className = 'hint'
+          ta.value = ''
+          setTimeout(function () { closeFeedbackModal() }, 1200)
+        }).catch(function (e) { status.textContent = problem(e); status.className = 'error'; status.setAttribute('role', 'alert') })
+      } }, [
+        el('h2', { text: 'Send feedback' }),
+        el('label', {}, [el('span', { text: pageKey ? ('Page: ' + pageKey) : 'Feedback' }), ta]),
+        status,
+        el('div', { class: 'row' }, [
+          el('button', { class: 'primary', type: 'submit', text: 'Send' }),
+          el('button', { type: 'button', text: 'Cancel', onclick: closeFeedbackModal }),
+        ]),
+      ]),
+    ])
+    overlay.addEventListener('click', function (ev) { if (ev.target === overlay) closeFeedbackModal() })
+    document.body.appendChild(overlay)
+    feedbackOverlay = overlay
+    ta.focus()
+  }
+
+  function closeFeedbackModal() {
+    if (feedbackOverlay) { feedbackOverlay.remove(); feedbackOverlay = null }
+  }
+
+  var feedbackBtn = el('button', { type: 'button', text: 'Feedback', hidden: true, onclick: showFeedbackModal })
+  document.querySelector('header').appendChild(feedbackBtn)
+
   // --- start -------------------------------------------------------------------------------------------------------------------------------------
 
   $('signout').addEventListener('click', function () {
     call('POST', 'auth/logout').catch(function () { /* the session may already be gone */ }).then(function () {
       csrf = null; state.user = null; state.pages = []
-      $('who').textContent = ''; $('signout').hidden = true
+      $('who').textContent = ''; $('signout').hidden = true; feedbackBtn.hidden = true
       if (navigator.serviceWorker && navigator.serviceWorker.controller) navigator.serviceWorker.controller.postMessage({ type: 'CLEAR' })
       loginView()
     })
