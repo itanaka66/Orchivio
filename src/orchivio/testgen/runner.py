@@ -10,6 +10,8 @@ from __future__ import annotations
 import random
 import time
 import uuid
+
+from orchivio import telemetry
 from dataclasses import asdict, dataclass, field
 from typing import Any
 
@@ -360,19 +362,20 @@ class Runner:
 
 def run_tests(model: AppModel, model_hash: str, engine: Engine, *, seed: int = 0, rows: int = 20) -> Report:
     """Build a temporary runtime in ``engine``, run every generated case, then drop it."""
-    app_id = uuid.uuid4()
-    store = PreviewStore(engine)
-    schema, data = store.reset(app_id, model, model_hash)
-    report = Report(model_hash, seed)
-    try:
-        runner = Runner(model, data, seed, model_hash)
-        runner.populate(max(1, min(rows, 100)))
-        cases = generate_cases(model)
-        report.results = [runner.run(c) for c in cases]
-        report.coverage = _coverage(model, cases, report.results)
-    finally:
-        store.drop(app_id)
-    return report
+    with telemetry.span("testgen.run", entities=len(model.entities)):
+        app_id = uuid.uuid4()
+        store = PreviewStore(engine)
+        schema, data = store.reset(app_id, model, model_hash)
+        report = Report(model_hash, seed)
+        try:
+            runner = Runner(model, data, seed, model_hash)
+            runner.populate(max(1, min(rows, 100)))
+            cases = generate_cases(model)
+            report.results = [runner.run(c) for c in cases]
+            report.coverage = _coverage(model, cases, report.results)
+        finally:
+            store.drop(app_id)
+        return report
 
 
 def _coverage(model: AppModel, cases: list[Case], results: list[Result]) -> dict[str, Any]:

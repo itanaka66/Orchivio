@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState, type ComponentProps, type Re
 import { ApiClient, ApiError, type Application, type Org, type Project, type User } from './api/client'
 import { AdminWorkspace } from './admin/AdminWorkspace'
 import { Board } from './board/Board'
+import { DataGrid } from './board/DataGrid'
 import { collectElements } from './board/elements'
 import { FeedbackWidget } from './board/FeedbackWidget'
 import { FlowEditor } from './components/FlowEditor'
@@ -34,6 +35,7 @@ interface ProcessTarget { application: Application; model: Json; canEdit: boolea
 interface AITarget { application: Application; model: Json; canEdit: boolean }
 interface ReviewTarget { application: Application; canEdit: boolean }
 interface ModelTarget { application: Application; model: Json }
+interface DataTarget { application: Application; entity: string }
 interface Open { model: Json; module: string; flow: Flow; application?: Application; readOnly: boolean; demo: boolean }
 
 export default function App({ client: injected, offline }: { client?: ApiClient; offline?: Omit<ComponentProps<typeof OfflineProvider>, 'client' | 'children'> }) {
@@ -55,6 +57,7 @@ function Studio({ client }: { client: ApiClient }) {
   const [review, setReview] = useState<ReviewTarget | null>(null)
   const [aiBuilder, setAiBuilder] = useState<AITarget | null>(null)
   const [explorer, setExplorer] = useState<ModelTarget | null>(null)
+  const [dataView, setDataView] = useState<DataTarget | null>(null)
 
   useEffect(() => {
     if (!client.signedIn) return
@@ -115,6 +118,7 @@ function Studio({ client }: { client: ApiClient }) {
         <main className="page wide">
           <PageDesigner client={client} applicationId={pages.application.id} model={pages.model} canEdit={pages.canEdit} />
         </main>
+        <FeedbackWidget client={client} applicationId={pages.application.id} page="studio:pages" />
       </div>
     )
 
@@ -180,6 +184,7 @@ function Studio({ client }: { client: ApiClient }) {
           {user && <span>{user.display_name}</span>}
         </header>
         <main className="page wide"><ProcessDesigner client={client} applicationId={processes.application.id} model={processes.model} canEdit={processes.canEdit} /></main>
+        <FeedbackWidget client={client} applicationId={processes.application.id} page="studio:processes" />
       </div>
     )
   } else if (review) {
@@ -205,6 +210,7 @@ function Studio({ client }: { client: ApiClient }) {
         </header>
         <main className="page wide"><AIBuilder client={client} application={aiBuilder.application} canEdit={aiBuilder.canEdit}
           onReview={() => { setAiBuilder(null); setReview({ application: aiBuilder.application, canEdit: aiBuilder.canEdit }) }} /></main>
+        <FeedbackWidget client={client} applicationId={aiBuilder.application.id} page="studio:ai-builder" />
       </div>
     )
   } else if (explorer) {
@@ -217,6 +223,19 @@ function Studio({ client }: { client: ApiClient }) {
           {user && <span>{user.display_name}</span>}
         </header>
         <main className="page wide"><ModelExplorer model={explorer.model} /></main>
+        <FeedbackWidget client={client} applicationId={explorer.application.id} page="studio:explorer" />
+      </div>
+    )
+  } else if (dataView) {
+    overlay = (
+      <div className="shell">
+        <header className="topbar">
+          <button type="button" className="link" onClick={() => setDataView(null)}>← Back</button>
+          <span>{dataView.application.name} · Data · {dataView.entity}</span>
+          <span className="spacer" />
+          {user && <span>{user.display_name}</span>}
+        </header>
+        <main className="page wide"><DataGrid client={client} appId={dataView.application.id} entity={dataView.entity} /></main>
       </div>
     )
   }
@@ -244,7 +263,7 @@ function Studio({ client }: { client: ApiClient }) {
       {user ? (
         <Browser client={client} user={user} onOpen={setOpen} onBoard={setBoard} onPreview={setPreview} onPages={setPages} onAdmin={setAdmin}
                  onProcesses={setProcesses} onReview={setReview} onAI={setAiBuilder} onExplorer={setExplorer}
-                 onLogout={signOut} />
+                 onData={setDataView} onLogout={signOut} />
       ) : (
         <Login client={client} onUser={setUser} />
       )}
@@ -299,7 +318,7 @@ function useLoad<T>(load: () => Promise<T>, deps: unknown[]): { data: T | null; 
   return state
 }
 
-function Browser({ client, user, onOpen, onBoard, onPreview, onPages, onAdmin, onProcesses, onReview, onAI, onExplorer, onLogout }: { client: ApiClient; user: User; onOpen: (o: Open) => void; onBoard: (b: BoardTarget) => void; onPreview: (p: PreviewTarget) => void; onPages: (p: PagesTarget) => void; onAdmin: (a: AdminTarget) => void; onProcesses: (t: ProcessTarget) => void; onReview: (t: ReviewTarget) => void; onAI: (t: AITarget) => void; onExplorer: (t: ModelTarget) => void; onLogout: () => void }) {
+function Browser({ client, user, onOpen, onBoard, onPreview, onPages, onAdmin, onProcesses, onReview, onAI, onExplorer, onData, onLogout }: { client: ApiClient; user: User; onOpen: (o: Open) => void; onBoard: (b: BoardTarget) => void; onPreview: (p: PreviewTarget) => void; onPages: (p: PagesTarget) => void; onAdmin: (a: AdminTarget) => void; onProcesses: (t: ProcessTarget) => void; onReview: (t: ReviewTarget) => void; onAI: (t: AITarget) => void; onExplorer: (t: ModelTarget) => void; onData: (t: DataTarget) => void; onLogout: () => void }) {
   const [orgVersion, setOrgVersion] = useState(0)
   const orgs = useLoad(() => client.organizations(), [client, orgVersion])
   const [org, setOrg] = useState<Org | null>(null)
@@ -462,6 +481,18 @@ function Browser({ client, user, onOpen, onBoard, onPreview, onPages, onAdmin, o
       {app && revision.data && canEdit && (
         <p>
           <button type="button" onClick={() => onProcesses({ application: app, model: revision.data!.model_json, canEdit })}>Open process designer</button>
+        </p>
+      )}
+      {app && revision.data && (
+        <p>
+          {/* FR-074: DataGrid — pick first entity from model */}
+          {(() => {
+            const entities = ((revision.data!.model_json.entities ?? []) as { name?: string }[])
+            const firstName = entities[0]?.name
+            return firstName ? (
+              <button type="button" onClick={() => onData({ application: app, entity: firstName })}>Browse data</button>
+            ) : null
+          })()}
         </p>
       )}
       {app && !app.current_revision_id && <p className="hint">This application has no model yet.</p>}

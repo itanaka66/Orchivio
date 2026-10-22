@@ -69,6 +69,25 @@ class _Hooks(Hooks):
         self.event("task_created", spec.step_id, {"task": str(task.id), "role": spec.assignee_role, "user": spec.assignee_user})
         return str(task.id)
 
+    def send_message(self, message_type: str, payload: dict[str, Any], target: str) -> None:
+        """Broadcast a message to all running instances of this app waiting for message_type (FR-110)."""
+        from sqlalchemy import func as _func
+        waiters = self.svc.session.scalars(
+            select(ProcessInstance).where(
+                ProcessInstance.application_id == self.inst.application_id,
+                ProcessInstance.status == "running",
+                ProcessInstance.id != self.inst.id,
+            )
+        ).all()
+        for w in waiters:
+            st = State.from_json(w.state)
+            if any(tok.status == "waiting_message" for tok in st.tokens):
+                try:
+                    self.svc._machine(w, self.actor).signal(st, message_type, payload)
+                    self.svc._save(w, st)
+                except (ProcessError, ServiceError):
+                    pass
+
     def run_flow(self, flow: str, args: dict[str, Any]) -> str | None:
         return self.svc.run_system_flow(self.inst, flow, args)
 

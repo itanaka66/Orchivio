@@ -48,6 +48,7 @@ from orchivio.delivery import resolve_constants
 from orchivio.logic import FlowError, FlowHooks, FlowRunner
 from orchivio.model import AppModel
 from orchivio.runtime import AppData, DataError, PreviewNotBuilt, PreviewStale
+from orchivio.runtime.production import ProductionStore
 from orchivio.runtime import AppUser as RuntimeUser
 
 from ..deps import api_error, get_db, not_found, utcnow
@@ -295,10 +296,26 @@ def change_password(body: PasswordChangeIn, request: Request, response: Response
 # --- data and flows ----------------------------------------------------------------------------
 
 
+def _production_env(db: Session, application_id: uuid.UUID) -> Environment | None:
+    """Highest-stage environment that has a data_url (FR-030)."""
+    from sqlalchemy import select as _select
+    envs = db.scalars(
+        _select(Environment).where(Environment.application_id == application_id, Environment.data_url.isnot(None))
+        .order_by(Environment.stage_order.desc())
+    ).all()
+    return envs[0] if envs else None
+
+
 def _open(request: Request, c: Caller, db: Session,
           constants: dict[str, Any] | None = None) -> AppData:
     if constants is None:
         constants = _load_app_constants(db, c.application.id)
+    env = _production_env(db, c.application.id)
+    if env is not None:
+        prod = ProductionStore(env.data_url)
+        return prod.open(c.application.id, c.model, c.model_hash, audit=request.app.state.audit_sink,
+                         organization_id=c.project.organization_id, hooks=FlowHooks(c.model, constants=constants or None),
+                         integrations=request.app.state.integration_clients(c.application.id))
     try:
         return request.app.state.preview_store.open(
             c.application.id, c.model, c.model_hash, audit=request.app.state.audit_sink,
@@ -353,6 +370,28 @@ def delete_row(entity: str, row_id: str, request: Request,
                c: Caller = Depends(usable), db: Session = Depends(get_db)) -> None:
     data = _open(request, c, db)
     _run(lambda: data.delete(entity, c.runtime_user, row_id))
+
+
+class _AggMetric(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    field: str = Field(default="*", max_length=63)
+    fn: str = Field(default="count", pattern=r"^(count|sum|avg|min|max)$")
+    alias: str = Field(max_length=63)
+
+
+class _AggregateIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    group_by: list[str] = Field(default_factory=list)
+    metrics: list[_AggMetric]
+    filters: dict[str, Any] | None = None
+
+
+@router.post("/aggregate/{entity}")
+def aggregate_rows(entity: str, body: _AggregateIn, request: Request,
+                   c: Caller = Depends(usable), db: Session = Depends(get_db)) -> list[dict[str, Any]]:
+    """Aggregate query with row-level security applied (FR-060-063)."""
+    data = _open(request, c, db)
+    return _run(lambda: data.aggregate(entity, c.runtime_user, body.group_by, [m.model_dump() for m in body.metrics], body.filters))
 
 
 @router.get("/grid/{entity}")

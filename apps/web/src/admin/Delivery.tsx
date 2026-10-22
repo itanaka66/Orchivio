@@ -79,7 +79,12 @@ export function Delivery({ client, appId, currentRevisionId }: { client: ApiClie
               <div className="row">
                 <button type="button" onClick={async () => { try { setDetail(await client.request('GET', `/packages/${p.id}/verify`)) } catch (e) { setDetail({ valid: false, error: e instanceof Error ? e.message : 'failed' }) } }}>Verify</button>
                 <button type="button" onClick={async () => setDetail(await client.request('GET', `/packages/${p.id}`))}>Migration plan &amp; SBOM</button>
-                <a href={client.url(`/packages/${p.id}/download`)}>Download</a>
+                {/* FR-034: run expand migration dry-run */}
+                <button type="button" onClick={async () => setDetail(await client.request('POST', `/packages/${p.id}/migrations/run`, { phase: 'expand', dry_run: true }))}>Preview migration</button>
+                {/* FR-034: apply expand migration */}
+                <button type="button" onClick={() => void run(() => client.request('POST', `/packages/${p.id}/migrations/run`, { phase: 'expand', dry_run: false }), 'Expand migration applied.')}>Run expand migration</button>
+                {/* FR-036: export package */}
+                <a href={client.url(`/packages/${p.id}/download`)}>Export package</a>
                 <button type="button" className="primary" onClick={() => { setPromoteError(null); setPromote({ pkg: p, environment: envs.data?.items[0]?.name ?? '', acknowledge: false, comment: '' }) }}>Promote…</button>
               </div>
             </li>

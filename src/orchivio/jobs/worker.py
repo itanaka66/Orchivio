@@ -22,7 +22,9 @@ from orchivio.db import to_model
 from orchivio.db.models import Application, AppRevision, AuditEvent, JobRun, Project
 from orchivio.logic import FlowHooks, FlowRunner
 from orchivio.ports import AuditSink
+from orchivio.db.models import Environment
 from orchivio.runtime import AppUser, PreviewNotBuilt, PreviewStale, PreviewStore
+from orchivio.runtime.production import ProductionStore
 
 from . import queue
 from .scheduler import Planner
@@ -138,9 +140,15 @@ class Worker:
         model = to_model(rev)
         project = s.get(Project, app.project_id)
         job.model_hash = rev.model_hash
-        data = self.preview.open(app.id, model, rev.model_hash, audit=self.audit,
-                                 organization_id=project.organization_id if project else None, hooks=FlowHooks(model),
-                                 integrations=self.integrations(app.id) if self.integrations else None)
+        # FR-055: use production store when the job specifies an environment with a data_url
+        store: PreviewStore | ProductionStore = self.preview
+        if job.environment_id:
+            env = s.get(Environment, job.environment_id)
+            if env is not None and env.data_url:
+                store = ProductionStore(env.data_url)
+        data = store.open(app.id, model, rev.model_hash, audit=self.audit,
+                          organization_id=project.organization_id if project else None, hooks=FlowHooks(model),
+                          integrations=self.integrations(app.id) if self.integrations else None)
         user = AppUser(f"system:{job.trigger}:{job.flow}", frozenset({job.run_as_role}))
         res = FlowRunner(data.model, data).run(job.flow, job.args, user)
         return {"status": res.status, "steps": res.steps_executed, "error": res.error, "error_step": res.error_step}

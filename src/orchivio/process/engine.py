@@ -82,6 +82,7 @@ class TaskSpec:
 
 class Hooks(Protocol):
     def create_task(self, spec: TaskSpec) -> str: ...
+    def send_message(self, message_type: str, payload: dict[str, Any], target: str) -> None: ...
     def run_flow(self, flow: str, args: dict[str, Any]) -> str | None:
         """Run the server flow ``module.Flow``; return an error message, or None on success."""
         ...
@@ -215,6 +216,13 @@ class Machine:
             elif t == "catch_message":
                 tok.status = "waiting_message"
                 self.hooks.event("waiting_message", step.id, {"message": step.config.get("message", "")})
+            elif t == "send_message":
+                cfg = step.config
+                payload = {k: self._eval(st, v, None) for k, v in (cfg.get("payload_expr") or {}).items()}
+                target = cfg.get("target", "broadcast")
+                self.hooks.send_message(cfg["message_type"], payload, target)
+                self.hooks.event("message_sent", step.id, {"message_type": cfg["message_type"], "target": target})
+                self._go(tok, self._edge(step.id, None))
             elif t == "end":
                 st.tokens.remove(tok)
         except (ExprError, ProcessError) as e:

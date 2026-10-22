@@ -2,12 +2,16 @@
 
 from __future__ import annotations
 
+import hmac
+import secrets
 from datetime import timedelta
 
 from fastapi import APIRouter, Depends, Request, Response
+from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from orchivio import telemetry
 from orchivio.auth import (
     DUMMY_HASH,
     hash_password,
@@ -20,6 +24,9 @@ from orchivio.db.models import Membership, Organization, User, UserSession
 
 from ..deps import Principal, api_error, audit, current_principal, get_db, utcnow
 from ..schemas import LoginIn, LoginOut, MembershipOut, MeOut, RegisterIn, UserOut
+
+# Short-lived MFA tokens stored in memory: {token: user_id}. Not distributed; use Redis for multi-node.
+_mfa_pending: dict[str, str] = {}
 
 router = APIRouter(tags=["auth"])
 
@@ -49,6 +56,11 @@ def register(body: RegisterIn, request: Request, db: Session = Depends(get_db)) 
 
 @router.post("/auth/login", response_model=LoginOut)
 def login(body: LoginIn, request: Request, response: Response, db: Session = Depends(get_db)) -> LoginOut:
+    with telemetry.span("auth.login"):
+        return _login(body, request, response, db)
+
+
+def _login(body: LoginIn, request: Request, response: Response, db: Session) -> LoginOut:
     settings = request.app.state.settings
     throttle = request.app.state.throttle
     ip_key, email_key = f"ip:{_client_ip(request)}", f"email:{body.email}"
@@ -60,7 +72,8 @@ def login(body: LoginIn, request: Request, response: Response, db: Session = Dep
 
     user = db.scalar(select(User).where(func.lower(User.email) == body.email))
     # Always run one scrypt verification so timing doesn't reveal whether the account exists.
-    ok = verify_password(body.password, user.password_hash if user else DUMMY_HASH)
+    with telemetry.span("auth.password_verify"):
+        ok = verify_password(body.password, user.password_hash if user else DUMMY_HASH)
     if user is None or not ok or user.status != "active":
         throttle.fail(ip_key, email_key)
         audit(db, request, "auth.login_failed", actor_id=user.id if user else None,
@@ -71,7 +84,30 @@ def login(body: LoginIn, request: Request, response: Response, db: Session = Dep
     throttle.succeed(email_key)
     if needs_rehash(user.password_hash or ""):
         user.password_hash = hash_password(body.password)
+    db.commit()
 
+    if user.mfa_enabled:
+        mfa_token = secrets.token_urlsafe(32)
+        _mfa_pending[mfa_token] = str(user.id)
+        from fastapi.responses import JSONResponse
+        return JSONResponse(status_code=202, content={"mfa_required": True, "mfa_token": mfa_token})
+
+    return _create_session(user, request, response, db, settings)
+
+
+@router.post("/auth/logout", status_code=204)
+def logout(request: Request, response: Response, principal: Principal = Depends(current_principal),
+           db: Session = Depends(get_db)) -> Response:
+    if principal.session is not None:
+        principal.session.revoked_at = utcnow()
+        audit(db, request, "auth.logout", actor_id=principal.user_id, target_type="user", target_id=principal.user_id)
+        db.commit()
+    response.delete_cookie(request.app.state.settings.session_cookie_name, path="/")
+    response.status_code = 204
+    return response
+
+
+def _create_session(user: User, request: Request, response: Response, db: Session, settings) -> LoginOut:
     token, token_hash = new_token()
     csrf, csrf_hash = new_token()
     expires = utcnow() + timedelta(hours=settings.session_ttl_hours)
@@ -88,18 +124,6 @@ def login(body: LoginIn, request: Request, response: Response, db: Session = Dep
     return LoginOut(user=UserOut.model_validate(user), csrf_token=csrf, expires_at=expires)
 
 
-@router.post("/auth/logout", status_code=204)
-def logout(request: Request, response: Response, principal: Principal = Depends(current_principal),
-           db: Session = Depends(get_db)) -> Response:
-    if principal.session is not None:
-        principal.session.revoked_at = utcnow()
-        audit(db, request, "auth.logout", actor_id=principal.user_id, target_type="user", target_id=principal.user_id)
-        db.commit()
-    response.delete_cookie(request.app.state.settings.session_cookie_name, path="/")
-    response.status_code = 204
-    return response
-
-
 @router.get("/me", response_model=MeOut)
 def me(principal: Principal = Depends(current_principal), db: Session = Depends(get_db)) -> MeOut:
     rows = db.execute(
@@ -112,3 +136,101 @@ def me(principal: Principal = Depends(current_principal), db: Session = Depends(
     if principal.token is not None:
         orgs = [o for o in orgs if o.organization_id == principal.token.organization_id]
     return MeOut(user=UserOut.model_validate(principal.user), organizations=orgs, auth=principal.via)
+
+
+# --- MFA (FR-067) -----------------------------------------------------------------------------
+
+
+class MfaSetupOut(BaseModel):
+    provisioning_uri: str
+    secret: str
+
+
+class MfaConfirmIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    code: str = Field(min_length=6, max_length=8)
+
+
+class MfaVerifyIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    mfa_token: str = Field(min_length=1, max_length=200)
+    code: str = Field(min_length=6, max_length=8)
+
+
+def _totp(secret: str):
+    try:
+        import pyotp
+        return pyotp.TOTP(secret)
+    except ImportError as e:
+        raise api_error(503, "mfa_unavailable", "pyotp is not installed; install orchivio[mfa]") from e
+
+
+@router.post("/auth/mfa/setup", response_model=MfaSetupOut)
+def mfa_setup(request: Request, principal: Principal = Depends(current_principal), db: Session = Depends(get_db)) -> MfaSetupOut:
+    """Generate a new TOTP secret for the current user. Call /auth/mfa/confirm to activate it."""
+    import pyotp
+    secret = pyotp.random_base32()
+    totp = pyotp.TOTP(secret)
+    uri = totp.provisioning_uri(name=principal.user.email, issuer_name=request.app.state.settings.app_title if hasattr(request.app.state.settings, "app_title") else "Orchivio")
+    principal.user.mfa_secret = secret
+    principal.user.mfa_enabled = False
+    db.commit()
+    return MfaSetupOut(provisioning_uri=uri, secret=secret)
+
+
+@router.post("/auth/mfa/confirm", status_code=204)
+def mfa_confirm(body: MfaConfirmIn, principal: Principal = Depends(current_principal), db: Session = Depends(get_db)) -> Response:
+    """Verify first TOTP code and enable MFA."""
+    user = principal.user
+    if not user.mfa_secret:
+        raise api_error(409, "mfa_not_setup", "call /auth/mfa/setup first")
+    totp = _totp(user.mfa_secret)
+    if not totp.verify(body.code, valid_window=1):
+        raise api_error(401, "invalid_code", "invalid or expired TOTP code")
+    user.mfa_enabled = True
+    db.commit()
+    return Response(status_code=204)
+
+
+@router.post("/auth/mfa/disable", status_code=204)
+def mfa_disable(body: MfaConfirmIn, principal: Principal = Depends(current_principal), db: Session = Depends(get_db)) -> Response:
+    """Disable MFA (requires current TOTP code)."""
+    user = principal.user
+    if not user.mfa_enabled or not user.mfa_secret:
+        raise api_error(409, "mfa_not_enabled", "MFA is not enabled")
+    totp = _totp(user.mfa_secret)
+    if not totp.verify(body.code, valid_window=1):
+        raise api_error(401, "invalid_code", "invalid or expired TOTP code")
+    user.mfa_secret, user.mfa_enabled = None, False
+    db.commit()
+    return Response(status_code=204)
+
+
+@router.post("/auth/mfa/verify")
+def mfa_verify(body: MfaVerifyIn, request: Request, response: Response, db: Session = Depends(get_db)) -> LoginOut:
+    """Complete login by verifying the TOTP code after a 202 MFA challenge."""
+    user_id = _mfa_pending.pop(body.mfa_token, None)
+    if user_id is None:
+        raise api_error(401, "invalid_mfa_token", "MFA token is invalid or expired")
+    user = db.get(User, user_id)
+    if user is None or not user.mfa_enabled or not user.mfa_secret:
+        raise api_error(401, "invalid_mfa_token", "MFA token is invalid or expired")
+    totp = _totp(user.mfa_secret)
+    if not totp.verify(body.code, valid_window=1):
+        raise api_error(401, "invalid_code", "invalid or expired TOTP code")
+    settings = request.app.state.settings
+    return _create_session(user, request, response, db, settings)
+
+
+@router.post("/auth/logout-all", status_code=204)
+def logout_all(request: Request, response: Response, principal: Principal = Depends(current_principal),
+               db: Session = Depends(get_db)) -> Response:
+    """Revoke all active sessions for the current user."""
+    from sqlalchemy import update as _update
+    db.execute(_update(UserSession).where(UserSession.user_id == principal.user_id, UserSession.revoked_at.is_(None))
+               .values(revoked_at=utcnow()))
+    audit(db, request, "auth.logout_all", actor_id=principal.user_id, target_type="user", target_id=principal.user_id)
+    db.commit()
+    response.delete_cookie(request.app.state.settings.session_cookie_name, path="/")
+    response.status_code = 204
+    return response

@@ -31,6 +31,7 @@ CONFIG_KEYS = {
     "decision": {"expr"},
     "timer": {"wait_seconds"},
     "catch_message": {"message"},
+    "send_message": {"message_type", "payload_expr", "target"},
 }
 
 
@@ -131,7 +132,7 @@ class ProcessChecker:
                 self.err("process-edges", w, "an end step has no outgoing edges")
             return
         plain = [e for e in outs if e.outcome is None]
-        if t in ("start", "system_task", "call_process", "timer", "catch_message", "parallel_join"):
+        if t in ("start", "system_task", "call_process", "timer", "catch_message", "send_message", "parallel_join"):
             if len(outs) != 1 or plain != outs:
                 self.err("process-edges", w, f"a {t.replace('_', ' ')} step needs exactly one outgoing edge without an outcome")
         elif t == "parallel_split":
@@ -159,6 +160,13 @@ class ProcessChecker:
             msg = cfg.get("message")
             if not isinstance(msg, str) or not 1 <= len(msg) <= 100 or not msg.replace("_", "").replace("-", "").isalnum():
                 self.err("process-config", f"{w}/config/message", "message must be a 1-100 character alphanumeric/underscore/hyphen name")
+        elif t == "send_message":
+            mt = cfg.get("message_type")
+            if not isinstance(mt, str) or not 1 <= len(mt) <= 100 or not mt.replace("_", "").replace("-", "").isalnum():
+                self.err("process-config", f"{w}/config/message_type", "message_type must be a 1-100 character alphanumeric/underscore/hyphen name")
+            target = cfg.get("target", "broadcast")
+            if target not in ("broadcast",) and not isinstance(target, str):
+                self.err("process-config", f"{w}/config/target", "target must be 'broadcast' or a string expression")
 
     def user_task(self, s, w: str, cfg: dict[str, Any], outs: list) -> None:
         c = f"{w}/config"

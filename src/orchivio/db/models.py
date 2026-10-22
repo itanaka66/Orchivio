@@ -98,6 +98,8 @@ class User(Base):
     display_name: Mapped[str] = mapped_column(String(200), nullable=False)
     password_hash: Mapped[str | None] = mapped_column(String(255))  # null for SSO-only users
     status: Mapped[str] = mapped_column(String(16), nullable=False, default="active")
+    mfa_secret: Mapped[str | None] = mapped_column(Text, nullable=True)
+    mfa_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     created_at: Mapped[datetime] = _created()
 
 
@@ -719,6 +721,7 @@ class Environment(Base):
     stage_order: Mapped[int] = mapped_column(Integer, nullable=False)
     requires_approval: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     require_tests: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    data_url: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = _created()
 
 

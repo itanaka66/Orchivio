@@ -20,7 +20,7 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from orchivio import __version__
+from orchivio import __version__, telemetry
 from orchivio.db import ModelInvalid, ProposalRepository, RevisionRepository, to_model
 from orchivio.db.models import (
     Application,
@@ -501,6 +501,11 @@ def _resolve(request: Request, db: Session, principal: Principal, ref: str, spec
 def install(app_id: uuid.UUID, body: InstallIn, request: Request, principal: Principal = Depends(current_principal),
             db: Session = Depends(get_db)) -> dict[str, Any]:
     """Add (or upgrade) a module and the modules it requires as one *proposal*. Roles and access rules they need appear in the diff."""
+    with telemetry.span("registry.install", package=body.package):
+        return _install(app_id, body, request, principal, db)
+
+
+def _install(app_id: uuid.UUID, body: InstallIn, request: Request, principal: Principal, db: Session) -> dict[str, Any]:
     app, project = load_application(db, principal, app_id, "model.propose")
     chosen, order, root = _resolve(request, db, principal, body.package, body.version)
     target = _current(db, app)

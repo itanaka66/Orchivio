@@ -30,6 +30,7 @@ from orchivio.db.models import (
 from orchivio.delivery import PackageError, build_package, public_key_of, run_contract, run_expand, verify_package
 from orchivio.delivery.package import VerifiedPackage
 from orchivio.runtime import table_prefix
+from orchivio.runtime.production import ProductionStore
 
 from ..deps import (
     Principal,
@@ -456,6 +457,17 @@ def decide(deployment_id: uuid.UUID, body: DecisionIn, request: Request, princip
         v = _verified(request, pkg)  # the bytes may have changed since the request
         _check_base(db, env, v)
         _go_live(db, dep, now)
+        # FR-094: provision production tables when the environment has a data_url
+        if env.data_url:
+            from orchivio.db import to_model as _to_model
+            rev = db.get(AppRevision, v.manifest.get("revision_id")) if v.manifest.get("revision_id") else None
+            if rev is not None:
+                try:
+                    prod = ProductionStore(env.data_url)
+                    prod.build(app.id, _to_model(rev), rev.model_hash or "")
+                except Exception:  # noqa: BLE001 - provisioning errors must not block the approval response
+                    import logging as _logging
+                    _logging.getLogger("orchivio.delivery").exception("production store build failed for env %s", env.id)
     else:
         dep.status, dep.decided_at = "rejected", now
     dep.decided_by, dep.comment = principal.user_id, body.comment or dep.comment
@@ -509,7 +521,12 @@ def run_migration(package_id: uuid.UUID, body: MigrationRunIn, request: Request,
                             {"destructive_steps": destructive})
 
     prefix = table_prefix(app.id)
-    preview_engine = request.app.state.preview_store.engine
+    # FR-097: migrate against production data_url when the deployment targets an env with one, else preview
+    target_engine = request.app.state.preview_store.engine
+    if hasattr(pkg, "environment_id") and pkg.environment_id:
+        env = db.get(Environment, pkg.environment_id)
+        if env is not None and env.data_url:
+            target_engine = ProductionStore(env.data_url).engine
     applied: list[str] = []
 
     if body.dry_run:
@@ -517,7 +534,7 @@ def run_migration(package_id: uuid.UUID, body: MigrationRunIn, request: Request,
         dummy_steps = [s for s in steps if s.get("phase") == body.phase]
         applied = [f"{s['op']} {s['target']}" for s in dummy_steps]
     else:
-        with preview_engine.begin() as conn:
+        with target_engine.begin() as conn:
             if body.phase == "expand":
                 applied = run_expand(conn, steps, prefix)
             else:

@@ -110,6 +110,17 @@ class ProposalListArgs(_Args):
     limit: int = Field(default=20, ge=1, le=100)
 
 
+class ExplainArgs(_Args):
+    application_id: uuid.UUID
+    element_id: uuid.UUID
+    question: str | None = Field(default=None, max_length=2000)
+
+
+class ProposalAwaitArgs(_Args):
+    proposal_id: uuid.UUID
+    timeout_seconds: int = Field(default=60, ge=5, le=300)
+
+
 class TestsArgs(Target):
     seed: int = Field(default=0, ge=0, le=2**31)
     rows: int = Field(default=20, ge=1, le=100)
@@ -204,6 +215,26 @@ def t_proposal_list(c: Ctx, a: ProposalListArgs) -> Any:
     return {"total": page.total, "items": [i.model_dump(mode="json") for i in page.items]}
 
 
+def t_explain(c: Ctx, a: ExplainArgs) -> Any:
+    from .ai import ExplainIn, explain as _explain
+    return _explain(a.application_id, ExplainIn(element_id=a.element_id, question=a.question), c.request, c.principal, c.db)
+
+
+def t_proposal_await(c: Ctx, a: ProposalAwaitArgs) -> Any:
+    from .proposals import get_proposal
+    import time as _time
+    deadline = _time.monotonic() + a.timeout_seconds
+    while True:
+        p = get_proposal(a.proposal_id, False, c.principal, c.db).model_dump(mode="json")
+        if p["status"] != "pending":
+            return {"approved": p["status"] == "applied", "status": p["status"],
+                    "decision_by": p.get("reviewed_by"), "decided_at": p.get("reviewed_at")}
+        remaining = deadline - _time.monotonic()
+        if remaining <= 0:
+            return {"approved": False, "status": "pending", "timed_out": True}
+        _time.sleep(min(5.0, remaining))
+
+
 def t_tests(c: Ctx, a: TestsArgs) -> Any:
     rev = c.revision(a, "model.propose")
     return start(rev.id, RunIn(seed=a.seed, rows=a.rows), c.request, c.principal, c.db)
@@ -224,6 +255,12 @@ TOOLS: dict[str, tuple[str, str, type[_Args], Callable[[Ctx, Any], Any]]] = {
     "proposal.get": ("Read a proposal: status, diff, risk level, lint and decision.", "A0", ProposalGetArgs, t_proposal_get),
     "proposal.list": ("List proposals of an application.", "A0", ProposalListArgs, t_proposal_list),
     "tests.run": ("Run the generated tests of a revision in an isolated preview database.", "A1", TestsArgs, t_tests),
+    "model.explain": ("Explain one model element (entity, field, flow, process, role…) in plain language, with citations. "
+                      "Read-only; requires ai_allow_external to be enabled for the project.",
+                      "A0", ExplainArgs, t_explain),
+    "proposal.await": ("Poll a proposal until it leaves 'pending' state (approved or rejected) or a timeout elapses. "
+                       "Returns {approved, status, decision_by, decided_at}. Use after proposal.create.",
+                       "A0", ProposalAwaitArgs, t_proposal_await),
 }
 
 
@@ -312,9 +349,53 @@ def _call_tool(ctx: Ctx, params: dict[str, Any]) -> tuple[dict[str, Any], str, b
 
 
 @router.get("/mcp")
-def mcp_get() -> Response:
-    """No server-initiated stream is offered."""
-    return Response(status_code=405, headers={"Allow": "POST"})
+def mcp_get(request: Request, principal: Principal = Depends(current_principal), db: Session = Depends(get_db)) -> Response:
+    """SSE stream of proposal status-change events for the current API token (FR-087)."""
+    if principal.via != "token" or principal.token is None:
+        raise api_error(401, "unauthorized", "the MCP SSE endpoint needs a bearer API token")
+    if request.headers.get("accept") != "text/event-stream":
+        return Response(status_code=405, headers={"Allow": "POST"})
+
+    from sse_starlette.sse import EventSourceResponse
+    from sqlalchemy import select as _select
+    from orchivio.db.models import Proposal
+    import asyncio
+
+    org_id = principal.token.organization_id
+
+    async def _stream():
+        # Send initial ping, then poll every 5s for proposal changes created by this token.
+        # In production this should use a notify/listen pattern instead of polling.
+        from orchivio.db.models import Application, Project
+        sent: set[str] = set()
+        yield {"event": "ping", "data": "connected"}
+        while True:
+            await asyncio.sleep(5)
+            try:
+                proposals = db.scalars(
+                    _select(Proposal)
+                    .join(Application, Application.id == Proposal.application_id)
+                    .join(Project, Project.id == Application.project_id)
+                    .where(
+                        Project.organization_id == org_id,
+                        Proposal.created_by == principal.user_id,
+                        Proposal.source == "mcp",
+                    ).order_by(Proposal.created_at.desc()).limit(50)
+                ).all()
+                for p in proposals:
+                    key = f"{p.id}:{p.status}"
+                    if key not in sent:
+                        sent.add(key)
+                        yield {"event": "proposal_status", "data": json.dumps({
+                            "proposal_id": str(p.id),
+                            "status": p.status,
+                            "title": p.title,
+                        })}
+            except Exception:
+                yield {"event": "error", "data": "internal error"}
+                return
+
+    return EventSourceResponse(_stream())
 
 
 @router.post("/mcp")
