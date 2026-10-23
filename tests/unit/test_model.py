@@ -231,3 +231,36 @@ def test_diff_revoking_access_is_not_risky(model):
     new.security.access = [r for r in new.security.access if r.role != "viewer"]
     d = diff_models(base, new)
     assert d.changes[0].kind == "removed" and d.changes[0].risks == ()
+
+
+def test_diff_new_process_with_start_roles_needs_a3(raw_model):
+    base = assign_element_ids(AppModel.model_validate(migrate_to_latest(raw_model)))
+    raw = copy.deepcopy(raw_model)
+    raw["modules"][0].setdefault("processes", []).append({
+        "key": "Approval",
+        "start_roles": ["admin"],
+        "steps": [{"id": "s1", "type": "start", "config": {}}, {"id": "s2", "type": "end", "config": {}}],
+        "edges": [{"id": "e1", "source": "s1", "target": "s2"}],
+    })
+    new = assign_element_ids(AppModel.model_validate(migrate_to_latest(raw)), previous=base)
+    d = diff_models(base, new)
+    proc_change = next(c for c in d.changes if c.element_type == "process")
+    assert proc_change.kind == "added"
+    assert "permission-expansion" in proc_change.risks
+    assert d.level == ApprovalLevel.A3
+
+
+def test_diff_new_process_without_start_roles_is_a2(raw_model):
+    base = assign_element_ids(AppModel.model_validate(migrate_to_latest(raw_model)))
+    raw = copy.deepcopy(raw_model)
+    raw["modules"][0].setdefault("processes", []).append({
+        "key": "Approval",
+        "steps": [{"id": "s1", "type": "start", "config": {}}, {"id": "s2", "type": "end", "config": {}}],
+        "edges": [{"id": "e1", "source": "s1", "target": "s2"}],
+    })
+    new = assign_element_ids(AppModel.model_validate(migrate_to_latest(raw)), previous=base)
+    d = diff_models(base, new)
+    proc_change = next(c for c in d.changes if c.element_type == "process")
+    assert proc_change.kind == "added"
+    assert "permission-expansion" not in proc_change.risks
+    assert d.level == ApprovalLevel.A2

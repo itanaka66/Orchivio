@@ -148,6 +148,8 @@ def diff_models(base: AppModel, new: AppModel) -> ModelDiff:
             if (etype == "flow" and props.get("run_roles")) or (
                     etype == "page" and any(isinstance(x, dict) and x.get("flow") for x in props.get("actions", []))):
                 risks = [*risks, "permission-expansion"]  # new ways for users to run a flow
+            if etype == "process" and (props.get("start_roles") or props.get("run_as_role")):
+                risks = [*risks, "permission-expansion"]  # roles may now start instances or system tasks run elevated
             lvl = ApprovalLevel.A3 if risks else ApprovalLevel.A2
             changes.append(Change("added", etype, eid, name, (), tuple(risks), lvl))
             continue
