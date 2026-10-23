@@ -15,6 +15,7 @@ Error findings block a revision unless suppressed with `lint_suppressions` (`rul
 | `sec-sensitive-field-listed` | warning | security | **Sensitive-looking field shown in a list page.** Field names such as password, secret or token should not be rendered in list views. |
 | `perf-unindexed-constraint-field` | warning | performance | **Row-constraint field without an index.** Row constraints run on every query; the fields they filter on should be indexed (DESIGN.md 5.1). |
 | `perf-reference-without-index` | info | performance | **Reference field without an index.** Joins and cascades on unindexed reference fields get slower as data grows. |
+| `perf-unique-nullable-field` | warning | performance | **Unique constraint on a nullable field.** SQL databases allow multiple NULL values in a UNIQUE column, so the uniqueness guarantee does not apply to rows where this field is absent. Mark the field required or use a partial index. |
 | `perf-wide-entity` | info | performance | **Entity with very many fields.** Entities with more than 40 fields are hard to maintain and slow to list. |
 | `perf-wide-list-page` | info | performance | **List page with many columns.** More than 12 columns is rarely readable and loads more data than needed. |
 | `maint-unused-enumeration` | warning | maintainability | **Enumeration is never used.** No field or expression refers to this enumeration. |
@@ -26,5 +27,6 @@ Error findings block a revision unless suppressed with `lint_suppressions` (`rul
 | `maint-long-expression` | info | maintainability | **Very long expression.** Expressions over 300 characters are hard to review; consider computed fields. |
 | `maint-access-on-transient-entity` | warning | maintainability | **Access rule on a transient entity.** Transient entities are never stored, so access rules on them have no effect. |
 | `maint-unreachable-flow` | warning | maintainability | **Server flow with no known entry point.** No page action, hook, schedule, run_roles, or call_flow step refers to this flow, so it can never run. |
+| `maint-process-no-start-roles` | warning | maintainability | **Process with no start roles and no call_process reference.** A process that has no start_roles and is not called as a sub-process by any other process can never be started. |
 | `a11y-column-without-label` | warning | accessibility | **Displayed field without a display name.** Fields shown in pages need a human-readable label for screen readers and translation. |
 | `i18n-default-locale-not-listed` | warning | accessibility | **Default locale missing from locales.** When locales are declared, the default locale must be one of them. |

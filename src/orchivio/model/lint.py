@@ -234,6 +234,17 @@ def _(c: _Ctx):
                 yield f.element_id, f"{path}/fields/{fi}", f"reference '{f.name}' is not indexed"
 
 
+@rule("perf-unique-nullable-field", "warning", "performance", "Unique constraint on a nullable field",
+      "SQL databases allow multiple NULL values in a UNIQUE column, so the uniqueness guarantee "
+      "does not apply to rows where this field is absent. Mark the field required or use a partial index.")
+def _(c: _Ctx):
+    for _mod, ent, _q, path in c.entities():
+        for fi, f in enumerate(ent.fields):
+            if f.unique and not f.required and not f.primary_key:
+                yield f.element_id, f"{path}/fields/{fi}", (
+                    f"field '{f.name}' is unique but nullable: multiple NULLs are allowed")
+
+
 @rule("perf-wide-entity", "info", "performance", "Entity with very many fields",
       "Entities with more than 40 fields are hard to maintain and slow to list.")
 def _(c: _Ctx):
@@ -356,6 +367,28 @@ def _(c: _Ctx):
             if fl.element_id in reachable or fl.schedule or fl.run_roles:
                 continue
             yield fl.element_id, f"/modules/{mi}/flows/{fi}", f"flow '{fl.key}' has no known entry point"
+
+
+@rule("maint-process-no-start-roles", "warning", "maintainability",
+      "Process with no start roles and no call_process reference",
+      "A process that has no start_roles and is not called as a sub-process by any other process "
+      "can never be started.")
+def _(c: _Ctx):
+    # Build the set of process qualified names that are called as sub-processes.
+    called: set[str] = set()
+    for mod in c.model.modules:
+        for pr in mod.processes:
+            for st in pr.steps:
+                if st.type == "call_process" and isinstance(st.config, dict):
+                    sub = st.config.get("process")
+                    if sub:
+                        called.add(qualify(mod.key, sub))
+    for mi, mod in enumerate(c.model.modules):
+        for pi, pr in enumerate(mod.processes):
+            if pr.start_roles or f"{mod.key}.{pr.key}" in called:
+                continue
+            yield pr.element_id, f"/modules/{mi}/processes/{pi}", (
+                f"process '{pr.key}' has no start_roles and is not a sub-process")
 
 
 # --- accessibility / i18n ---------------------------------------------------------------
