@@ -165,3 +165,38 @@ def test_propose_model_redacts_before_sending(raw_model):
     AIBuilder(p).propose_model("update the app", current=m)
     sent = p.requests[0].messages[1].content
     assert "sk-live-abc123" not in sent  # default was redacted before LLM saw it
+
+
+def test_redact_strips_sensitive_values_in_create_step(raw_model):
+    raw = copy.deepcopy(raw_model)
+    raw["modules"][0]["flows"][0]["steps"].append({
+        "id": "s99", "type": "create",
+        "config": {"entity": "Product", "values": {"password_hash": "'hashed'", "name": "args.name"}},
+    })
+    redacted = redact_model_for_llm(raw)
+    step = next(s for s in redacted["modules"][0]["flows"][0]["steps"] if s["id"] == "s99")
+    assert step["config"]["values"]["password_hash"] == "[redacted]"
+    assert step["config"]["values"]["name"] == "args.name"  # non-sensitive unchanged
+
+
+def test_redact_strips_sensitive_args_in_call_flow_step(raw_model):
+    raw = copy.deepcopy(raw_model)
+    raw["modules"][0]["flows"][0]["steps"].append({
+        "id": "s98", "type": "call_flow",
+        "config": {"flow": "OtherFlow", "args": {"api_key": "'sk-live-abc'", "quantity": "42"}},
+    })
+    redacted = redact_model_for_llm(raw)
+    step = next(s for s in redacted["modules"][0]["flows"][0]["steps"] if s["id"] == "s98")
+    assert step["config"]["args"]["api_key"] == "[redacted]"
+    assert step["config"]["args"]["quantity"] == "42"  # non-sensitive unchanged
+
+
+def test_redact_flow_steps_does_not_mutate_input(raw_model):
+    raw = copy.deepcopy(raw_model)
+    raw["modules"][0]["flows"][0]["steps"].append({
+        "id": "s97", "type": "change",
+        "config": {"target": "prod", "values": {"token": "'abc'"}},
+    })
+    _ = redact_model_for_llm(raw)
+    step = next(s for s in raw["modules"][0]["flows"][0]["steps"] if s["id"] == "s97")
+    assert step["config"]["values"]["token"] == "'abc'"  # original untouched

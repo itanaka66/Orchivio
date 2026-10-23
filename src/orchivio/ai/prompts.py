@@ -155,10 +155,12 @@ def block(tag: str, text: str) -> str:
 
 
 def redact_model_for_llm(model_json: dict) -> dict:
-    """Strip inline default values from sensitive-named fields before the model leaves the server.
+    """Strip sensitive literal values before the model leaves the server (T9, docs/THREAT-MODEL.md).
 
-    The LLM needs to know that a field exists and has a default; it does not need the actual
-    value of a field named ``password``, ``api_key``, etc. (T9, docs/THREAT-MODEL.md).
+    Covers:
+    - ``default`` / ``default_expr`` on entity fields with sensitive-looking names
+    - ``values`` entries in flow create/change steps whose key is sensitive-looking
+    - ``args`` entries in flow call_flow/call_integration/call_mcp steps whose key is sensitive-looking
     """
     m = copy.deepcopy(model_json)
     for mod in m.get("modules", []):
@@ -167,6 +169,20 @@ def redact_model_for_llm(model_json: dict) -> dict:
                 if _SENSITIVE_FIELD.search(field.get("name", "")):
                     field.pop("default", None)
                     field.pop("default_expr", None)
+        for flow in mod.get("flows", []):
+            for step in flow.get("steps", []):
+                cfg = step.get("config", {})
+                t = step.get("type")
+                if t in ("create", "change") and isinstance(cfg.get("values"), dict):
+                    cfg["values"] = {
+                        k: ("[redacted]" if _SENSITIVE_FIELD.search(k) else v)
+                        for k, v in cfg["values"].items()
+                    }
+                if t in ("call_flow", "call_integration", "call_mcp") and isinstance(cfg.get("args"), dict):
+                    cfg["args"] = {
+                        k: ("[redacted]" if _SENSITIVE_FIELD.search(k) else v)
+                        for k, v in cfg["args"].items()
+                    }
     return m
 
 
