@@ -79,7 +79,8 @@ class Conflict(DataError):
 
 
 class HookFailed(DataError):
-    """An entity event hook (a flow) refused or failed; the whole operation is rolled back."""
+    """An entity event hook (a flow) refused or failed. before_* hooks roll back the triggering
+    write; after_* hooks are caught and logged because the write has already committed."""
 
     status, code = 409, "hook_failed"
 
@@ -320,6 +321,15 @@ class AppData:
             self.hooks.run(self, flow, event, info.qualified, user, record, previous)
         finally:
             self._hook_depth -= 1
+
+    def _hook_post(self, event: str, info: EntityInfo, user: AppUser | None, record: dict[str, Any],
+                   previous: dict[str, Any] | None = None) -> None:
+        """Run an after_* hook outside the write transaction. Failures are logged, not raised."""
+        try:
+            self._hook(event, info, user, record, previous)
+        except HookFailed as exc:
+            log.warning("after-hook %r on %s failed (write already committed): %s",
+                        event, info.qualified, exc)
 
     # -- helpers --------------------------------------------------------------------------
 
@@ -662,7 +672,8 @@ class AppData:
         return self._present(info, row, user)
 
     def create_record(self, entity: str, user: AppUser, data: Mapping[str, Any]) -> dict[str, Any]:
-        """Create and return the stored row (atomic with its hooks)."""
+        """Create and return the stored row. before_create runs in the same transaction as the write;
+        after_create runs after the transaction commits and its failure is logged but does not undo it."""
         info = self._info(entity)
         with self.transaction():
             decision, _ = self._guard(info, user, "create")
@@ -682,15 +693,16 @@ class AppData:
                 row = dict(conn.execute(select(info.table).where(info.table.c[info.pk.name] == pk)).mappings().one())
             self._audit("record.created", info, user, pk)
             self._emit("created", info, pk, row)
-            self._hook("after_create", info, user, self.eval_record(entity, row, user))
-            return row
+        self._hook_post("after_create", info, user, self.eval_record(entity, row, user))
+        return row
 
     def update(self, entity: str, user: AppUser, row_id: Any, patch: Mapping[str, Any]) -> dict[str, Any]:
         info = self._info(entity)
         return self._present(info, self.update_record(entity, user, row_id, patch), user)
 
     def update_record(self, entity: str, user: AppUser, row_id: Any, patch: Mapping[str, Any]) -> dict[str, Any]:
-        """Update and return the stored row (atomic with its hooks)."""
+        """Update and return the stored row. before_update runs in the same transaction as the write;
+        after_update runs after the transaction commits and its failure is logged but does not undo it."""
         info = self._info(entity)
         with self.transaction():
             decision, pred = self._guard(info, user, "update")
@@ -725,9 +737,9 @@ class AppData:
                 row = dict(conn.execute(select(t).where(t.c[info.pk.name] == pk)).mappings().one())
             self._audit("record.updated", info, user, pk)
             self._emit("updated", info, pk, row, dict(current))
-            self._hook("after_update", info, user, self.eval_record(entity, row, user),
-                       self.eval_record(entity, dict(current), user))
-            return row
+        self._hook_post("after_update", info, user, self.eval_record(entity, row, user),
+                        self.eval_record(entity, dict(current), user))
+        return row
 
     def delete(self, entity: str, user: AppUser, row_id: Any) -> None:
         info = self._info(entity)
@@ -749,7 +761,7 @@ class AppData:
                 raise RowNotFound("record not found")
             self._audit("record.deleted", info, user, pk)
             self._emit("deleted", info, pk, dict(current))
-            self._hook("after_delete", info, user, before)
+        self._hook_post("after_delete", info, user, before)
 
     def require(self, entity: str, user: AppUser, op: str) -> None:
         """Raise ``Forbidden`` unless the user's roles grant ``op`` on ``entity``."""

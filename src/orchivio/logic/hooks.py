@@ -20,8 +20,9 @@ class FlowHooks:
 
     def run(self, data: AppData, flow: str, event: str, entity: str, user: AppUser | None,
             record: dict[str, Any], previous: dict[str, Any] | None) -> None:
-        # The hook runs inside the operation's transaction and as the same user: a failing hook rolls
-        # back the write that triggered it, and hooks cannot do more than the caller may.
+        # before_* hooks run inside the operation's transaction: a failure rolls back the write.
+        # after_* hooks are called by AppData._hook_post() outside the transaction: a failure is
+        # logged but does not undo the committed write.
         module_key = entity.split(".", 1)[0]
         FlowRunner(self.model, data, limits=self.limits, constants=self.constants or None).run_hook(
             f"{module_key}.{flow}" if "." not in flow else flow, user, record, previous, entity)

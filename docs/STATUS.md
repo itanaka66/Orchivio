@@ -1,6 +1,6 @@
 # Implementation Status
 
-Last updated: 2026-10-23 (FR-013/015 second approver for A3+ proposals; FR-029 cross-module enum expressions in interpreter; FR-064 status corrected to Done; FR-081 retries; FR-094/FR-097 contract migration endpoint; FR-111 admin reassignment; bootstrap endpoint; auto-migrate setting; change-step list refresh; strict dominator-based flow variable scoping; CSRF token moved to localStorage — new tabs no longer need re-login; object literals added to the expression language). Statuses: **Done** (implemented and
+Last updated: 2026-10-23 (FR-013/015 second approver for A3+ proposals; FR-029 cross-module enum expressions in interpreter; FR-064 status corrected to Done; FR-081 retries; FR-094/FR-097 contract migration endpoint; FR-111 admin reassignment; bootstrap endpoint; auto-migrate setting; change-step list refresh; strict dominator-based flow variable scoping; CSRF token moved to localStorage — new tabs no longer need re-login; object literals added to the expression language; after_* entity hooks moved outside the write transaction). Statuses: **Done** (implemented and
 tested), **Library** (implemented as a tested library but not yet wired into a running
 service), **Schema** (data structures only), **Planned**.
 
@@ -106,7 +106,7 @@ Everything not listed is **Planned**.
 
 ## Known limitations
 
-- Flow runs and hooks work in the preview only; `after_*` hooks and flows run synchronously in the request.
+- Flow runs and hooks work in the preview only; flows run synchronously in the request. `after_*` hooks run outside the write transaction — a hook failure is logged but does not undo the committed write.
 - The web Studio has the flow builder, story board, preview and administration screens (apps/web/README.md); the administration screens are tested with a fake API, not against a running server; mouse dragging, zoom and canvas rendering are untested in a browser, and no screen-reader testing was done (apps/web/README.md).
 - Request-size limiting trusts `Content-Length`; enforce a body limit at the reverse proxy too.
 - The login throttle is per process; running several API replicas needs a shared store.
