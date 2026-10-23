@@ -130,6 +130,17 @@ def c_integration_no_ops(d):
     })
 
 
+def c_sensitive_detail(d):
+    ent(d)["fields"].append({"name": "secret_key", "type": "string"})
+    d["modules"][0]["pages"].append({
+        "key": "product-sensitive-detail",
+        "path": "/products/:id/detail",
+        "type": "detail",
+        "entity": "Product",
+        "columns": ["secret_key"],
+    })
+
+
 # rule id -> mutation that triggers it (None: the sample model already triggers it)
 CASES = {
     "sec-constraint-not-compilable": lambda d: d["security"]["access"][1].update(row_constraint="record.quantity / 2 > 1"),
@@ -139,6 +150,7 @@ CASES = {
     "sec-anonymous-access": lambda d: d["security"].update(anonymous=True),
     "sec-superuser-role": None,
     "sec-sensitive-field-listed": c_sensitive,
+    "sec-sensitive-field-in-detail": c_sensitive_detail,
     "perf-unindexed-constraint-field": c_unindexed,
     "perf-reference-without-index": c_ref_noindex,
     "perf-unique-nullable-field": lambda d: ent(d)["fields"].append({"name": "slug", "type": "string", "unique": True}),
@@ -159,6 +171,13 @@ CASES = {
     "maint-integration-no-operations": c_integration_no_ops,
     "maint-list-no-columns": lambda d: d["modules"][0]["pages"].append(
         {"key": "product-detail", "path": "/products/:id/view", "type": "detail", "entity": "Product"}),
+    "maint-flow-no-tests": lambda d: d["modules"][0]["flows"].append({
+        "key": "UncoveredFlow",
+        "kind": "server",
+        "run_roles": ["admin"],
+        "steps": [{"id": "s1", "type": "start", "config": {}}, {"id": "s2", "type": "end", "config": {}}],
+        "edges": [{"id": "e1", "source": "s1", "target": "s2"}],
+    }),
     "a11y-column-without-label": None,
     "i18n-default-locale-not-listed": lambda d: d["application"].update(default_locale="fr-FR"),
 }

@@ -13,6 +13,7 @@ Error findings block a revision unless suppressed with `lint_suppressions` (`rul
 | `sec-anonymous-access` | warning | security | **Anonymous access enabled.** Anonymous access exposes pages without authentication and needs A3 approval. |
 | `sec-superuser-role` | info | security | **Role with unrestricted access to everything.** A role that can do every operation on every entity without constraints is effectively an administrator. |
 | `sec-sensitive-field-listed` | warning | security | **Sensitive-looking field shown in a list page.** Field names such as password, secret or token should not be rendered in list views. |
+| `sec-sensitive-field-in-detail` | warning | security | **Sensitive-looking field shown in a detail page.** Field names such as password, secret or token should not be rendered in detail views. |
 | `perf-unindexed-constraint-field` | warning | performance | **Row-constraint field without an index.** Row constraints run on every query; the fields they filter on should be indexed (DESIGN.md 5.1). |
 | `perf-reference-without-index` | info | performance | **Reference field without an index.** Joins and cascades on unindexed reference fields get slower as data grows. |
 | `perf-unique-nullable-field` | warning | performance | **Unique constraint on a nullable field.** SQL databases allow multiple NULL values in a UNIQUE column, so the uniqueness guarantee does not apply to rows where this field is absent. Mark the field required or use a partial index. |
@@ -31,5 +32,6 @@ Error findings block a revision unless suppressed with `lint_suppressions` (`rul
 | `maint-hook-on-transient-entity` | warning | maintainability | **Entity hook on a transient entity.** Transient entities have no storage lifecycle, so their hooks can never fire. |
 | `maint-integration-no-operations` | warning | maintainability | **Integration with no operations.** An integration that defines no operations cannot be called from a flow; it should be populated or removed. |
 | `maint-list-no-columns` | warning | maintainability | **List or detail page with no columns.** A list page with no columns renders an empty table; a detail page with no columns renders nothing. Specify at least one column for the page to be useful. |
+| `maint-flow-no-tests` | info | maintainability | **Server flow with no test cases.** Server flows support declarative test cases (FR-058); a flow with no test cases is not covered by the generated test suite. |
 | `a11y-column-without-label` | warning | accessibility | **Displayed field without a display name.** Fields shown in pages need a human-readable label for screen readers and translation. |
 | `i18n-default-locale-not-listed` | warning | accessibility | **Default locale missing from locales.** When locales are declared, the default locale must be one of them. |

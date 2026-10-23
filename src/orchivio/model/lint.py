@@ -205,6 +205,18 @@ def _(c: _Ctx):
                     yield pg.element_id, f"/modules/{mi}/pages/{pi}/columns", f"column '{col}' looks sensitive"
 
 
+@rule("sec-sensitive-field-in-detail", "warning", "security", "Sensitive-looking field shown in a detail page",
+      "Field names such as password, secret or token should not be rendered in detail views.")
+def _(c: _Ctx):
+    for mi, mod in enumerate(c.model.modules):
+        for pi, pg in enumerate(mod.pages):
+            if pg.type != "detail":
+                continue
+            for col in pg.columns:
+                if _SENSITIVE.search(col):
+                    yield pg.element_id, f"/modules/{mi}/pages/{pi}/columns", f"column '{col}' looks sensitive"
+
+
 # --- performance ------------------------------------------------------------------------
 
 
@@ -427,6 +439,18 @@ def _(c: _Ctx):
             if pg.type in ("list", "detail") and not pg.columns:
                 yield pg.element_id, f"/modules/{mi}/pages/{pi}/columns", (
                     f"page '{pg.key}' is a {pg.type} page with no columns")
+
+
+@rule("maint-flow-no-tests", "info", "maintainability",
+      "Server flow with no test cases",
+      "Server flows support declarative test cases (FR-058); a flow with no test cases "
+      "is not covered by the generated test suite.")
+def _(c: _Ctx):
+    for mi, mod in enumerate(c.model.modules):
+        for fi, fl in enumerate(mod.flows):
+            if fl.kind == "server" and not fl.tests:
+                yield fl.element_id, f"/modules/{mi}/flows/{fi}/tests", (
+                    f"flow '{fl.key}' has no test cases")
 
 
 # --- accessibility / i18n ---------------------------------------------------------------
