@@ -217,6 +217,19 @@ def _(c: _Ctx):
                     yield pg.element_id, f"/modules/{mi}/pages/{pi}/columns", f"column '{col}' looks sensitive"
 
 
+@rule("sec-sensitive-field-in-form", "warning", "security", "Sensitive-looking field shown in a form page",
+      "Field names such as password, secret or token should not be listed in form page columns; "
+      "an edit form renders the stored (often hashed) value.")
+def _(c: _Ctx):
+    for mi, mod in enumerate(c.model.modules):
+        for pi, pg in enumerate(mod.pages):
+            if pg.type != "form":
+                continue
+            for col in pg.columns:
+                if _SENSITIVE.search(col):
+                    yield pg.element_id, f"/modules/{mi}/pages/{pi}/columns", f"column '{col}' looks sensitive"
+
+
 # --- performance ------------------------------------------------------------------------
 
 

@@ -141,6 +141,18 @@ def c_sensitive_detail(d):
     })
 
 
+def c_sensitive_form(d):
+    ent(d)["fields"].append({"name": "password_hash", "type": "string"})
+    d["modules"][0]["pages"].append({
+        "key": "product-sensitive-edit",
+        "path": "/products/:id/edit",
+        "type": "form",
+        "entity": "Product",
+        "mode": "edit",
+        "columns": ["password_hash"],
+    })
+
+
 # rule id -> mutation that triggers it (None: the sample model already triggers it)
 CASES = {
     "sec-constraint-not-compilable": lambda d: d["security"]["access"][1].update(row_constraint="record.quantity / 2 > 1"),
@@ -151,6 +163,7 @@ CASES = {
     "sec-superuser-role": None,
     "sec-sensitive-field-listed": c_sensitive,
     "sec-sensitive-field-in-detail": c_sensitive_detail,
+    "sec-sensitive-field-in-form": c_sensitive_form,
     "perf-unindexed-constraint-field": c_unindexed,
     "perf-reference-without-index": c_ref_noindex,
     "perf-unique-nullable-field": lambda d: ent(d)["fields"].append({"name": "slug", "type": "string", "unique": True}),
