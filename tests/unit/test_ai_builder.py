@@ -4,7 +4,7 @@ import json
 import pytest
 
 from orchivio.ai import AIBuilder, BuilderError, element_context
-from orchivio.ai.prompts import block
+from orchivio.ai.prompts import block, redact_model_for_llm
 from orchivio.llm import LLMError, MockProvider
 from orchivio.model import AppModel, assign_element_ids
 
@@ -129,3 +129,39 @@ def test_explain_sends_only_related_elements(raw_model):
     sku = next(f for f in m.modules[0].entities[0].fields if f.name == "sku")
     names = {e["name"] for e in element_context(m, sku.element_id)["elements"]}
     assert "core.Product.sku" in names and "core.Product.reorder_level" not in names
+
+
+def test_redact_strips_defaults_from_sensitive_fields(raw_model):
+    raw = copy.deepcopy(raw_model)
+    raw["modules"][0]["entities"][0]["fields"].append({
+        "name": "api_key", "type": "string", "default": "sk-live-abc123"
+    })
+    raw["modules"][0]["entities"][0]["fields"].append({
+        "name": "password_hash", "type": "string", "default_expr": "'reset'"
+    })
+    raw["modules"][0]["entities"][0]["fields"].append({
+        "name": "quantity", "type": "integer", "default": 0  # safe field: not stripped
+    })
+    redacted = redact_model_for_llm(raw)
+    fields = {f["name"]: f for f in redacted["modules"][0]["entities"][0]["fields"]}
+    assert "default" not in fields["api_key"]
+    assert "default_expr" not in fields["password_hash"]
+    assert fields["quantity"]["default"] == 0  # non-sensitive field unchanged
+
+
+def test_redact_does_not_mutate_input(raw_model):
+    raw = copy.deepcopy(raw_model)
+    raw["modules"][0]["entities"][0]["fields"].append({"name": "token", "type": "string", "default": "x"})
+    _ = redact_model_for_llm(raw)
+    fields = {f["name"]: f for f in raw["modules"][0]["entities"][0]["fields"]}
+    assert fields["token"]["default"] == "x"  # original untouched
+
+
+def test_propose_model_redacts_before_sending(raw_model):
+    raw = copy.deepcopy(raw_model)
+    raw["modules"][0]["entities"][0]["fields"].append({"name": "api_key", "type": "string", "default": "sk-live-abc123"})
+    m = assign_element_ids(AppModel.model_validate(raw))
+    p = MockProvider([dump(raw)])
+    AIBuilder(p).propose_model("update the app", current=m)
+    sent = p.requests[0].messages[1].content
+    assert "sk-live-abc123" not in sent  # default was redacted before LLM saw it
