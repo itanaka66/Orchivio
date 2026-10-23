@@ -230,6 +230,19 @@ def _(c: _Ctx):
                     yield pg.element_id, f"/modules/{mi}/pages/{pi}/columns", f"column '{col}' looks sensitive"
 
 
+@rule("sec-sensitive-field-default", "warning", "security",
+      "Sensitive-looking field with a literal default value",
+      "A field named after a credential (password, secret, token, api_key …) with a literal "
+      "default value may embed a real credential in the model; use a default_expr or remove the default.")
+def _(c: _Ctx):
+    for mi, mod in enumerate(c.model.modules):
+        for ei, ent in enumerate(mod.entities):
+            for f in ent.fields:
+                if _SENSITIVE.search(f.name) and f.default is not None:
+                    yield ent.element_id, f"/modules/{mi}/entities/{ei}/fields", (
+                        f"field '{f.name}' has a literal default; credentials should not be embedded in the model")
+
+
 # --- performance ------------------------------------------------------------------------
 
 

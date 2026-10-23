@@ -164,6 +164,8 @@ CASES = {
     "sec-sensitive-field-listed": c_sensitive,
     "sec-sensitive-field-in-detail": c_sensitive_detail,
     "sec-sensitive-field-in-form": c_sensitive_form,
+    "sec-sensitive-field-default": lambda d: ent(d)["fields"].append(
+        {"name": "api_key", "type": "string", "default": "sk-dev-placeholder"}),
     "perf-unindexed-constraint-field": c_unindexed,
     "perf-reference-without-index": c_ref_noindex,
     "perf-unique-nullable-field": lambda d: ent(d)["fields"].append({"name": "slug", "type": "string", "unique": True}),
