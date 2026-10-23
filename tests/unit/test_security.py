@@ -86,6 +86,21 @@ def test_consistency_findings(model):
     } <= codes
 
 
+def test_entity_without_writers_is_flagged(model):
+    m = model.model_copy(deep=True)
+    m.security.access = [r.model_copy(update={"operations": ["read"]}) for r in m.security.access]
+    codes = {f.code for f in check_consistency(m)}
+    assert "entity-without-writers" in codes
+
+
+def test_export_without_read_is_flagged(model):
+    m = model.model_copy(deep=True)
+    extra = m.security.access[0].model_copy(update={"operations": ["export"], "element_id": None})
+    m.security.access = list(m.security.access) + [extra]
+    codes = {f.code for f in check_consistency(m)}
+    assert "export-without-read" in codes
+
+
 def test_platform_rbac_is_deny_by_default():
     assert is_allowed(PlatformRole.VIEWER, "model.read")
     assert not is_allowed(PlatformRole.VIEWER, "model.propose")

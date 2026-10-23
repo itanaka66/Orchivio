@@ -53,6 +53,22 @@ def check_consistency(model: AppModel) -> list[Finding]:
     for ai, rule in enumerate(sec.access):
         out += _field_findings(index, rule, f"/security/access/{ai}")
 
+    writers: dict[str, set[str]] = {}
+    for rule in sec.access:
+        if set(rule.operations) & {"create", "update", "delete"}:
+            writers.setdefault(rule.entity, set()).add(rule.role)
+
+    for q, (_, ent) in sorted(index.entities.items()):
+        if not ent.transient and not writers.get(q):
+            out.append(Finding("warning", "entity-without-writers", "/security/access",
+                               f"no role can write {q} (create, update or delete)"))
+
+    for ai, rule in enumerate(sec.access):
+        if "export" in rule.operations and "read" not in rule.operations:
+            out.append(Finding("warning", "export-without-read", f"/security/access/{ai}",
+                               f"role '{rule.role}' may export {rule.entity} but cannot read it; "
+                               "export implies read access to all rows"))
+
     if sec.anonymous:
         out.append(Finding("warning", "anonymous-access", "/security/anonymous", "anonymous access is enabled; it requires A3 approval and exposes pages without authentication"))
     return out
