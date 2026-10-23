@@ -7,7 +7,7 @@ from typing import Literal
 
 from orchivio.expr import CheckEnv, ExprError, check
 from orchivio.model import AppModel, ModelIndex
-from orchivio.model.schema import qualify
+from orchivio.model.schema import FlowDef, qualify
 
 
 @dataclass(frozen=True)
@@ -88,6 +88,29 @@ def check_consistency(model: AppModel) -> list[Finding]:
                                    f"/security/pages/{pg.key}",
                                    f"form page '{pg.key}' (mode={pg.mode}) is accessible to "
                                    f"{sorted(allowed_roles)} but none of them can {required_op} {entity}"))
+
+    # Page action ↔ flow run_roles: if an action calls a server flow without a visible_expr
+    # guard, every page-allowed role must appear in the flow's run_roles; otherwise the button
+    # appears for roles that cannot run the flow, producing a confusing 403 on click.
+    for mod in model.modules:
+        flow_by_key: dict[str, FlowDef] = {qualify(mod.key, fl.key): fl for fl in mod.flows}
+        for pg in mod.pages:
+            allowed_roles = set(sec.pages.get(pg.key, []))
+            if not allowed_roles:
+                continue
+            for action in pg.actions:
+                if isinstance(action, str) or not action.flow or action.visible_expr is not None:
+                    continue
+                fl = flow_by_key.get(qualify(mod.key, action.flow))
+                if fl is None or fl.run_roles is None:
+                    continue
+                missing = allowed_roles - set(fl.run_roles)
+                if missing:
+                    out.append(Finding("warning", "page-action-flow-inaccessible",
+                                       f"/security/pages/{pg.key}",
+                                       f"page '{pg.key}' action '{action.key}' calls flow '{action.flow}' "
+                                       f"but {sorted(missing)} cannot run it (not in run_roles); "
+                                       "the button appears but the call is denied at runtime"))
 
     return out
 

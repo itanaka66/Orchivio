@@ -113,6 +113,23 @@ def test_form_page_create_clean_when_writer_exists(model):
     assert "form-page-no-create" not in {f.code for f in check_consistency(model)}
 
 
+def test_page_action_flow_inaccessible_is_flagged(model):
+    from orchivio.model.schema import PageAction
+    m = model.model_copy(deep=True)
+    # Give ReorderLowStock only admin run_roles, then add an action on product-list that calls it
+    # without a visible_expr guard — viewer/editor will see the button but can't run the flow.
+    flow = next(fl for mod in m.modules for fl in mod.flows if fl.key == "ReorderLowStock")
+    flow.run_roles = ["admin"]
+    page = next(pg for mod in m.modules for pg in mod.pages if pg.key == "product-list")
+    page.actions.append(PageAction(key="reorder", flow="ReorderLowStock"))
+    codes = {f.code for f in check_consistency(m)}
+    assert "page-action-flow-inaccessible" in codes
+
+
+def test_page_action_flow_accessible_clean(model):
+    assert "page-action-flow-inaccessible" not in {f.code for f in check_consistency(model)}
+
+
 def test_platform_rbac_is_deny_by_default():
     assert is_allowed(PlatformRole.VIEWER, "model.read")
     assert not is_allowed(PlatformRole.VIEWER, "model.propose")
