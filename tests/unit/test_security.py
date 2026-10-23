@@ -101,6 +101,18 @@ def test_export_without_read_is_flagged(model):
     assert "export-without-read" in codes
 
 
+def test_form_page_no_writer_is_flagged(model):
+    m = model.model_copy(deep=True)
+    # product-create is mode=create; remove create/update from all roles → form-page-no-create
+    m.security.access = [r.model_copy(update={"operations": ["read"]}) for r in m.security.access]
+    codes = {f.code for f in check_consistency(m)}
+    assert "form-page-no-create" in codes
+
+
+def test_form_page_create_clean_when_writer_exists(model):
+    assert "form-page-no-create" not in {f.code for f in check_consistency(model)}
+
+
 def test_platform_rbac_is_deny_by_default():
     assert is_allowed(PlatformRole.VIEWER, "model.read")
     assert not is_allowed(PlatformRole.VIEWER, "model.propose")

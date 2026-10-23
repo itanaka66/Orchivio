@@ -71,6 +71,24 @@ def check_consistency(model: AppModel) -> list[Finding]:
 
     if sec.anonymous:
         out.append(Finding("warning", "anonymous-access", "/security/anonymous", "anonymous access is enabled; it requires A3 approval and exposes pages without authentication"))
+
+    # Form page writability: a form page whose roles can't perform the required operation always fails
+    for mod in model.modules:
+        for pg in mod.pages:
+            if pg.type != "form" or pg.mode is None:
+                continue
+            entity = index.resolve_entity(mod.key, pg.entity) or qualify(mod.key, pg.entity)
+            allowed_roles = set(sec.pages.get(pg.key, []))
+            if not allowed_roles:
+                continue  # unreachable-page already fires
+            required_op = "create" if pg.mode == "create" else "update"
+            entity_writers = {r.role for r in sec.access if r.entity == entity and required_op in r.operations}
+            if not (allowed_roles & entity_writers):
+                out.append(Finding("warning", f"form-page-no-{required_op}",
+                                   f"/security/pages/{pg.key}",
+                                   f"form page '{pg.key}' (mode={pg.mode}) is accessible to "
+                                   f"{sorted(allowed_roles)} but none of them can {required_op} {entity}"))
+
     return out
 
 
