@@ -493,6 +493,34 @@ def _(c: _Ctx):
                     yield pg.element_id, f"/modules/{mi}/pages/{pi}/columns", f"field '{col}' has no display_name"
 
 
+@rule("a11y-entity-no-text-field", "info", "accessibility",
+      "Entity used in list or detail pages has no string or text field",
+      "Without a string or text field, the generated list shows only numbers, dates or UUIDs; "
+      "users and screen readers cannot identify rows by content.")
+def _(c: _Ctx):
+    seen: set[str] = set()
+    for mi, mod in enumerate(c.model.modules):
+        for pi, pg in enumerate(mod.pages):
+            if pg.type not in ("list", "detail"):
+                continue
+            q = c.index.resolve_entity(mod.key, pg.entity)
+            if not q or q in seen or q.startswith("system."):
+                continue
+            found = c.index.entities.get(q)
+            if not found:
+                continue
+            _, ent = found
+            has_text = any(
+                parse_field_type(f.type) in (("scalar", "string"), ("scalar", "text"))
+                for f in ent.fields if not f.generated
+            )
+            if not has_text:
+                seen.add(q)
+                ei = next((i for i, e in enumerate(mod.entities) if e.name == ent.name), 0)
+                yield ent.element_id, f"/modules/{mi}/entities/{ei}", (
+                    f"{q} has no string or text field; list/detail pages show only non-textual values")
+
+
 @rule("i18n-default-locale-not-listed", "warning", "accessibility", "Default locale missing from locales",
       "When locales are declared, the default locale must be one of them.")
 def _(c: _Ctx):

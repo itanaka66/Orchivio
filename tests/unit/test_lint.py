@@ -196,6 +196,26 @@ CASES = {
         "edges": [{"id": "e1", "source": "s1", "target": "s2"}],
     }),
     "a11y-column-without-label": None,
+    "a11y-entity-no-text-field": lambda d: (
+        d["modules"][0]["entities"].append({
+            "name": "NumericOnly",
+            "display_name": "Numeric Only",
+            "fields": [
+                {"name": "id", "type": "uuid", "primary_key": True, "generated": True},
+                {"name": "value", "type": "integer", "required": True},
+                {"name": "rate", "type": "decimal", "required": True},
+            ],
+        }) or
+        d["security"]["access"].append({"entity": "core.NumericOnly", "role": "admin", "operations": ["read"]}) or
+        d["modules"][0]["pages"].append({
+            "key": "numeric-list",
+            "path": "/numeric",
+            "type": "list",
+            "entity": "NumericOnly",
+            "columns": ["value", "rate"],
+        }) or
+        d["security"]["pages"].update({"numeric-list": ["admin"]})
+    ),
     "i18n-default-locale-not-listed": lambda d: d["application"].update(default_locale="fr-FR"),
 }
 
