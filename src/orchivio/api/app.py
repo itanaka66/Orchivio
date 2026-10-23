@@ -41,7 +41,7 @@ from .observability import configure_logging, logger, new_request_id, request_id
 from .routes import ALL
 from .routes.mcp import RateLimiter
 from .settings import Settings, get_settings
-from .throttle import LoginThrottle
+from .throttle import DbLoginThrottle
 
 
 def error_body(code: str, message: str, details: Any = None) -> dict[str, Any]:
@@ -155,7 +155,7 @@ def create_app(
     app.state.oidc = OidcClient(app.state.mcp_transport, check_endpoint=lambda u: check_url(u, destination_policy(settings)))
     app.state.mcp_broker = ToolBroker(session_factory, app.state.mcp_transport, timeout=settings.webhook_timeout_seconds)
     app.state.inbound_limiter = RateLimiter(settings.inbound_rate_per_minute)
-    app.state.throttle = LoginThrottle(settings.login_max_failures, settings.login_window_seconds)
+    app.state.throttle = DbLoginThrottle(session_factory, settings.login_max_failures, settings.login_window_seconds)
 
     @app.middleware("http")
     async def request_context(request: Request, call_next):  # noqa: ANN001, ANN202
