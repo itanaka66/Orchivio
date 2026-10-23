@@ -30,5 +30,6 @@ Error findings block a revision unless suppressed with `lint_suppressions` (`rul
 | `maint-process-no-start-roles` | warning | maintainability | **Process with no start roles and no call_process reference.** A process that has no start_roles and is not called as a sub-process by any other process can never be started. |
 | `maint-hook-on-transient-entity` | warning | maintainability | **Entity hook on a transient entity.** Transient entities have no storage lifecycle, so their hooks can never fire. |
 | `maint-integration-no-operations` | warning | maintainability | **Integration with no operations.** An integration that defines no operations cannot be called from a flow; it should be populated or removed. |
+| `maint-list-no-columns` | warning | maintainability | **List or detail page with no columns.** A list page with no columns renders an empty table; a detail page with no columns renders nothing. Specify at least one column for the page to be useful. |
 | `a11y-column-without-label` | warning | accessibility | **Displayed field without a display name.** Fields shown in pages need a human-readable label for screen readers and translation. |
 | `i18n-default-locale-not-listed` | warning | accessibility | **Default locale missing from locales.** When locales are declared, the default locale must be one of them. |

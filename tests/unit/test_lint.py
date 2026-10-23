@@ -157,6 +157,8 @@ CASES = {
     "maint-process-no-start-roles": c_process_no_start_roles,
     "maint-hook-on-transient-entity": c_hook_on_transient,
     "maint-integration-no-operations": c_integration_no_ops,
+    "maint-list-no-columns": lambda d: d["modules"][0]["pages"].append(
+        {"key": "product-detail", "path": "/products/:id/view", "type": "detail", "entity": "Product"}),
     "a11y-column-without-label": None,
     "i18n-default-locale-not-listed": lambda d: d["application"].update(default_locale="fr-FR"),
 }

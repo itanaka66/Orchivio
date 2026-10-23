@@ -417,6 +417,18 @@ def _(c: _Ctx):
                     f"integration '{ig.key}' defines no operations")
 
 
+@rule("maint-list-no-columns", "warning", "maintainability",
+      "List or detail page with no columns",
+      "A list page with no columns renders an empty table; a detail page with no columns "
+      "renders nothing. Specify at least one column for the page to be useful.")
+def _(c: _Ctx):
+    for mi, mod in enumerate(c.model.modules):
+        for pi, pg in enumerate(mod.pages):
+            if pg.type in ("list", "detail") and not pg.columns:
+                yield pg.element_id, f"/modules/{mi}/pages/{pi}/columns", (
+                    f"page '{pg.key}' is a {pg.type} page with no columns")
+
+
 # --- accessibility / i18n ---------------------------------------------------------------
 
 
