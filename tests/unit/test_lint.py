@@ -188,6 +188,7 @@ CASES = {
         "key": "undescribed_api", "destination": "undescribed-api",
         "operations": [{"id": "ping", "method": "GET", "path": "/ping"}],
     }),
+    "maint-flow-no-description": lambda d: d["modules"][0]["flows"][0].pop("description"),
     "maint-list-no-columns": lambda d: d["modules"][0]["pages"].append(
         {"key": "product-detail", "path": "/products/:id/view", "type": "detail", "entity": "Product"}),
     "maint-form-missing-required-field": lambda d: (

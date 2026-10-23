@@ -467,6 +467,18 @@ def _(c: _Ctx):
                     f"integration '{ig.key}' has operations but no description")
 
 
+@rule("maint-flow-no-description", "info", "maintainability",
+      "Runnable server flow without a description",
+      "Server flows callable from the application API (via run_roles) benefit from a description "
+      "so that builders and the AI Builder understand what the flow does without reading its steps.")
+def _(c: _Ctx):
+    for mi, mod in enumerate(c.model.modules):
+        for fi, fl in enumerate(mod.flows):
+            if fl.kind == "server" and fl.run_roles and not fl.description:
+                yield fl.element_id, f"/modules/{mi}/flows/{fi}/description", (
+                    f"flow '{fl.key}' has run_roles but no description")
+
+
 @rule("maint-list-no-columns", "warning", "maintainability",
       "List or detail page with no columns",
       "A list page with no columns renders an empty table; a detail page with no columns "
