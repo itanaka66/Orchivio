@@ -184,6 +184,7 @@ def create_app(
             response.headers["X-Request-ID"] = rid
             response.headers.setdefault("X-Content-Type-Options", "nosniff")
             response.headers.setdefault("Cache-Control", "no-store")
+            response.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
             logger.info("%s %s -> %s", request.method, request.url.path, response.status_code,
                         extra={"fields": {"status": response.status_code,
                                           "duration_ms": round((time.perf_counter() - started) * 1000, 1)}})
