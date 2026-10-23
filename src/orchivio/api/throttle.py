@@ -15,6 +15,8 @@ from typing import TYPE_CHECKING
 from sqlalchemy import text
 
 if TYPE_CHECKING:
+    import uuid
+
     from sqlalchemy.orm import Session, sessionmaker
 
 
@@ -92,3 +94,37 @@ class DbLoginThrottle:
         with self._sf() as s:
             s.execute(text("DELETE FROM login_failures WHERE key = :key"), {"key": key})
             s.commit()
+
+
+class DbRateLimiter:
+    """Sliding-window rate limiter backed by the application database; safe for multi-replica deployments.
+
+    ``allow()`` is atomic: it inserts the hit inside the window check so concurrent replicas
+    cannot each "see" a count just below the limit and all approve the (n+1)th hit.
+    """
+
+    def __init__(self, session_factory: "sessionmaker[Session]", per_minute: int) -> None:
+        self._sf = session_factory
+        self.per_minute = per_minute
+
+    def allow(self, key: "uuid.UUID") -> bool:
+        now = datetime.now(timezone.utc)
+        cutoff = now - timedelta(seconds=60)
+        with self._sf() as s:
+            s.execute(
+                text("DELETE FROM inbound_hits WHERE webhook_id = :wid AND hit_at <= :cutoff"),
+                {"wid": key, "cutoff": cutoff},
+            )
+            s.execute(
+                text("INSERT INTO inbound_hits (webhook_id, hit_at) VALUES (:wid, :at)"),
+                {"wid": key, "at": now},
+            )
+            count = s.execute(
+                text("SELECT COUNT(*) FROM inbound_hits WHERE webhook_id = :wid"),
+                {"wid": key},
+            ).scalar()
+            if count > self.per_minute:
+                s.rollback()
+                return False
+            s.commit()
+        return True
