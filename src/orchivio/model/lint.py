@@ -25,7 +25,7 @@ from orchivio.expr.ast import BOOL
 
 from .ids import iter_elements
 from .refs import build_refs
-from .schema import AppModel, EntityDef, ModuleDef, parse_field_type
+from .schema import AppModel, EntityDef, ModuleDef, parse_field_type, qualify
 from .validate import ModelIndex
 
 Severity = Literal["error", "warning", "info"]
@@ -330,6 +330,32 @@ def _(c: _Ctx):
     for i, r in enumerate(c.model.security.access):
         if r.entity in transient:
             yield r.element_id, f"/security/access/{i}", f"{r.entity} is transient"
+
+
+@rule("maint-unreachable-flow", "warning", "maintainability", "Server flow with no known entry point",
+      "No page action, hook, schedule, run_roles, or call_flow step refers to this flow, so it can never run.")
+def _(c: _Ctx):
+    flow_eid = {f"{m.key}.{f.key}": f.element_id for m in c.model.modules for f in m.flows}
+    reachable = {r.to_id for r in c.refs if r.kind in ("flow-call", "process-flow")}
+    for mod in c.model.modules:
+        for ent in mod.entities:
+            for key in ent.hooks.values():
+                eid = flow_eid.get(qualify(mod.key, key))
+                if eid:
+                    reachable.add(eid)
+        for pg in mod.pages:
+            for act in pg.actions:
+                if not isinstance(act, str) and act.flow:
+                    eid = flow_eid.get(qualify(mod.key, act.flow))
+                    if eid:
+                        reachable.add(eid)
+    for mi, mod in enumerate(c.model.modules):
+        for fi, fl in enumerate(mod.flows):
+            if fl.kind != "server":
+                continue
+            if fl.element_id in reachable or fl.schedule or fl.run_roles:
+                continue
+            yield fl.element_id, f"/modules/{mi}/flows/{fi}", f"flow '{fl.key}' has no known entry point"
 
 
 # --- accessibility / i18n ---------------------------------------------------------------

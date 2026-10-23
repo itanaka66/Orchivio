@@ -25,5 +25,6 @@ Error findings block a revision unless suppressed with `lint_suppressions` (`rul
 | `maint-no-creation-timestamp` | info | maintainability | **Entity has no creation timestamp.** A generated datetime field makes records auditable and sortable. |
 | `maint-long-expression` | info | maintainability | **Very long expression.** Expressions over 300 characters are hard to review; consider computed fields. |
 | `maint-access-on-transient-entity` | warning | maintainability | **Access rule on a transient entity.** Transient entities are never stored, so access rules on them have no effect. |
+| `maint-unreachable-flow` | warning | maintainability | **Server flow with no known entry point.** No page action, hook, schedule, run_roles, or call_flow step refers to this flow, so it can never run. |
 | `a11y-column-without-label` | warning | accessibility | **Displayed field without a display name.** Fields shown in pages need a human-readable label for screen readers and translation. |
 | `i18n-default-locale-not-listed` | warning | accessibility | **Default locale missing from locales.** When locales are declared, the default locale must be one of them. |

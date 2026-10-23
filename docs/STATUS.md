@@ -72,7 +72,7 @@ service), **Schema** (data structures only), **Planned**.
 | FR-057 | Flow debugger | Done | Step trace with ids and an overlay in the editor; `POST .../debug` (variable capture + dry_run); `POST .../debug/stream` (SSE); live-stepping via `POST .../debug-session` (pause/resume/abort background thread at named breakpoints) |
 | FR-058 | Flow unit tests | Done | Declarative tests in the model, run in generated test runs |
 | FR-122 | Dependency graph | Done | Built and stored per revision; find-usages endpoint |
-| FR-120 | Model linter | Done | 21 rules, suppressions with justification, blocking errors, stored per revision |
+| FR-120 | Model linter | Done | 22 rules, suppressions with justification, blocking errors, stored per revision |
 | FR-030 | CRUD API runtime | Done | App-plane endpoints (`/apps/{id}/pages/...`, `/apps/{id}/grid/...`, `/apps/{id}/flows/...`) use `ProductionStore` when an environment with `data_url` is promoted; falls back to the preview store when no such environment exists; all CRUD operations, pagination, filtering, flow execution and aggregates work through both stores (docs/RUNTIME.md) |
 | FR-032 | OpenAPI for generated apps | Done | `build_openapi`, endpoint and CLI; schemas validated against live responses and request validation in tests |
 | FR-031 | Typed clients | Done (generated) | Generated clients for the data API in TypeScript, Python and C# (types, typed list parameters, permitted operations only, typed flow runs, typed errors, pagination helpers `listAll`/`pages`/`list_all`/`ListAllAsync`); compiled/executed in tests (C# with the .NET SDK); other languages via the OpenAPI document; no auth handling |
@@ -121,8 +121,8 @@ Everything not listed is **Planned**.
 - Generated tests run on SQLite only; PostgreSQL SQL paths are unverified.
 - Linter rules are heuristics (for example sensitive field names); expect false positives and use
   suppressions with a justification.
-- Schema 1.1 has no flows, processes, integrations or hooks (entity `hooks` validate with a
-  warning only).
+- Models migrated from schema 1.0 have no flows, processes, integrations or hooks (1.0 did not
+  support them). 1.1 models support hooks; bad hook bindings are blocking validation errors.
 
 ## Observations about DESIGN.md
 
