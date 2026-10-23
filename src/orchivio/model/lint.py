@@ -442,6 +442,18 @@ def _(c: _Ctx):
                     f"integration '{ig.key}' defines no operations")
 
 
+@rule("maint-integration-no-description", "info", "maintainability",
+      "Integration without a description",
+      "Integrations without a description are hard for builders and the AI Builder to distinguish "
+      "when the model has several integrations. Add a short summary of what the API does.")
+def _(c: _Ctx):
+    for mi, mod in enumerate(c.model.modules):
+        for ii, ig in enumerate(mod.integrations or []):
+            if ig.operations and not ig.description:
+                yield ig.element_id, f"/modules/{mi}/integrations/{ii}/description", (
+                    f"integration '{ig.key}' has operations but no description")
+
+
 @rule("maint-list-no-columns", "warning", "maintainability",
       "List or detail page with no columns",
       "A list page with no columns renders an empty table; a detail page with no columns "

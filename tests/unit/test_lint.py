@@ -182,6 +182,10 @@ CASES = {
     "maint-process-no-start-roles": c_process_no_start_roles,
     "maint-hook-on-transient-entity": c_hook_on_transient,
     "maint-integration-no-operations": c_integration_no_ops,
+    "maint-integration-no-description": lambda d: d["modules"][0].setdefault("integrations", []).append({
+        "key": "undescribed_api", "destination": "undescribed-api",
+        "operations": [{"id": "ping", "method": "GET", "path": "/ping"}],
+    }),
     "maint-list-no-columns": lambda d: d["modules"][0]["pages"].append(
         {"key": "product-detail", "path": "/products/:id/view", "type": "detail", "entity": "Product"}),
     "maint-flow-no-tests": lambda d: d["modules"][0]["flows"].append({
