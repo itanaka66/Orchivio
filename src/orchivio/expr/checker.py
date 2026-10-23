@@ -212,10 +212,14 @@ class _Checker:
             if t is None:
                 raise self.fail(f"unknown environment constant '{node.name}'", node)
             return t
-        if ot.kind == "ref" and node.name == "id":
-            return ot  # '.id' on a ref is the ref itself
         if ot.kind == "ref":
-            raise self.fail("relationship traversal is not supported in this version", node)
+            assert ot.name is not None
+            if node.name == "id":
+                return ot  # the ref IS the id; backwards-compatible shorthand
+            ft = self.env.schema.field_type(ot.name, node.name)
+            if ft is None:
+                raise self.fail(f"entity {ot.name} has no usable field '{node.name}'", node)
+            return ft.as_nullable() if (node.safe and ot.nullable) else ft
         raise self.fail(f"type {ot} has no members", node)
 
     def _call(self, node: Call) -> Type:

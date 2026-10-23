@@ -139,7 +139,9 @@ class _Compiler:
                 raise NotCompilable(f"$env.{name} unavailable")
             return self.param(self.ctx.env[name])
         if ot.kind == "ref":
-            return self.c(obj)  # '.id' on a ref is the ref itself
+            if name == "id":
+                return self.c(obj)  # the ref IS the id
+            raise NotCompilable("relationship traversal is not supported in SQL predicates")
         raise NotCompilable("unsupported member access")
 
     def _binary(self, node: Binary) -> str:  # noqa: C901 - one branch per operator

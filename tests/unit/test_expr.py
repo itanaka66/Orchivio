@@ -33,8 +33,14 @@ class FakeSchema:
         "owner": ref_t("system.User"),
     }
 
+    USER_FIELDS: dict = {"name": STRING, "email": STRING}
+
     def field_type(self, entity, field):
-        return self.FIELDS.get(field) if entity == PRODUCT else None
+        if entity == PRODUCT:
+            return self.FIELDS.get(field)
+        if entity == "system.User":
+            return self.USER_FIELDS.get(field)
+        return None
 
     def enum_values(self, name):
         return ("in_stock", "low", "out_of_stock") if name == "StockStatus" else None
@@ -132,7 +138,7 @@ def test_division_by_zero_is_eval_error():
         ("StockStatus.bogus", "no value"),
         ("quantity", "expected bool"),
         ("quantity == 'a'", "cannot compare"),
-        ("record.owner.name == 'x'", "traversal"),
+        ("record.owner.bogus_field == 'x'", "no usable field"),
         ("$nope", "unknown variable"),
         ("$env.X", "unknown environment"),
         ("[]", "empty list"),
@@ -178,6 +184,24 @@ def test_default_expressions_have_no_record():
     check("$now", env)
     with pytest.raises(TypeCheckError):
         check("quantity", env)
+
+
+def test_relationship_traversal_type_checks():
+    res = check("record.owner.name == 'Alice'", ENV, BOOL)
+    assert res.type == BOOL
+
+
+def test_relationship_traversal_evaluates():
+    record = {"owner": {"name": "Alice", "email": "alice@example.com"}, "quantity": 1}
+    assert run("record.owner.name == 'Alice'", record) is True
+    assert run("record.owner.name == 'Bob'", record) is False
+
+
+def test_relationship_traversal_nullable_safe():
+    # manager: ref:User? — must use ?. or ?? to access
+    env = CheckEnv(FakeSchema(), PRODUCT)
+    # owner is non-nullable; direct access fine
+    check("record.owner.name == 'x'", env, BOOL)
 
 
 def test_expected_type_allows_int_to_decimal_only():

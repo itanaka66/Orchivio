@@ -1,6 +1,6 @@
 # Implementation Status
 
-Last updated: 2026-10-23 (FR-013/015 second approver for A3+ proposals; FR-029 cross-module enum expressions in interpreter; FR-064 status corrected to Done; FR-081 retries; FR-094/FR-097 contract migration endpoint; FR-111 admin reassignment; bootstrap endpoint; auto-migrate setting; change-step list refresh; strict dominator-based flow variable scoping; CSRF token moved to localStorage — new tabs no longer need re-login; object literals added to the expression language; after_* entity hooks moved outside the write transaction; login throttle and inbound webhook rate limiter now database-backed — safe for multi-replica deployments). Statuses: **Done** (implemented and
+Last updated: 2026-10-23 (FR-013/015 second approver for A3+ proposals; FR-029 cross-module enum expressions in interpreter; FR-064 status corrected to Done; FR-081 retries; FR-094/FR-097 contract migration endpoint; FR-111 admin reassignment; bootstrap endpoint; auto-migrate setting; change-step list refresh; strict dominator-based flow variable scoping; CSRF token moved to localStorage — new tabs no longer need re-login; object literals added to the expression language; after_* entity hooks moved outside the write transaction; login throttle and inbound webhook rate limiter now database-backed — safe for multi-replica deployments; expression relationship traversal now supported in the interpreter). Statuses: **Done** (implemented and
 tested), **Library** (implemented as a tested library but not yet wired into a running
 service), **Schema** (data structures only), **Planned**.
 
@@ -114,7 +114,7 @@ Everything not listed is **Planned**.
 - Members can be invited by email (`POST /organizations/{id}/invitations`); the invite token is returned in `X-Invite-Token` for the caller to deliver.
 - Risky (A3+) proposals require a second approver (a different user) via a second `POST /proposals/{id}/approval` call; A0–A2 proposals still apply on the first approval.
 - Database migrations are not run automatically at start-up by default (`alembic upgrade head`); set `ORCHIVIO_AUTO_MIGRATE=true` to run them on each startup (requires `alembic.ini` in the working directory).
-- Expressions: no relationship traversal (`record.owner.name`) (see EXPRESSION-SPEC.md).
+- Expressions: relationship traversal (`record.owner.name`) is supported in the interpreter when the caller pre-loads related records; it raises `NotCompilable` in SQL predicates (requires a JOIN; not yet supported).
 - Application end-user accounts are local to each app (local accounts, OIDC, TOTP MFA, single logout); no SAML.
 - AI calls and test runs are synchronous inside the request; no job-queue offload yet.
 - Generated tests run on SQLite only; PostgreSQL SQL paths are unverified.

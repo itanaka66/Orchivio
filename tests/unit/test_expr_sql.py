@@ -33,7 +33,11 @@ class Schema:
     }
 
     def field_type(self, entity, field):
-        return self.F.get(field) if entity == ENTITY else None
+        if entity == ENTITY:
+            return self.F.get(field)
+        if entity == "system.User":
+            return {"name": STRING}.get(field)
+        return None
 
     def enum_values(self, name):
         return ("a", "b", "c") if name == "S" else None
@@ -110,7 +114,8 @@ def test_values_are_bound_not_inlined():
     assert "DROP TABLE" in next(iter(pred.params.values()))
 
 
-@pytest.mark.parametrize("src", ["qty / 2 > 1", "qty % 2 == 0", "size(name) > 1"])
+@pytest.mark.parametrize("src", ["qty / 2 > 1", "qty % 2 == 0", "size(name) > 1",
+                                  "record.owner.name == 'Alice'"])
 def test_uncompilable_constructs_are_rejected(src):
     res = check(src, CheckEnv(Schema(), ENTITY))
     with pytest.raises(NotCompilable):

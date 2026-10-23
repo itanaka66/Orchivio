@@ -69,7 +69,11 @@ Object literals are not compilable to SQL predicates.
 - String methods: `startsWith(s)`, `endsWith(s)`, `contains(s)`, `lower()`, `upper()`, `size()`.
 - List methods: `size()`, `contains(x)`. Function: `size(x)` for strings and lists.
 - `$currentUser.hasRole('role')`.
-- Relationship traversal (`record.owner.name`) is not supported yet; `ref.id` is the ref itself.
+- Relationship traversal: `record.owner.name` accesses field `name` of the related entity. The
+  intermediate ref must be non-null (use `?.` for nullable refs: `record.manager?.name`). Traversal
+  is supported by the interpreter when the caller pre-loads related records as nested dicts. It
+  raises `NotCompilable` in the SQL predicate compiler (requires a JOIN; not yet supported there).
+  `ref.id` returns the ref itself (a shorthand for the foreign key value).
 
 ## 6. Bounds
 
@@ -112,5 +116,5 @@ All errors derive from `ExprError` and carry a character offset: `ParseError`,
 
 ## 9. Future
 
-Relationship traversal compiled to joins, `$env` constants, TypeScript evaluator for
-client-side visibility (DESIGN.md §8.5).
+Relationship traversal compiled to SQL JOINs (currently raises `NotCompilable`), `$env`
+constants, TypeScript evaluator for client-side visibility (DESIGN.md §8.5).
