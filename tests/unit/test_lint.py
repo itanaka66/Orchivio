@@ -188,6 +188,17 @@ CASES = {
     }),
     "maint-list-no-columns": lambda d: d["modules"][0]["pages"].append(
         {"key": "product-detail", "path": "/products/:id/view", "type": "detail", "entity": "Product"}),
+    "maint-form-missing-required-field": lambda d: (
+        d["modules"][0]["pages"].append({
+            "key": "product-partial-create",
+            "path": "/products/new2",
+            "type": "form",
+            "entity": "Product",
+            "mode": "create",
+            "columns": ["name"],
+        }) or
+        d["security"]["pages"].update({"product-partial-create": ["admin"]})
+    ),
     "maint-flow-no-tests": lambda d: d["modules"][0]["flows"].append({
         "key": "UncoveredFlow",
         "kind": "server",

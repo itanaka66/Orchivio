@@ -74,7 +74,12 @@ an **allow-list**, so a field added to the entity later stays hidden from restri
 | `unreachable-page` | warning | Page lists no roles, so nobody can open it |
 | `role-without-access` | warning | Role has no access rules and no pages |
 | `entity-without-readers` | warning | No role can read the entity |
+| `entity-without-writers` | warning | No role can write (create, update or delete) the entity |
 | `anonymous-access` | warning | Anonymous access is on (needs A3 approval) |
+| `export-without-read` | warning | A role may export the entity but cannot read it; export implies full read access |
+| `form-page-no-create` | warning | A create form's allowed roles cannot create the entity |
+| `form-page-no-update` | warning | An edit form's allowed roles cannot update the entity |
+| `page-action-flow-inaccessible` | warning | A page action calls a flow that roles allowed on the page cannot run (button appears but call is denied at runtime) |
 | `computed-field-leak` | warning | A readable computed field is derived from fields the same rule hides |
 | `required-field-not-writable` | warning | A role may create the entity but cannot write a required field that has no default |
 

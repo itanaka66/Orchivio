@@ -466,6 +466,31 @@ def _(c: _Ctx):
                     f"page '{pg.key}' is a {pg.type} page with no columns")
 
 
+@rule("maint-form-missing-required-field", "warning", "maintainability",
+      "Create form omits a required field with no default",
+      "A create form that shows some fields but omits a required field with no server-provided "
+      "default always fails on submit; add the field to the columns or give it a default value.")
+def _(c: _Ctx):
+    for mi, mod in enumerate(c.model.modules):
+        for pi, pg in enumerate(mod.pages):
+            if pg.type != "form" or pg.mode != "create" or not pg.columns:
+                continue
+            q = c.index.resolve_entity(mod.key, pg.entity)
+            if not q:
+                continue
+            found = c.index.entities.get(q)
+            if not found:
+                continue
+            _, ent = found
+            for f in ent.fields:
+                if (f.required and not f.generated and f.computed is None
+                        and f.default is None and f.default_expr is None
+                        and f.name not in pg.columns):
+                    yield pg.element_id, f"/modules/{mi}/pages/{pi}/columns", (
+                        f"required field '{f.name}' has no default and is not in the form's columns; "
+                        "create always fails without it")
+
+
 @rule("maint-flow-no-tests", "info", "maintainability",
       "Server flow with no test cases",
       "Server flows support declarative test cases (FR-058); a flow with no test cases "
