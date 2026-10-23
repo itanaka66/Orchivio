@@ -88,6 +88,48 @@ def c_dup_list(d):
         {"key": "product-list-2", "path": "/products2", "type": "list", "entity": "Product", "columns": ["name"]})
 
 
+def c_unreachable_flow(d):
+    d["modules"][0]["flows"].append({
+        "key": "UnusedFlow",
+        "kind": "server",
+        "steps": [{"id": "s1", "type": "start", "config": {}},
+                  {"id": "s2", "type": "end", "config": {}}],
+        "edges": [{"id": "e1", "source": "s1", "target": "s2"}],
+    })
+
+
+def c_process_no_start_roles(d):
+    d["modules"][0].setdefault("processes", []).append({
+        "key": "OrphanProcess",
+        "steps": [{"id": "s1", "type": "start", "config": {}},
+                  {"id": "s2", "type": "end", "config": {}}],
+        "edges": [{"id": "e1", "source": "s1", "target": "s2"}],
+    })
+
+
+def c_hook_on_transient(d):
+    d["modules"][0]["flows"].append({
+        "key": "HookFlow",
+        "kind": "server",
+        "steps": [{"id": "s1", "type": "start", "config": {}},
+                  {"id": "s2", "type": "end", "config": {}}],
+        "edges": [{"id": "e1", "source": "s1", "target": "s2"}],
+    })
+    d["modules"][0]["entities"].append({
+        "name": "TransientForm",
+        "fields": [{"name": "x", "type": "string"}],
+        "transient": True,
+        "hooks": {"after_create": "HookFlow"},
+    })
+
+
+def c_integration_no_ops(d):
+    d["modules"][0].setdefault("integrations", []).append({
+        "key": "empty_api",
+        "destination": "empty-api",
+    })
+
+
 # rule id -> mutation that triggers it (None: the sample model already triggers it)
 CASES = {
     "sec-constraint-not-compilable": lambda d: d["security"]["access"][1].update(row_constraint="record.quantity / 2 > 1"),
@@ -99,6 +141,7 @@ CASES = {
     "sec-sensitive-field-listed": c_sensitive,
     "perf-unindexed-constraint-field": c_unindexed,
     "perf-reference-without-index": c_ref_noindex,
+    "perf-unique-nullable-field": lambda d: ent(d)["fields"].append({"name": "slug", "type": "string", "unique": True}),
     "perf-wide-entity": lambda d: ent(d)["fields"].extend({"name": f"f{i}", "type": "string"} for i in range(40)),
     "perf-wide-list-page": c_wide_list,
     "maint-unused-enumeration": lambda d: d["modules"][0]["enumerations"].append({"name": "Unused", "values": ["a", "b"]}),
@@ -110,6 +153,10 @@ CASES = {
     "maint-long-expression": lambda d: d["security"]["access"][1].update(
         row_constraint="record.owner == $currentUser" + " && true" * 60),
     "maint-access-on-transient-entity": c_transient,
+    "maint-unreachable-flow": c_unreachable_flow,
+    "maint-process-no-start-roles": c_process_no_start_roles,
+    "maint-hook-on-transient-entity": c_hook_on_transient,
+    "maint-integration-no-operations": c_integration_no_ops,
     "a11y-column-without-label": None,
     "i18n-default-locale-not-listed": lambda d: d["application"].update(default_locale="fr-FR"),
 }

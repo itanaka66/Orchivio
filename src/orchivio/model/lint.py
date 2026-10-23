@@ -391,6 +391,32 @@ def _(c: _Ctx):
                 f"process '{pr.key}' has no start_roles and is not a sub-process")
 
 
+@rule("maint-hook-on-transient-entity", "warning", "maintainability",
+      "Entity hook on a transient entity",
+      "Transient entities have no storage lifecycle, so their hooks can never fire.")
+def _(c: _Ctx):
+    for mi, mod in enumerate(c.model.modules):
+        for ei, ent in enumerate(mod.entities):
+            if not ent.transient or not ent.hooks:
+                continue
+            path = f"/modules/{mi}/entities/{ei}"
+            for event in ent.hooks:
+                yield ent.element_id, f"{path}/hooks/{event}", (
+                    f"{ent.name} is transient; its '{event}' hook can never fire")
+
+
+@rule("maint-integration-no-operations", "warning", "maintainability",
+      "Integration with no operations",
+      "An integration that defines no operations cannot be called from a flow; "
+      "it should be populated or removed.")
+def _(c: _Ctx):
+    for mi, mod in enumerate(c.model.modules):
+        for ii, ig in enumerate(mod.integrations or []):
+            if not ig.operations:
+                yield ig.element_id, f"/modules/{mi}/integrations/{ii}", (
+                    f"integration '{ig.key}' defines no operations")
+
+
 # --- accessibility / i18n ---------------------------------------------------------------
 
 
