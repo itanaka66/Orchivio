@@ -29,7 +29,7 @@ from orchivio.integrations import (
 from orchivio.integrations.mcp_client import ToolBroker
 from orchivio.integrations.oidc import OidcClient
 from orchivio.jobs import Worker
-from orchivio.llm import AnthropicProvider, LLMProvider
+from orchivio.llm import AnnaSamplingProvider, LLMProvider
 from orchivio.ports import LocalArtifactStore
 from orchivio.process import ticker
 from orchivio.runtime import PreviewStore
@@ -49,11 +49,10 @@ def error_body(code: str, message: str, details: Any = None) -> dict[str, Any]:
 
 
 def _provider_from_settings(settings: Settings) -> LLMProvider | None:
-    if settings.llm_provider == "anthropic":
-        if settings.anthropic_api_key is None:
-            raise RuntimeError("ORCHIVIO_ANTHROPIC_API_KEY is required when ORCHIVIO_LLM_PROVIDER=anthropic")
-        kwargs = {"model": settings.llm_model} if settings.llm_model else {}
-        return AnthropicProvider(settings.anthropic_api_key.get_secret_value(), **kwargs)
+    if settings.llm_provider == "anna":
+        if not settings.anna_sampling_url:
+            raise RuntimeError("ORCHIVIO_ANNA_SAMPLING_URL is required when ORCHIVIO_LLM_PROVIDER=anna")
+        return AnnaSamplingProvider(settings.anna_sampling_url)
     return None
 
 

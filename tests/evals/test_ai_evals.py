@@ -1,7 +1,7 @@
 """AI quality eval harness.
 
 Run with:
-    ORCHIVIO_LIVE_LLM=1 ORCHIVIO_ANTHROPIC_API_KEY=sk-... pytest tests/evals -v
+    ORCHIVIO_LIVE_LLM=1 ORCHIVIO_ANNA_SAMPLING_URL=http://127.0.0.1:<port> pytest tests/evals -v
 
 Rubrics are in tests/evals/fixtures/rubrics.yaml. Each rubric specifies a prompt
 and scoring criteria (required keywords, entity names, forbidden names). The JSON
@@ -18,8 +18,8 @@ import yaml
 pytestmark = [
     pytest.mark.eval,
     pytest.mark.skipif(
-        os.environ.get("ORCHIVIO_LIVE_LLM") != "1" or not os.environ.get("ORCHIVIO_ANTHROPIC_API_KEY"),
-        reason="set ORCHIVIO_LIVE_LLM=1 and ORCHIVIO_ANTHROPIC_API_KEY to run evals",
+        os.environ.get("ORCHIVIO_LIVE_LLM") != "1" or not os.environ.get("ORCHIVIO_ANNA_SAMPLING_URL"),
+        reason="set ORCHIVIO_LIVE_LLM=1 and ORCHIVIO_ANNA_SAMPLING_URL to run evals",
     ),
 ]
 
@@ -31,10 +31,9 @@ _RUBRICS = yaml.safe_load(
 @pytest.fixture(scope="module")
 def builder():
     from orchivio.ai import AIBuilder
-    from orchivio.llm import AnthropicProvider
+    from orchivio.llm import AnnaSamplingProvider
 
-    kwargs = {"model": os.environ["ORCHIVIO_LLM_MODEL"]} if os.environ.get("ORCHIVIO_LLM_MODEL") else {}
-    return AIBuilder(AnthropicProvider(os.environ["ORCHIVIO_ANTHROPIC_API_KEY"], **kwargs))
+    return AIBuilder(AnnaSamplingProvider(os.environ["ORCHIVIO_ANNA_SAMPLING_URL"]))
 
 
 def _score(result, rubric: dict) -> list[str]:

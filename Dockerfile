@@ -8,7 +8,7 @@ WORKDIR /app
 COPY pyproject.toml README.md LICENSE alembic.ini ./
 COPY src ./src
 COPY migrations ./migrations
-RUN pip install ".[postgres,server]"
+RUN pip install ".[postgres,server,anna]"
 
 # Run as a non-root user (DESIGN.md section 12.2).
 RUN useradd --system --uid 10001 --no-create-home orchivio

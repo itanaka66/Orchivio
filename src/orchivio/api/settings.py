@@ -19,11 +19,11 @@ class Settings(BaseSettings):
     artifact_dir: str = "./artifacts"
     max_body_bytes: int = 1_048_576
     max_import_bytes: int = 8_388_608  # model archives (zip); see model/canonical.py for the inner limits
-    # "none" disables the AI endpoints. "anthropic" needs ORCHIVIO_ANTHROPIC_API_KEY and
-    # sends prompts to a hosted API; projects must opt in (settings.ai_allow_external).
-    llm_provider: Literal["none", "anthropic"] = "none"
+    # "none" disables the AI endpoints. "anna" routes completions through the Anna AI OS
+    # sampling relay (ORCHIVIO_ANNA_SAMPLING_URL must point to the plugin relay).
+    llm_provider: Literal["none", "anna"] = "none"
     llm_model: str | None = None
-    anthropic_api_key: SecretStr | None = None
+    anna_sampling_url: str | None = None
 
     # Accounts and sessions
     auto_migrate: bool = False  # run `alembic upgrade head` at startup (needs alembic.ini in cwd)
@@ -78,7 +78,7 @@ class Settings(BaseSettings):
     webhook_backoff_seconds: int = 30
     webhook_pause_after_failures: int = 10
 
-    @field_validator("anthropic_api_key", "llm_model", "metrics_token", "package_signing_key", "public_url", "otel_endpoint", mode="before")
+    @field_validator("anna_sampling_url", "llm_model", "metrics_token", "package_signing_key", "public_url", "otel_endpoint", mode="before")
     @classmethod
     def _blank_is_unset(cls, v: object) -> object:
         return None if v is None or (isinstance(v, str) and not v.strip()) else v

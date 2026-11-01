@@ -1,6 +1,6 @@
 """LLM provider abstraction."""
 
-from .anthropic import AnthropicProvider
+from .anna import AnnaSamplingProvider
 from .base import (
     NO_USAGE,
     LLMError,
@@ -12,12 +12,11 @@ from .base import (
     Usage,
 )
 from .mock import MockProvider
-from .openai_compat import OllamaProvider
 from .validated import StructuredOutputError, Validated, generate_validated
 
 __all__ = [
     "NO_USAGE",
-    "AnthropicProvider",
+    "AnnaSamplingProvider",
     "LLMError",
     "LLMProvider",
     "LLMRequest",
@@ -25,7 +24,6 @@ __all__ = [
     "LLMTimeout",
     "Message",
     "MockProvider",
-    "OllamaProvider",
     "StructuredOutputError",
     "Usage",
     "Validated",
