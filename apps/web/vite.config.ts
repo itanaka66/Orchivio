@@ -1,7 +1,7 @@
 /// <reference types="vitest/config" />
 import react from '@vitejs/plugin-react'
 import { defineConfig } from 'vite'
-import { pwa } from './pwa-plugin'
+import { pwa } from './pwa-plugin.ts'
 
 // The API is same-origin in production (served behind one reverse proxy); in development the
 // dev server proxies it so the session cookie works without CORS.
